@@ -140,13 +140,16 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
   afterAll(async () => {
     if (client) {
       try {
-        await cleanFixtures(client);
-        const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
-        const up012Sql = fs.readFileSync(path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'), 'utf8');
-        const up016Sql = fs.readFileSync(path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'), 'utf8');
-        await client.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
-        await client.query(up012Sql);
-        await client.query(up016Sql);
+        try {
+          await cleanFixtures(client);
+        } finally {
+          const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+          const up012Sql = fs.readFileSync(path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'), 'utf8');
+          const up016Sql = fs.readFileSync(path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'), 'utf8');
+          await client.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
+          await client.query(up012Sql);
+          await client.query(up016Sql);
+        }
       } catch {
         // ignore
       } finally {

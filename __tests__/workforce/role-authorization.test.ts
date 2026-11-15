@@ -229,42 +229,49 @@ describe('BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)'
 
     if (client) {
       try {
-        await resetAuthContext(client);
+        try {
+          await resetAuthContext(client);
 
-        const pDel = await client.query('DELETE FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
-        pCount = pDel.rowCount ?? 0;
+          const pDel = await client.query('DELETE FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
+          pCount = pDel.rowCount ?? 0;
 
-        const poolDel = await client.query('DELETE FROM workforce_staging.branch_credit_pools WHERE agency_id = $1', [tenantId]);
-        poolCount = poolDel.rowCount ?? 0;
+          const poolDel = await client.query('DELETE FROM workforce_staging.branch_credit_pools WHERE agency_id = $1', [tenantId]);
+          poolCount = poolDel.rowCount ?? 0;
 
-        const mDel = await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantId]);
-        mCount = mDel.rowCount ?? 0;
+          const mDel = await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+          mCount = mDel.rowCount ?? 0;
 
-        const tDel = await client.query('DELETE FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
-        tCount = tDel.rowCount ?? 0;
+          const tDel = await client.query('DELETE FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
+          tCount = tDel.rowCount ?? 0;
 
-        // Verify clean deletion with independent counts
-        const pCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
-        expect(pCheck.rows[0].count).toBe(0);
+          // Verify clean deletion with independent counts
+          const pCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
+          expect(pCheck.rows[0].count).toBe(0);
 
-        const mCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantId]);
-        expect(mCheck.rows[0].count).toBe(0);
+          const mCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+          expect(mCheck.rows[0].count).toBe(0);
 
-        const tCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
-        expect(tCheck.rows[0].count).toBe(0);
-
-        const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
-        const up012Sql = fs.readFileSync(
-          path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'),
-          'utf8'
-        );
-        const up016Sql = fs.readFileSync(
-          path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'),
-          'utf8'
-        );
-        await client.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
-        await client.query(up012Sql);
-        await client.query(up016Sql);
+          const tCheck = await client.query('SELECT COUNT(*)::int AS count FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
+          expect(tCheck.rows[0].count).toBe(0);
+        } finally {
+          try {
+            await resetAuthContext(client);
+            const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+            const up012Sql = fs.readFileSync(
+              path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'),
+              'utf8'
+            );
+            const up016Sql = fs.readFileSync(
+              path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'),
+              'utf8'
+            );
+            await client.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
+            await client.query(up012Sql);
+            await client.query(up016Sql);
+          } catch {
+            // ignore restoration error in teardown
+          }
+        }
       } finally {
         await client.end();
       }

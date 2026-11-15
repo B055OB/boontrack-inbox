@@ -16,6 +16,7 @@
  */
 
 import crypto from 'crypto';
+import pg from 'pg';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
 import { ALLOWED_TRANSITIONS, evaluateGeofence } from '@/packages/attendance';
@@ -32,6 +33,8 @@ import {
   assertDisposableLoopbackUrl,
   createDisposablePgTestStore,
   getStrictDisposableTestDatabaseUrl,
+  getDisposablePgPool,
+  closeDisposablePgPool,
 } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 import {
   createSupabaseServiceRoleOperationalStore,
@@ -452,7 +455,16 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
         process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/test_workforce_ci';
         expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
 
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@mpluzajlzpregmjwpjqr.supabase.co:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@xkhqirhurnjqglmajghn.supabase.co:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
         process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@containers.railway.app:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@roundhouse.proxy.rlwy.net:5432/test_workforce_ci';
         expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
 
         process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@ep-cool-project.neon.tech:5432/test_workforce_ci';
@@ -503,7 +515,10 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
 
         delete process.env.APP_ENV;
         process.env.VERCEL_ENV = 'production';
-        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Production VERCEL_ENV detected/);
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Vercel production environment detected/);
+
+        process.env.VERCEL_ENV = 'preview';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Vercel preview environment detected/);
 
         delete process.env.VERCEL_ENV;
         process.env.RAILWAY_ENVIRONMENT = 'production';
@@ -521,6 +536,42 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
           delete (globalThis as any).window;
         }
       } finally {
+        process.env = prevEnv;
+      }
+    });
+
+    it('Gate G-03: rejected URL validation strictly fails closed before constructing or connecting Client or Pool', async () => {
+      const prevEnv = { ...process.env };
+      const poolSpy = jest.spyOn(pg, 'Pool');
+      const clientSpy = jest.spyOn(pg, 'Client');
+      try {
+        process.env.NODE_ENV = 'test';
+        process.env.WORKFORCE_USE_DISPOSABLE_PG = 'true';
+        delete process.env.APP_ENV;
+        delete process.env.VERCEL_ENV;
+        delete process.env.RAILWAY_ENVIRONMENT;
+
+        const rejectedUrls = [
+          'postgresql://postgres:p@mpluzajlzpregmjwpjqr.supabase.co:5432/test_workforce_ci',
+          'postgresql://postgres:p@roundhouse.proxy.rlwy.net:5432/test_workforce_ci',
+          'postgresql://postgres:p@192.168.1.1:5432/test_workforce_ci',
+          'postgresql://postgres:p@localhost:5433/test_workforce_ci',
+          'postgresql://postgres:p@localhost:5432/production_db',
+        ];
+
+        for (const badUrl of rejectedUrls) {
+          process.env.DISPOSABLE_POSTGRES_URL = badUrl;
+          expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/DISPOSABLE GUARD FATAL/);
+          expect(() => getDisposablePgPool()).toThrow(/DISPOSABLE GUARD FATAL/);
+        }
+
+        // Verify that neither Pool nor Client constructor was ever called during rejected attempts
+        expect(poolSpy).not.toHaveBeenCalled();
+        expect(clientSpy).not.toHaveBeenCalled();
+      } finally {
+        poolSpy.mockRestore();
+        clientSpy.mockRestore();
+        await closeDisposablePgPool();
         process.env = prevEnv;
       }
     });

@@ -23,8 +23,6 @@
  *      to ensure audit clarity.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { Client } from 'pg';
 import { getStrictDisposableTestDatabaseUrl } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 

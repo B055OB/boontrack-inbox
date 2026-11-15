@@ -3,41 +3,68 @@
  * BWM Gate 1 Round 3I: API Authorization Convergence, Role-Safe Reads, Rollback Closure & Verified Build
  */
 
-jest.unmock('@/lib/supabaseClient');
-jest.unmock('@supabase/supabase-js');
-
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import pg, { Client, Pool } from 'pg';
+import type { SupabaseClient } from '@supabase/supabase-js';
+const { createClient: createRealSupabaseClient } = jest.requireActual('@supabase/supabase-js');
 import { NextRequest } from 'next/server';
 import { getStrictDisposableTestDatabaseUrl } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 
-// Option 1B: Snapshot process.env and bind Commerce route environment variables to disposable container
+// 1. Snapshot initial environment and bind Commerce route variables to disposable container
 const initialEnv = { ...process.env };
-const disposableDbUrl = getStrictDisposableTestDatabaseUrl();
-process.env.WORKFORCE_DATABASE_DIRECT_URL = disposableDbUrl;
-process.env.DATABASE_URL = disposableDbUrl;
-process.env.WORKFORCE_DATABASE_URL = disposableDbUrl;
 
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'dummy-service-role-test';
-}
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://mock-project.supabase.co';
-}
-if (!process.env.WORKFORCE_SUPABASE_URL) {
-  process.env.WORKFORCE_SUPABASE_URL = 'https://tjkbgxrckaocgosvmzmj.supabase.co';
-}
-if (!process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY) {
-  process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = 'dummy-workforce-service-role';
-}
-if (!process.env.BOONTRACK_HMAC_SECRET) {
-  process.env.BOONTRACK_HMAC_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
-}
-if (!process.env.BOONTRACK_SESSION_SECRET) {
-  process.env.BOONTRACK_SESSION_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
-}
+const ephemeralSupabaseUrl =
+  process.env.DISPOSABLE_POSTGREST_URL || process.env.WORKFORCE_SUPABASE_URL || 'http://127.0.0.1:3000';
+const ephemeralServiceKey =
+  process.env.DISPOSABLE_POSTGREST_SERVICE_ROLE_KEY ||
+  process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.dxvBMIvKaxIke61h0Jc2vPk9EZre-_1A3UQ5NXP9t5Y';
+const ephemeralAnonKey =
+  process.env.DISPOSABLE_POSTGREST_ANON_KEY ||
+  process.env.WORKFORCE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDB9.Rs4bVwQ_AdYuCzKpXE2AxvaLFxrdE6jNzkgdUgD-JC8';
 
-// Option 1B: Intercept and track all direct Client, test Pool, and route-handler Pool instances
+process.env.NODE_ENV = 'test';
+process.env.BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP = 'true';
+process.env.BWM_POSTGREST_INTEGRATION_TEST = 'true';
+process.env.WORKFORCE_SUPABASE_URL = ephemeralSupabaseUrl;
+process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = ephemeralServiceKey;
+process.env.WORKFORCE_SUPABASE_ANON_KEY = ephemeralAnonKey;
+process.env.NEXT_PUBLIC_SUPABASE_URL = ephemeralSupabaseUrl;
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ephemeralAnonKey;
+process.env.SUPABASE_SERVICE_ROLE_KEY = ephemeralServiceKey;
+process.env.BOONTRACK_HMAC_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
+process.env.BOONTRACK_SESSION_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
+
+// Option 2: Provide a real SupabaseClient connected to the local disposable PostgREST gateway (port 3000)
+const realPostgrestAdmin: SupabaseClient = createRealSupabaseClient(ephemeralSupabaseUrl, ephemeralServiceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
+jest.mock('@/lib/supabaseClient', () => {
+  return {
+    isValidUuid: (id: string) =>
+      typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
+    safeUuidOrNull: (id: string | null | undefined) =>
+      typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null,
+    assertStagingRestUrlTarget: (url: string) => url,
+    assertSharedRestUrlTarget: (url: string) => url,
+    assertStagingDatabaseTarget: () => {},
+    verifyFactoryClient: () => {},
+    SUPABASE_URL: ephemeralSupabaseUrl,
+    SUPABASE_ANON_KEY: ephemeralAnonKey,
+    SUPABASE_SERVICE_ROLE_KEY: ephemeralServiceKey,
+    SUPABASE_PUBLISHABLE_KEY: ephemeralAnonKey,
+    supabase: realPostgrestAdmin,
+    getWorkforceSupabaseAdmin: jest.fn(() => realPostgrestAdmin),
+    getSupabaseAdmin: jest.fn(() => realPostgrestAdmin),
+    getSupabase: jest.fn(() => realPostgrestAdmin),
+  };
+});
+
+// Track all direct Client, test Pool, and route-handler Pool instances
 const trackedClients = new Set<Client>();
 const trackedPools = new Set<Pool>();
 const OriginalClient = pg.Client;
@@ -60,30 +87,24 @@ class TrackedPool extends OriginalPool {
 (pg as any).Client = TrackedClient;
 (pg as any).Pool = TrackedPool;
 
-import {
-  signMerchantSessionToken,
-  authorizeMerchantSession,
-  isInternalMachineAuthorized,
-} from '@/lib/auth/merchant-session';
-import {
-  GET as getProducts,
-  POST as createProduct,
-} from '@/app/api/v1/tenants/[slug]/products/route';
-import {
-  GET as getProductById,
-  PUT as updateProductById,
-  DELETE as deleteProductById,
-} from '@/app/api/v1/tenants/[slug]/products/[id]/route';
-import {
-  GET as getResellerMembers,
-  POST as createResellerMember,
-  PATCH as updateResellerMember,
-  DELETE as deleteResellerMember,
-} from '@/app/api/v1/tenants/[slug]/reseller/members/route';
-
-function getDatabaseConnectionString(): string {
-  return getStrictDisposableTestDatabaseUrl();
-}
+// Dynamic ESM bindings populated in beforeAll
+let signMerchantSessionToken: (payload: any) => string;
+let authorizeMerchantSession: (
+  req: NextRequest,
+  targetSlug?: string | null,
+  allowedRoles?: any[],
+  canonicalTenant?: any
+) => Promise<any>;
+let isInternalMachineAuthorized: (req: NextRequest, targetSlug: string, allowedOps: string[]) => boolean;
+let getProducts: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
+let createProduct: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
+let getProductById: (req: NextRequest, ctx: { params: Promise<{ slug: string; id: string }> }) => Promise<any>;
+let updateProductById: (req: NextRequest, ctx: { params: Promise<{ slug: string; id: string }> }) => Promise<any>;
+let deleteProductById: (req: NextRequest, ctx: { params: Promise<{ slug: string; id: string }> }) => Promise<any>;
+let getResellerMembers: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
+let createResellerMember: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
+let updateResellerMember: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
+let deleteResellerMember: (req: NextRequest, ctx: { params: Promise<{ slug: string }> }) => Promise<any>;
 
 describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Authority', () => {
   let pgClient: Client;
@@ -106,12 +127,68 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
   let tokenCS: string;
 
   beforeAll(async () => {
-    pgClient = new Client({ connectionString: getDatabaseConnectionString() });
+    // 1. Validate disposable test database URL
+    const disposableDbUrl = getStrictDisposableTestDatabaseUrl();
+    process.env.WORKFORCE_DATABASE_DIRECT_URL = disposableDbUrl;
+    process.env.DATABASE_URL = disposableDbUrl;
+    process.env.WORKFORCE_DATABASE_URL = disposableDbUrl;
+
+    // 2. Dynamically import merchant-session and route handlers after env configuration
+    const msModule = await import('@/lib/auth/merchant-session');
+    signMerchantSessionToken = msModule.signMerchantSessionToken;
+    authorizeMerchantSession = msModule.authorizeMerchantSession;
+    isInternalMachineAuthorized = msModule.isInternalMachineAuthorized;
+
+    const productsRoute = await import('@/app/api/v1/tenants/[slug]/products/route');
+    getProducts = productsRoute.GET;
+    createProduct = productsRoute.POST;
+
+    const productIdRoute = await import('@/app/api/v1/tenants/[slug]/products/[id]/route');
+    getProductById = productIdRoute.GET;
+    updateProductById = productIdRoute.PUT;
+    deleteProductById = productIdRoute.DELETE;
+
+    const resellerRoute = await import('@/app/api/v1/tenants/[slug]/reseller/members/route');
+    getResellerMembers = resellerRoute.GET;
+    createResellerMember = resellerRoute.POST;
+    updateResellerMember = resellerRoute.PATCH;
+    deleteResellerMember = resellerRoute.DELETE;
+
+    // 3. Connect direct superuser test client
+    pgClient = new Client({ connectionString: disposableDbUrl });
     await pgClient.connect();
     await pgClient.query('SET search_path TO workforce_staging, public');
 
-    // 1. Provision target tenant
-    const tRes = await pgClient.query(`
+    // 4. Align view tuple structures and triggers with 010/015/016
+    const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+    const down012Sql = fs.readFileSync(
+      path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.down.sql'),
+      'utf8'
+    );
+    const up010Sql = fs.readFileSync(
+      path.join(migrationsDir, '010_strict_storefront_opt_in_and_role_authorization.sql'),
+      'utf8'
+    );
+    const up015Sql = fs.readFileSync(
+      path.join(migrationsDir, '015_attendance_actor_binding_and_role_allowlist.sql'),
+      'utf8'
+    );
+    const up016Sql = fs.readFileSync(
+      path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'),
+      'utf8'
+    );
+
+    await pgClient.query('DROP VIEW IF EXISTS public.tenant_memberships, public.products, public.storefront_products');
+    await pgClient.query('ALTER TABLE workforce_staging.products DROP COLUMN IF EXISTS metadata');
+    await pgClient.query(down012Sql);
+    await pgClient.query(up010Sql);
+    await pgClient.query(up015Sql);
+    await pgClient.query(up016Sql);
+    await pgClient.query("NOTIFY pgrst, 'reload schema'");
+
+    // 5. Provision target tenant
+    const tRes = await pgClient.query(
+      `
       INSERT INTO workforce_staging.tenants (
         slug, name, category, tier, status, subscription_status, is_active,
         public_storefront_enabled, metadata, phone, whatsapp_number, waba_phone_number_id
@@ -119,21 +196,27 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         $1, 'Convergence Defense Systems', 'service', 'PRO_SCALE', 'active', 'active',
         TRUE, TRUE, '{"secret_api_key": "sec_tenant_master_key_999"}', '+628111222333', '+628111222333', 'WABA_CONFIDENTIAL_ID_88'
       ) RETURNING id
-    `, [slug]);
+    `,
+      [slug]
+    );
     tenantId = tRes.rows[0].id;
 
-    // 2. Provision memberships for each role in authoritative SSOT table
-    await pgClient.query(`
+    // 6. Provision memberships for each role in authoritative SSOT table
+    await pgClient.query(
+      `
       INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
       VALUES 
         ($1, $2, $3, 'OWNER', TRUE),
         ($4, $2, $3, 'MERCHANT', TRUE),
         ($5, $2, $3, 'OPERATOR', TRUE),
         ($6, $2, $3, 'CS', TRUE)
-    `, [USER_OWNER, tenantId, slug, USER_MERCHANT, USER_OPERATOR, USER_CS]);
+    `,
+      [USER_OWNER, tenantId, slug, USER_MERCHANT, USER_OPERATOR, USER_CS]
+    );
 
-    // 3. Provision a sensitive digital/service product with fulfillment secrets
-    await pgClient.query(`
+    // 7. Provision a sensitive digital/service product with fulfillment secrets
+    await pgClient.query(
+      `
       INSERT INTO workforce_staging.products (
         id, tenant_id, title, slug, price, promo_price, category, product_type,
         description, stock, is_active, status, is_publicly_published, asset_reference,
@@ -144,9 +227,11 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         'ASSET-CONFIDENTIAL-REF-777', 'VERIFIED_ENTERPRISE',
         '{"access_url": "https://vault.boontrack.com/download/key_secret_xyz", "license_key": "LIC-PRO-999-SECRET", "single_page_config": {"banner_url": "https://img.com/banner.png"}}'::jsonb
       )
-    `, [targetProductId, tenantId, productTitle, productSlug]);
+    `,
+      [targetProductId, tenantId, productTitle, productSlug]
+    );
 
-    // 4. Mint cryptographic HMAC session tokens
+    // 8. Mint cryptographic HMAC session tokens
     tokenOwner = signMerchantSessionToken({
       tenantSlug: slug,
       tenantId: tenantId,
@@ -176,21 +261,60 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     });
   }, 30000);
 
+  afterEach(() => {
+    // Restore ADMIN_INTERNAL_SECRET if modified by section 6 tests
+    if (initialEnv.ADMIN_INTERNAL_SECRET !== undefined) {
+      process.env.ADMIN_INTERNAL_SECRET = initialEnv.ADMIN_INTERNAL_SECRET;
+    } else {
+      delete process.env.ADMIN_INTERNAL_SECRET;
+    }
+  });
+
   afterAll(async () => {
     try {
       if (pgClient) {
         try {
           await pgClient.query('RESET ROLE');
           await pgClient.query('DELETE FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
-          await pgClient.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1 OR tenant_slug = $2', [tenantId, slug]);
+          await pgClient.query(
+            'DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1 OR tenant_slug = $2',
+            [tenantId, slug]
+          );
           await pgClient.query('DELETE FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
         } catch {
           // ignore fixture teardown error
+        }
+
+        try {
+          // Guaranteed migration restoration
+          const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+          const up012Sql = fs.readFileSync(
+            path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'),
+            'utf8'
+          );
+          const up016Sql = fs.readFileSync(
+            path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'),
+            'utf8'
+          );
+          await pgClient.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
+          await pgClient.query(up012Sql);
+          await pgClient.query(up016Sql);
+          await pgClient.query("NOTIFY pgrst, 'reload schema'");
+        } catch {
+          // ignore restoration error in teardown
         }
       }
     } finally {
       (pg as any).Client = OriginalClient;
       (pg as any).Pool = OriginalPool;
+
+      if (pgClient) {
+        try {
+          await pgClient.end();
+        } catch {
+          // ignore
+        }
+      }
 
       for (const client of trackedClients) {
         try {
@@ -279,10 +403,13 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
   });
 
   test('1d. CS catalog view strictly masks fulfillment secrets and access URLs', async () => {
-    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`, {
-      method: 'GET',
-      headers: { cookie: `bt_merchant_token=${tokenCS}` },
-    });
+    const req = new NextRequest(
+      `https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`,
+      {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenCS}` },
+      }
+    );
     const res = await getProductById(req, { params: Promise.resolve({ slug, id: targetProductId }) });
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -293,7 +420,9 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     expect(json.product.fulfillment_metadata).toBeUndefined();
     expect(json.product.single_page_config).toBeUndefined();
     expect(json.product.download_url).toBeUndefined();
-    expect(Object.keys(json.product).sort()).toEqual(['created_at', 'id', 'name', 'price', 'sku', 'status', 'title'].sort());
+    expect(Object.keys(json.product).sort()).toEqual(
+      ['created_at', 'id', 'name', 'price', 'sku', 'status', 'title'].sort()
+    );
   });
 
   // ===========================================================================
@@ -343,36 +472,42 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     expect(opJson.error).toContain('OPERATOR');
 
     // CS attempting PUT
-    const csReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        cookie: `bt_merchant_token=${tokenCS}`,
-      },
-      body: JSON.stringify({
-        price: 1,
-      }),
-    });
+    const csReq = new NextRequest(
+      `https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenCS}`,
+        },
+        body: JSON.stringify({
+          price: 1,
+        }),
+      }
+    );
     const csRes = await updateProductById(csReq, { params: Promise.resolve({ slug, id: targetProductId }) });
     expect(csRes.status).toBe(403);
     const csJson = await csRes.json();
     expect(csJson.error).toContain('CS');
 
     // CS attempting DELETE
-    const csDelReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`, {
-      method: 'DELETE',
-      headers: { cookie: `bt_merchant_token=${tokenCS}` },
-    });
+    const csDelReq = new NextRequest(
+      `https://dashboard.boontrack.com/api/v1/tenants/${slug}/products/${targetProductId}`,
+      {
+        method: 'DELETE',
+        headers: { cookie: `bt_merchant_token=${tokenCS}` },
+      }
+    );
     const csDelRes = await deleteProductById(csDelReq, { params: Promise.resolve({ slug, id: targetProductId }) });
     expect(csDelRes.status).toBe(403);
   });
 
   // ===========================================================================
-  // SECTION 3: REAL-TIME MEMBERSHIP SSOT & IMMEDIATE REVOCATION
+  // SECTION 3: IMMEDIATE DATABASE REVOCATION FAIL-CLOSED (SSOT)
   // ===========================================================================
 
   test('3a. Active membership revocation in database immediately revokes API access (403 Forbidden)', async () => {
-    // Deactivate OWNER membership in database SSOT
+    // Revoke OWNER active membership directly in the database SSOT
     await pgClient.query(
       'UPDATE workforce_staging.tenant_memberships SET is_active = FALSE WHERE user_id = $1 AND tenant_id = $2',
       [USER_OWNER, tenantId]
@@ -383,9 +518,7 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
       method: 'GET',
       headers: { cookie: `bt_merchant_token=${tokenOwner}` },
     });
-    const res = await getProducts(req, { params: Promise.resolve({ slug }) });
-    // In unauthenticated storefront path without active membership, returns public storefront projection
-    // BUT direct authorizeMerchantSession call strictly fails closed:
+
     const authCheck = await authorizeMerchantSession(req, slug);
     expect(authCheck.authorized).toBe(false);
     expect(authCheck.status).toBe(403);
@@ -413,10 +546,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
 
   test('3b. Membership deletion from database immediately fails closed (403 Forbidden)', async () => {
     // Delete OWNER membership from database
-    await pgClient.query(
-      'DELETE FROM workforce_staging.tenant_memberships WHERE user_id = $1 AND tenant_id = $2',
-      [USER_OWNER, tenantId]
-    );
+    await pgClient.query('DELETE FROM workforce_staging.tenant_memberships WHERE user_id = $1 AND tenant_id = $2', [
+      USER_OWNER,
+      tenantId,
+    ]);
 
     const mutateReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
       method: 'POST',
@@ -439,26 +572,26 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
   });
 
   test('3c. Database failure/timeout during session auth strictly fails closed (503 DATABASE_LOOKUP_FAILED)', async () => {
-    const { getSupabaseAdmin, getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
-    const admin = (getWorkforceSupabaseAdmin ? getWorkforceSupabaseAdmin() : getSupabaseAdmin()) as any;
-    const originalFrom = admin.from.bind(admin);
+    const originalFrom = realPostgrestAdmin.from.bind(realPostgrestAdmin);
     // Spy on from to simulate database lookup failure
-    admin.from = jest.fn(() => {
+    realPostgrestAdmin.from = jest.fn(() => {
       throw new Error('Database connection timeout (Simulated ETIMEDOUT)');
     });
 
-    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
-      method: 'GET',
-      headers: { cookie: `bt_merchant_token=${tokenOwner}` },
-    });
+    try {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwner}` },
+      });
 
-    const authCheck = await authorizeMerchantSession(req, slug);
-    expect(authCheck.authorized).toBe(false);
-    expect(authCheck.status).toBe(503);
-    expect(authCheck.error).toBe('DATABASE_LOOKUP_FAILED');
-
-    // Restore original method
-    admin.from = originalFrom;
+      const authCheck = await authorizeMerchantSession(req, slug);
+      expect(authCheck.authorized).toBe(false);
+      expect(authCheck.status).toBe(503);
+      expect(authCheck.error).toBe('DATABASE_LOOKUP_FAILED');
+    } finally {
+      // Restore original method
+      realPostgrestAdmin.from = originalFrom;
+    }
   });
 
   // ===========================================================================
@@ -688,10 +821,13 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     const patchRes = await updateResellerMember(patchReq, { params: Promise.resolve({ slug }) });
     expect([401, 403]).toContain(patchRes.status);
 
-    // 4. DELETE /api/v1/tenants/[slug]/reseller/members
-    const delReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members?id=dummy-id`, {
-      method: 'DELETE',
-    });
+    // 4. DELETE /api/v1/tenants/[slug]/reseller/members?id=dummy-id
+    const delReq = new NextRequest(
+      `https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members?id=dummy-id`,
+      {
+        method: 'DELETE',
+      }
+    );
     const delRes = await deleteResellerMember(delReq, { params: Promise.resolve({ slug }) });
     expect([401, 403]).toContain(delRes.status);
   });
@@ -712,7 +848,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
       }),
     ]);
 
-    const csViewRes = await pgClient.query('SELECT slug, metadata, phone, whatsapp_number, waba_phone_number_id FROM public.tenants WHERE id = $1', [tenantId]);
+    const csViewRes = await pgClient.query(
+      'SELECT slug, metadata, phone, whatsapp_number, waba_phone_number_id FROM public.tenants WHERE id = $1',
+      [tenantId]
+    );
     expect(csViewRes.rows.length).toBe(1);
     const row = csViewRes.rows[0];
     expect(row.slug).toBe(slug);
@@ -739,7 +878,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
       }),
     ]);
 
-    const csProdRes = await pgClient.query('SELECT title, price, fulfillment_metadata, asset_reference, license_status FROM public.products WHERE id = $1', [targetProductId]);
+    const csProdRes = await pgClient.query(
+      'SELECT title, price, fulfillment_metadata, asset_reference, license_status FROM public.products WHERE id = $1',
+      [targetProductId]
+    );
     expect(csProdRes.rows.length).toBe(1);
     const pRow = csProdRes.rows[0];
     expect(pRow.title).toBe(productTitle);
@@ -818,7 +960,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         app_metadata: { tenant_id: tenantId },
       }),
     ]);
-    const ownerMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    const ownerMemRes = await pgClient.query(
+      'SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
     expect(ownerMemRes.rows.length).toBeGreaterThanOrEqual(1);
 
     // 2. MERCHANT can query tenant memberships
@@ -831,7 +976,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         app_metadata: { tenant_id: tenantId },
       }),
     ]);
-    const merchantMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    const merchantMemRes = await pgClient.query(
+      'SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
     expect(merchantMemRes.rows.length).toBeGreaterThanOrEqual(1);
 
     // 3. OPERATOR receives 0 rows (strictly fail closed)
@@ -844,7 +992,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         app_metadata: { tenant_id: tenantId },
       }),
     ]);
-    const opMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    const opMemRes = await pgClient.query(
+      'SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
     expect(opMemRes.rows.length).toBe(0);
 
     // 4. CS receives 0 rows (strictly fail closed)
@@ -857,7 +1008,10 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
         app_metadata: { tenant_id: tenantId },
       }),
     ]);
-    const csMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    const csMemRes = await pgClient.query(
+      'SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
     expect(csMemRes.rows.length).toBe(0);
 
     await pgClient.query('RESET ROLE');

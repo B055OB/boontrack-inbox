@@ -38,7 +38,10 @@ const FORBIDDEN_REMOTE_MARKERS = [
   'supabase.com',
   'pooler.supabase.com',
   'tjkbgxrckaocgosvmzmj',
+  'mpluzajlzpregmjwpjqr',
+  'xkhqirhurnjqglmajghn',
   'railway.app',
+  'rlwy.net',
   'neon.tech',
   'amazonaws.com',
   'compute.amazonaws.com',
@@ -152,8 +155,10 @@ export function getStrictDisposableTestDatabaseUrl(): string {
     );
   }
 
-  if (process.env.VERCEL_ENV === 'production') {
-    throw new Error('[DISPOSABLE GUARD FATAL] Production VERCEL_ENV detected. Disposable database access is strictly prohibited.');
+  if (process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') {
+    throw new Error(
+      `[DISPOSABLE GUARD FATAL] Vercel ${process.env.VERCEL_ENV} environment detected. Disposable database access is strictly prohibited.`
+    );
   }
 
   if (process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.RAILWAY_ENVIRONMENT === 'staging') {

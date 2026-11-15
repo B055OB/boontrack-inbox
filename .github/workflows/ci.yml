@@ -71,12 +71,50 @@ jobs:
           CURRENT_HEAD=$(git rev-parse HEAD)
           echo "Git HEAD:        $CURRENT_HEAD"
 
-          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -z "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] pull_request event missing PR_HEAD_SHA"
+              exit 1
+            fi
+            if ! [[ "$PR_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] PR_HEAD_SHA must be 40 hex characters: $PR_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            if ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+              echo "[PROVENANCE FATAL] pull_request merge commit missing secondary parent HEAD^2"
+              exit 1
+            fi
             MERGE_PARENT_2=$(git rev-parse HEAD^2)
             echo "Merge Parent 2:  $MERGE_PARENT_2"
+            if [ "$MERGE_PARENT_2" != "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] HEAD^2 ($MERGE_PARENT_2) does not match PR_HEAD_SHA ($PR_HEAD_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$PR_HEAD_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -z "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] $GITHUB_EVENT_NAME event missing GITHUB_SHA"
+              exit 1
+            fi
+            if ! [[ "$GITHUB_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] GITHUB_SHA must be 40 hex characters: $GITHUB_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$GITHUB_SHA"
           else
-            echo "Merge Parent 2:  N/A (not a merge commit)"
+            echo "[PROVENANCE FATAL] Unsupported GitHub Actions event: $GITHUB_EVENT_NAME"
+            exit 1
           fi
+
+          echo "Candidate SHA:   $CANDIDATE_SHA"
 
           WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
           if [ -f "$WORKFLOW_FILE_PATH" ]; then
@@ -90,11 +128,11 @@ jobs:
               echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
               exit 1
             fi
-            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
-              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+            if [ "$EXPECTED_HEAD_SHA" != "$CANDIDATE_SHA" ]; then
+              echo "[PROVENANCE FATAL] Candidate SHA mismatch! Expected: $EXPECTED_HEAD_SHA, Actual Candidate: $CANDIDATE_SHA"
               exit 1
             fi
-            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+            echo "[PROVENANCE OK] Candidate SHA matches expected: $CANDIDATE_SHA"
           fi
           echo "======================================"
 
@@ -116,7 +154,7 @@ jobs:
             --testPathIgnorePatterns="__tests__/e2e/|__tests__/workforce/(api-authorization-convergence|attendance-checkpoint-postgres|attendance-postgrest-adapter|biteship-courier-config|database-rls-adversarial|e6-chargeback-dispute|e6-consumption-concurrency|e6-preview-readiness|e6-purchase-concurrency|e6-staging-db|e6-workforce-e2e|e8-staging-sandbox-integration|e9-dynamic-branding-pilot|e9-white-label-pilot|marginal-pricing-and-ledger|membership-revocation|persistent-registry-authority|public-route-exposure|public-tenant-dto-and-ingress|real-api-persistence|real-data-api-exposure|real-persistence-integration|role-authorization|rsc-and-dashboard-remediation|safe-migration-rollback|tenant-settings-api|tenant-operational-regression)"
 
   postgres_integration:
-    name: Ephemeral PostgreSQL Integration (24 Suites)
+    name: Ephemeral PostgreSQL Integration (23 Suites)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -175,12 +213,50 @@ jobs:
           CURRENT_HEAD=$(git rev-parse HEAD)
           echo "Git HEAD:        $CURRENT_HEAD"
 
-          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -z "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] pull_request event missing PR_HEAD_SHA"
+              exit 1
+            fi
+            if ! [[ "$PR_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] PR_HEAD_SHA must be 40 hex characters: $PR_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            if ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+              echo "[PROVENANCE FATAL] pull_request merge commit missing secondary parent HEAD^2"
+              exit 1
+            fi
             MERGE_PARENT_2=$(git rev-parse HEAD^2)
             echo "Merge Parent 2:  $MERGE_PARENT_2"
+            if [ "$MERGE_PARENT_2" != "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] HEAD^2 ($MERGE_PARENT_2) does not match PR_HEAD_SHA ($PR_HEAD_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$PR_HEAD_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -z "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] $GITHUB_EVENT_NAME event missing GITHUB_SHA"
+              exit 1
+            fi
+            if ! [[ "$GITHUB_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] GITHUB_SHA must be 40 hex characters: $GITHUB_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$GITHUB_SHA"
           else
-            echo "Merge Parent 2:  N/A (not a merge commit)"
+            echo "[PROVENANCE FATAL] Unsupported GitHub Actions event: $GITHUB_EVENT_NAME"
+            exit 1
           fi
+
+          echo "Candidate SHA:   $CANDIDATE_SHA"
 
           WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
           if [ -f "$WORKFLOW_FILE_PATH" ]; then
@@ -194,11 +270,11 @@ jobs:
               echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
               exit 1
             fi
-            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
-              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+            if [ "$EXPECTED_HEAD_SHA" != "$CANDIDATE_SHA" ]; then
+              echo "[PROVENANCE FATAL] Candidate SHA mismatch! Expected: $EXPECTED_HEAD_SHA, Actual Candidate: $CANDIDATE_SHA"
               exit 1
             fi
-            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+            echo "[PROVENANCE OK] Candidate SHA matches expected: $CANDIDATE_SHA"
           fi
           echo "======================================"
 
@@ -235,11 +311,6 @@ jobs:
         run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/database-rls-adversarial.test.ts
-
-      - name: Run API Authorization Convergence Gate (api-authorization-convergence)
-        run: |
-          node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
-            __tests__/workforce/api-authorization-convergence.test.ts
 
       - name: Run Legacy PostgreSQL Batch 1b (Schema & RLS — Known BWM-LEGACY-VIEW-001)
         continue-on-error: true
@@ -369,12 +440,50 @@ jobs:
           CURRENT_HEAD=$(git rev-parse HEAD)
           echo "Git HEAD:        $CURRENT_HEAD"
 
-          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -z "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] pull_request event missing PR_HEAD_SHA"
+              exit 1
+            fi
+            if ! [[ "$PR_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] PR_HEAD_SHA must be 40 hex characters: $PR_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            if ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+              echo "[PROVENANCE FATAL] pull_request merge commit missing secondary parent HEAD^2"
+              exit 1
+            fi
             MERGE_PARENT_2=$(git rev-parse HEAD^2)
             echo "Merge Parent 2:  $MERGE_PARENT_2"
+            if [ "$MERGE_PARENT_2" != "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] HEAD^2 ($MERGE_PARENT_2) does not match PR_HEAD_SHA ($PR_HEAD_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$PR_HEAD_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -z "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] $GITHUB_EVENT_NAME event missing GITHUB_SHA"
+              exit 1
+            fi
+            if ! [[ "$GITHUB_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] GITHUB_SHA must be 40 hex characters: $GITHUB_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$GITHUB_SHA"
           else
-            echo "Merge Parent 2:  N/A (not a merge commit)"
+            echo "[PROVENANCE FATAL] Unsupported GitHub Actions event: $GITHUB_EVENT_NAME"
+            exit 1
           fi
+
+          echo "Candidate SHA:   $CANDIDATE_SHA"
 
           WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
           if [ -f "$WORKFLOW_FILE_PATH" ]; then
@@ -388,11 +497,11 @@ jobs:
               echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
               exit 1
             fi
-            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
-              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+            if [ "$EXPECTED_HEAD_SHA" != "$CANDIDATE_SHA" ]; then
+              echo "[PROVENANCE FATAL] Candidate SHA mismatch! Expected: $EXPECTED_HEAD_SHA, Actual Candidate: $CANDIDATE_SHA"
               exit 1
             fi
-            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+            echo "[PROVENANCE OK] Candidate SHA matches expected: $CANDIDATE_SHA"
           fi
           echo "======================================"
 
@@ -425,7 +534,7 @@ jobs:
             __tests__/workforce/tenant-operational-regression.test.ts
 
   postgrest_integration:
-    name: PostgREST & Auth Boundary Integration (2 Suites)
+    name: PostgREST & Auth Boundary Integration (3 Suites)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -483,12 +592,50 @@ jobs:
           CURRENT_HEAD=$(git rev-parse HEAD)
           echo "Git HEAD:        $CURRENT_HEAD"
 
-          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -z "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] pull_request event missing PR_HEAD_SHA"
+              exit 1
+            fi
+            if ! [[ "$PR_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] PR_HEAD_SHA must be 40 hex characters: $PR_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            if ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+              echo "[PROVENANCE FATAL] pull_request merge commit missing secondary parent HEAD^2"
+              exit 1
+            fi
             MERGE_PARENT_2=$(git rev-parse HEAD^2)
             echo "Merge Parent 2:  $MERGE_PARENT_2"
+            if [ "$MERGE_PARENT_2" != "$PR_HEAD_SHA" ]; then
+              echo "[PROVENANCE FATAL] HEAD^2 ($MERGE_PARENT_2) does not match PR_HEAD_SHA ($PR_HEAD_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$PR_HEAD_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -z "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] $GITHUB_EVENT_NAME event missing GITHUB_SHA"
+              exit 1
+            fi
+            if ! [[ "$GITHUB_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] GITHUB_SHA must be 40 hex characters: $GITHUB_SHA"
+              exit 1
+            fi
+            if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+              echo "[PROVENANCE FATAL] Current HEAD ($CURRENT_HEAD) does not match GITHUB_SHA ($GITHUB_SHA)"
+              exit 1
+            fi
+            CANDIDATE_SHA="$GITHUB_SHA"
           else
-            echo "Merge Parent 2:  N/A (not a merge commit)"
+            echo "[PROVENANCE FATAL] Unsupported GitHub Actions event: $GITHUB_EVENT_NAME"
+            exit 1
           fi
+
+          echo "Candidate SHA:   $CANDIDATE_SHA"
 
           WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
           if [ -f "$WORKFLOW_FILE_PATH" ]; then
@@ -502,11 +649,11 @@ jobs:
               echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
               exit 1
             fi
-            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
-              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+            if [ "$EXPECTED_HEAD_SHA" != "$CANDIDATE_SHA" ]; then
+              echo "[PROVENANCE FATAL] Candidate SHA mismatch! Expected: $EXPECTED_HEAD_SHA, Actual Candidate: $CANDIDATE_SHA"
               exit 1
             fi
-            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+            echo "[PROVENANCE OK] Candidate SHA matches expected: $CANDIDATE_SHA"
           fi
           echo "======================================"
 
@@ -642,6 +789,13 @@ jobs:
         run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=60000 --runInBand \
             __tests__/workforce/attendance-postgrest-adapter.test.ts
+
+      - name: Run API Authorization Convergence Gate (api-authorization-convergence)
+        env:
+          NODE_OPTIONS: "--experimental-vm-modules"
+        run: |
+          node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=60000 --runInBand \
+            __tests__/workforce/api-authorization-convergence.test.ts
 
       - name: Run Legacy PostgREST Data API Exposure Suite (real-data-api-exposure — Decoupled)
         continue-on-error: true
