@@ -2,8 +2,7 @@ import React from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldAlert, Lock, ArrowLeft } from 'lucide-react';
-import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { ShieldAlert, Lock } from 'lucide-react';
 import { verifyHostSessionToken } from '@/lib/auth/host-session';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +20,7 @@ function ForbiddenAccessView({ userEmail, role }: { userEmail?: string; role?: s
           </div>
           <h1 className="text-xl font-black text-white">Akses Ditolak</h1>
           <p className="text-xs text-zinc-300 leading-relaxed">
-            Akun Anda terautentikasi {userEmail ? `(${userEmail})` : ''}, namun role Anda bukan <strong>ADMIN</strong> dan Anda bukan pemilik sah workspace Creator ini.
+            Akun Anda terautentikasi {userEmail ? `(${userEmail})` : ''}, namun role Anda ({role || 'UNAUTHORIZED'}) tidak berwenang mengakses Creator Admin workspace ini.
           </p>
         </div>
         <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 text-[11px] text-zinc-400 text-left space-y-1">
@@ -63,110 +62,25 @@ export default async function CreatorAdminLayout({
     cookieStore.get('bt_creator_session')?.value ||
     '';
 
-  // 2. Ekstrak Supabase Auth Token (hanya untuk SSO platform admin fallback)
-  let authToken = cookieStore.get('sb-access-token')?.value || '';
-  if (!authToken) {
-    for (const c of cookieStore.getAll()) {
-      if (c.name.startsWith('sb-') && c.name.endsWith('-auth-token')) {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(c.value));
-          if (Array.isArray(parsed) && parsed[0]) {
-            authToken = parsed[0];
-            break;
-          } else if (parsed?.access_token) {
-            authToken = parsed.access_token;
-            break;
-          }
-        } catch {}
-      }
-    }
-  }
-
-  // 3. Fail-Closed: Tolak jika tidak ada signed token dan tidak ada Supabase auth token
-  // DILARANG KERAS mempercayai plaintext cookies (creator_handle, creator_session, merchant_store, dll)
-  if (!creatorSessionToken && !authToken) {
+  // 2. Fail-Closed: Tolak jika tidak ada signed creator host token
+  // DILARANG KERAS mempercayai plaintext cookies atau generic Supabase Auth session token
+  if (!creatorSessionToken) {
     redirect('/login?redirectTo=/admin');
   }
 
-  // 4. Validasi Authoritative Signed Creator Session Token
-  if (creatorSessionToken) {
-    const verification = await verifyHostSessionToken(creatorSessionToken, 'creator');
-    if (verification.valid && verification.payload) {
-      const payload = verification.payload;
-      const roleUpper = String(payload.role || '').toUpperCase();
-      const allowedRoles = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'];
-
-      if (allowedRoles.includes(roleUpper)) {
-        return <>{children}</>;
-      }
-
-      // Role tidak diizinkan di Creator Workspace
-      return <ForbiddenAccessView userEmail={payload.sub} role={payload.role} />;
-    }
-
-    // Token tidak valid, expired, atau di-revoke -> fail-closed jika tidak ada fallback auth
-    if (!authToken) {
-      redirect('/login?redirectTo=/admin');
-    }
-  }
-
-  // 5. Validasi Fallback: Platform Admin via Supabase Auth
-  let supabaseAdmin;
-  try {
-    supabaseAdmin = getSupabaseAdmin();
-  } catch (err) {
-    console.error('[Creator Admin Guard] Failed to initialize Supabase Admin:', err);
+  // 3. Validasi Authoritative Signed Creator Session Token via Node verifier
+  const verification = await verifyHostSessionToken(creatorSessionToken, 'creator');
+  if (!verification.valid || !verification.payload) {
     redirect('/login?redirectTo=/admin');
   }
 
-  if (authToken) {
-    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(authToken);
-    if (!authError && authData?.user) {
-      const user = authData.user;
-      const appRole = String(user.app_metadata?.role || user.user_metadata?.role || '').toUpperCase();
+  const payload = verification.payload;
+  const roleUpper = String(payload.role || '').toUpperCase();
+  const allowedRoles = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'];
 
-      // Cek apakah user adalah ADMIN atau SUPERADMIN
-      if (appRole === 'ADMIN' || appRole === 'SUPERADMIN') {
-        return <>{children}</>;
-      }
-
-      // Cek apakah user ada di tabel affiliates sebagai ADMIN
-      const { data: aff } = await supabaseAdmin
-        .from('affiliates')
-        .select('role')
-        .or(`id.eq.${user.id},email.eq.${user.email}`)
-        .maybeSingle();
-
-      if (aff && (String(aff.role).toUpperCase() === 'ADMIN' || String(aff.role).toUpperCase() === 'SUPERADMIN')) {
-        return <>{children}</>;
-      }
-
-      // Cek apakah user adalah pemilik sah creator profile atau tenant
-      const { data: creatorProf } = await supabaseAdmin
-        .from('creator_profiles')
-        .select('id, handle, tenant_id')
-        .or(`tenant_id.eq.${user.id},handle.eq.${user.email}`)
-        .maybeSingle();
-
-      if (creatorProf) {
-        return <>{children}</>;
-      }
-
-      const { data: tenantRow } = await supabaseAdmin
-        .from('tenants')
-        .select('id, slug')
-        .or(`id.eq.${user.id},metadata->>email.eq.${user.email}`)
-        .maybeSingle();
-
-      if (tenantRow) {
-        return <>{children}</>;
-      }
-
-      // User terautentikasi tapi BUKAN ADMIN dan BUKAN PEMILIK SAH -> 403 Forbidden!
-      return <ForbiddenAccessView userEmail={user.email} role={appRole || 'USER'} />;
-    }
+  if (!allowedRoles.includes(roleUpper)) {
+    return <ForbiddenAccessView userEmail={payload.sub} role={payload.role} />;
   }
 
-  // Sesi tidak valid atau tidak lolos verifikasi
-  redirect('/login?redirectTo=/admin');
+  return <>{children}</>;
 }

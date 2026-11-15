@@ -14,6 +14,7 @@
 
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyHostSessionToken } from '@/lib/auth/host-session';
 
 export interface CreatorAuthResult {
   authorized: boolean;
@@ -90,6 +91,7 @@ export function extractAuthTokens(req: Request | NextRequest) {
     bearerToken = authHeader.trim();
   }
 
+  let signedCreatorToken = '';
   let cookieSbToken = '';
   let cookieCreatorHandle = '';
   let cookieCreatorSession = '';
@@ -97,6 +99,10 @@ export function extractAuthTokens(req: Request | NextRequest) {
 
   if ('cookies' in req && typeof (req as any).cookies?.get === 'function') {
     const nextReq = req as NextRequest;
+    signedCreatorToken =
+      nextReq.cookies.get('__Host-bt_creator_session')?.value ||
+      nextReq.cookies.get('bt_creator_session')?.value ||
+      '';
     cookieSbToken = nextReq.cookies.get('sb-access-token')?.value || '';
     if (!cookieSbToken) {
       for (const c of nextReq.cookies.getAll()) {
@@ -120,6 +126,9 @@ export function extractAuthTokens(req: Request | NextRequest) {
   } else {
     // Standard Request headers
     const cookieHeader = req.headers.get('cookie') || '';
+    const matchSigned = cookieHeader.match(/(?:__Host-)?bt_creator_session=([^;]+)/i);
+    if (matchSigned) signedCreatorToken = decodeURIComponent(matchSigned[1]);
+
     const matchSb = cookieHeader.match(/sb-access-token=([^;]+)/i);
     if (matchSb) cookieSbToken = decodeURIComponent(matchSb[1]);
 
@@ -151,6 +160,7 @@ export function extractAuthTokens(req: Request | NextRequest) {
 
   return {
     token,
+    signedCreatorToken,
     creatorHandleCookie: cleanHandle(cookieCreatorHandle || cookieCreatorSession),
     merchantStoreCookie: cleanHandle(cookieMerchantStore),
   };
@@ -174,7 +184,7 @@ export async function verifyCreatorSession(
     };
   }
 
-  const { token, creatorHandleCookie } = extractAuthTokens(req);
+  const { token, signedCreatorToken, creatorHandleCookie } = extractAuthTokens(req);
 
   // Security Guard: SUPABASE_SERVICE_ROLE_KEY is strictly rejected as a human bearer token
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -193,6 +203,35 @@ export async function verifyCreatorSession(
       errorStatus: 401,
       errorMessage: 'Unauthorized: Database engine tidak tersedia.',
     };
+  }
+
+  // ── Skenario 0: Authoritative Cryptographic Creator Host Session Token (P0) ──
+  if (signedCreatorToken) {
+    const verification = await verifyHostSessionToken(signedCreatorToken, 'creator');
+    if (verification.valid && verification.payload) {
+      const payload = verification.payload;
+      const isOwner =
+        payload.tsl.toLowerCase() === target ||
+        payload.tid.toLowerCase() === target ||
+        payload.role === 'ADMIN' ||
+        payload.role === 'SUPERADMIN';
+
+      if (isOwner) {
+        return {
+          authorized: true,
+          role: payload.role as any,
+          userId: payload.sub,
+          handle: payload.tsl,
+          tenantId: payload.tid,
+        };
+      }
+
+      return {
+        authorized: false,
+        errorStatus: 403,
+        errorMessage: `Forbidden: Sesi kreator aktif (@${payload.tsl}) tidak memiliki hak akses terhadap target '@${target}' (Anti-IDOR).`,
+      };
+    }
   }
 
   // ── Skenario 1: Verifikasi via Supabase Auth Session Token (auth.uid()) ──
@@ -314,7 +353,7 @@ export async function verifyCreatorSession(
     };
   }
 
-  // ── Skenario 2: Verifikasi via Creator Session Cookie ──
+  // ── Skenario 2: Plaintext Creator Cookie (Zero Trust / Fail-Closed) ──
   if (creatorHandleCookie) {
     const baseTarget = target.replace(/_+$/, '');
     const isMatchingCookie =
@@ -330,38 +369,12 @@ export async function verifyCreatorSession(
       };
     }
 
-    // Verify that the cookie corresponds to a real existing profile in the database
-    const { data: profile } = await supabase
-      .from('creator_profiles')
-      .select('id, handle, tenant_id')
-      .or(`handle.eq.${creatorHandleCookie},handle.eq.${baseTarget}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (profile) {
-      return {
-        authorized: true,
-        role: 'CREATOR_COOKIE',
-        handle: profile.handle,
-        tenantId: profile.tenant_id,
-      };
-    }
-
-    // Check tenants
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('id, slug')
-      .eq('slug', creatorHandleCookie)
-      .maybeSingle();
-
-    if (tenant) {
-      return {
-        authorized: true,
-        role: 'CREATOR_COOKIE',
-        handle: tenant.slug,
-        tenantId: tenant.id,
-      };
-    }
+    // Plaintext cookie cannot authorize server endpoints -> Reject with 401
+    return {
+      authorized: false,
+      errorStatus: 401,
+      errorMessage: 'Unauthorized: Plaintext cookie dilarang untuk otorisasi server. Diperlukan signed token.',
+    };
   }
 
   // ── Skenario 3: Fail-Closed: Tidak ada token atau sesi valid ──

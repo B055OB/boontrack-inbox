@@ -72,8 +72,8 @@ function CreatorLoginFormContent() {
           if (data.data?.name || data.data?.display_name) {
             localStorage.setItem('creator_display_name', data.data.name || data.data.display_name);
           }
+          // Non-authoritative display cookie only (used for client UI greeting / display)
           document.cookie = `creator_handle=${encodeURIComponent(resolvedHandle)}; path=/; max-age=2592000; SameSite=Lax`;
-          document.cookie = `creator_session=${encodeURIComponent(resolvedHandle)}; path=/; max-age=2592000; SameSite=Lax`;
         }
 
         const targetUrl = redirectTo.startsWith('/') ? redirectTo : '/admin';

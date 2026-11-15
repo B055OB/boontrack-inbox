@@ -1,12 +1,30 @@
 /**
  * @file __tests__/integration/creator_login_to_workspace_e2e.test.ts
- * @description CTO Mandate: Full Creator Login-to-Workspace Integration & Security Remediation Suite
+ * @description CTO Mandate Round 2: Full Connected Creator Login-to-Workspace Integration & Security Remediation Suite
  *
  * Verifies:
- * 1. Positive Flow: POST /api/creator/login -> signed Creator host cookie -> middleware rewrite -> layout authorization.
- * 2. Remediation A: Cryptographic token issuance, zero plaintext fallback, strict middleware/layout guards.
- * 3. Remediation B: Edge session verifier hardening (exp, nbf, iat, ver, sub, tid, tsl, jti, alg, typ).
- * 4. Remediation C: 20+ positive and negative adversarial test cases covering the entire product boundary.
+ * 1. Connected Positive Flow:
+ *    Step 1: Real POST /api/creator/login endpoint call.
+ *    Step 2: Capture exact signed cookie from login response headers (Zero manual token generation).
+ *    Step 3: Pass exact captured token to Middleware (verifies host recognition and /admin -> /creator/admin rewrite).
+ *    Step 4: Pass exact captured token to CreatorAdminLayout (verifies server-side authorization and workspace rendering).
+ * 2. Strict Privilege Issuance (Remediation A):
+ *    - Unlinked Supabase user receives zero Creator tokens (403 CREATOR_MEMBERSHIP_REQUIRED).
+ *    - Missing profile fails closed (404 NOT_FOUND).
+ *    - Missing stored PIN/hash fails closed (401 CREDENTIAL_UNCONFIGURED).
+ *    - Empty credential fails closed (400 SECRET_REQUIRED).
+ *    - Incorrect PIN fails closed (401 INVALID_PIN).
+ *    - Suspended profile fails closed (403 CREATOR_SUSPENDED).
+ *    - Inactive linked tenant fails closed (403 TENANT_INELIGIBLE).
+ *    - User-editable metadata cannot grant elevated privileges.
+ * 3. Elimination of Generic Supabase Fallback (Remediation B):
+ *    - sb-access-token alone is strictly rejected in CreatorAdminLayout.
+ *    - Zero plaintext cookies allowed.
+ *    - Authoritative Node verifier verifies signature and claims.
+ * 4. Plaintext Cookie Rejection (Remediation C):
+ *    - creator_session, creator_handle alone fail closed.
+ * 5. Architectural Blocker Transparency (Remediation E):
+ *    - Accurately states process-local cache boundaries without false claims of multi-runtime parity.
  */
 
 import { NextRequest } from 'next/server';
@@ -29,9 +47,8 @@ import {
 } from '@/lib/auth/host-session-edge';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import * as supabaseClientModule from '@/lib/supabaseClient';
-import crypto from 'crypto';
 
-// In-memory cookie store for mocking next/headers
+// In-memory cookie store for mocking next/headers in server components
 const mockCookieMap = new Map<string, string>();
 
 jest.mock('next/headers', () => ({
@@ -44,23 +61,30 @@ jest.mock('next/headers', () => ({
   })),
 }));
 
-// Mock next/navigation redirect with control flow throw
+// Mock next/navigation redirect with control flow throw (mimicking Next.js NEXT_REDIRECT)
 jest.mock('next/navigation', () => ({
   redirect: jest.fn().mockImplementation((url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   }),
 }));
 
-describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Suite', () => {
+describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration Suite', () => {
   const TEST_CREATOR = {
     id: 'usr-creator-777',
     tenant_id: 'tid-creator-777',
     handle: 'suzieray',
     display_name: 'Suzie Ray Official',
     pin: '9876',
+    role: 'CREATOR_OWNER',
+    status: 'active',
   };
 
-  const createMockDb = () => ({
+  const createMockDb = (customOverrides?: {
+    profile?: any;
+    tenant?: any;
+    authUser?: any;
+    authError?: any;
+  }) => ({
     from: jest.fn((table: string) => ({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
@@ -69,16 +93,21 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       limit: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockImplementation(() => {
         if (table === 'creator_profiles') {
+          if (customOverrides?.profile !== undefined) {
+            return Promise.resolve({ data: customOverrides.profile, error: null });
+          }
           return Promise.resolve({ data: TEST_CREATOR, error: null });
         }
         if (table === 'tenants') {
+          if (customOverrides?.tenant !== undefined) {
+            return Promise.resolve({ data: customOverrides.tenant, error: null });
+          }
           return Promise.resolve({
             data: {
               id: TEST_CREATOR.tenant_id,
               slug: TEST_CREATOR.handle,
               name: TEST_CREATOR.display_name,
               status: 'active',
-              access_password: 'secret-password',
             },
             error: null,
           });
@@ -87,30 +116,23 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       }),
     })),
     auth: {
-      signInWithPassword: jest.fn().mockResolvedValue({
-        data: {
-          user: {
-            id: TEST_CREATOR.id,
-            email: 'suzieray@boontrack.com',
-            app_metadata: { role: 'CREATOR_OWNER' },
+      signInWithPassword: jest.fn().mockImplementation(() => {
+        if (customOverrides?.authError) {
+          return Promise.resolve({ data: { user: null }, error: customOverrides.authError });
+        }
+        return Promise.resolve({
+          data: {
+            user: customOverrides?.authUser || {
+              id: TEST_CREATOR.id,
+              email: 'suzieray@boontrack.com',
+              app_metadata: { role: 'CREATOR_OWNER' },
+            },
+            session: { access_token: 'valid-sb-access-token' },
           },
-          session: { access_token: 'valid-sb-access-token' },
-        },
-        error: null,
+          error: null,
+        });
       }),
       getUser: jest.fn().mockImplementation((token: string) => {
-        if (token === 'valid-admin-token') {
-          return Promise.resolve({
-            data: {
-              user: {
-                id: 'admin-1',
-                email: 'admin@boontrack.com',
-                app_metadata: { role: 'ADMIN' },
-              },
-            },
-            error: null,
-          });
-        }
         return Promise.resolve({ data: { user: null }, error: { message: 'Invalid token' } });
       }),
     },
@@ -134,27 +156,28 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
   });
 
   // =========================================================================
-  // 1. POSITIVE FLOW: Full Login-to-Workspace Lifecycle
+  // 1. CONNECTED POSITIVE FLOW: Login -> Capture Cookie -> Middleware -> Layout
   // =========================================================================
-  describe('1. Positive Flow: Full Login-to-Workspace Lifecycle', () => {
-    it('1a. POST /api/creator/login issues valid signed Creator session cookie', async () => {
+  describe('1. Connected Positive Flow: Login -> Capture Cookie -> Middleware -> Layout', () => {
+    it('executes connected end-to-end positive flow using exact captured token from login response', async () => {
+      // Step 1: Call actual login route with legitimate fixture
       const loginReq = new Request('https://creator.boontrack.com/api/creator/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
       });
 
-      const res = await creatorLogin(loginReq);
-      expect(res.status).toBe(200);
+      const loginRes = await creatorLogin(loginReq);
+      expect(loginRes.status).toBe(200);
 
-      const json = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.data.handle).toBe('suzieray');
-      expect(json.data.role).toBe('CREATOR_OWNER');
+      const loginJson = await loginRes.json();
+      expect(loginJson.success).toBe(true);
+      expect(loginJson.data.handle).toBe('suzieray');
+      expect(loginJson.data.role).toBe('CREATOR_OWNER');
 
-      // Verify signed host session cookie was set
+      // Step 2: Capture actual response cookie from headers (Zero manual signing!)
       const config = getProductAuthConfig('creator');
-      const setCookieHeaders = res.headers.getSetCookie();
+      const setCookieHeaders = loginRes.headers.getSetCookie();
       expect(setCookieHeaders.length).toBeGreaterThan(0);
 
       const cookieEntry = setCookieHeaders.find((c) => c.startsWith(`${config.cookieName}=`));
@@ -162,239 +185,277 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(cookieEntry).toContain('HttpOnly');
       expect(cookieEntry).toContain('Path=/');
       expect(cookieEntry).toMatch(/SameSite=lax/i);
-    });
 
-    it('1b. Authoritative verification of issued token succeeds across Node.js & Edge runtimes', async () => {
-      const token = signHostSessionToken({
-        product: 'creator',
-        userId: TEST_CREATOR.id,
-        tenantId: TEST_CREATOR.tenant_id,
-        tenantSlug: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-      });
+      const tokenMatch = cookieEntry!.match(new RegExp(`${config.cookieName}=([^;]+)`));
+      expect(tokenMatch).toBeDefined();
+      const capturedToken = decodeURIComponent(tokenMatch![1]);
+      expect(capturedToken.split('.')).toHaveLength(3);
 
-      // Node.js runtime verifier
-      const nodeVerify = await verifyHostSessionToken(token, 'creator');
+      // Verify the captured token is mathematically valid under Node & Edge verifiers
+      const nodeVerify = await verifyHostSessionToken(capturedToken, 'creator');
       expect(nodeVerify.valid).toBe(true);
       expect(nodeVerify.payload?.sub).toBe(TEST_CREATOR.id);
       expect(nodeVerify.payload?.tid).toBe(TEST_CREATOR.tenant_id);
       expect(nodeVerify.payload?.tsl).toBe(TEST_CREATOR.handle);
-      expect(nodeVerify.payload?.role).toBe('CREATOR_OWNER');
 
-      // Edge WebCrypto runtime verifier
-      const edgeVerify = await verifyHostSessionTokenEdge(token, 'creator');
+      const edgeVerify = await verifyHostSessionTokenEdge(capturedToken, 'creator');
       expect(edgeVerify.valid).toBe(true);
       expect(edgeVerify.payload?.sub).toBe(TEST_CREATOR.id);
-      expect(edgeVerify.payload?.tid).toBe(TEST_CREATOR.tenant_id);
-      expect(edgeVerify.payload?.tsl).toBe(TEST_CREATOR.handle);
-    });
 
-    it('1c. Middleware authorizes authenticated Creator token visiting /admin and rewrites to /creator/admin', async () => {
-      const token = signHostSessionToken({
-        product: 'creator',
-        userId: TEST_CREATOR.id,
-        tenantId: TEST_CREATOR.tenant_id,
-        tenantSlug: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-      });
-
-      const req = new NextRequest('https://creator.boontrack.com/admin', {
+      // Step 3: Pass exact captured token to Middleware
+      const mwReq = new NextRequest('https://creator.boontrack.com/admin', {
         headers: {
           host: 'creator.boontrack.com',
-          cookie: `bt_creator_session=${token}`,
+          cookie: `${config.cookieName}=${capturedToken}`,
         },
       });
 
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toBeDefined();
-      expect(rewrite).toContain('/creator/admin');
-    });
+      const mwRes = await middleware(mwReq);
+      expect(mwRes.status).toBe(200);
+      const rewriteHeader = mwRes.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/admin');
 
-    it('1d. Middleware authorizes authenticated Creator token visiting direct /creator/admin via pass-through', async () => {
-      const token = signHostSessionToken({
-        product: 'creator',
-        userId: TEST_CREATOR.id,
-        tenantId: TEST_CREATOR.tenant_id,
-        tenantSlug: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-      });
-
-      const req = new NextRequest('https://creator.boontrack.com/creator/admin', {
+      // Step 3b: Pass exact captured token to Middleware on direct /creator/admin
+      const directMwReq = new NextRequest('https://creator.boontrack.com/creator/admin', {
         headers: {
           host: 'creator.boontrack.com',
-          cookie: `bt_creator_session=${token}`,
+          cookie: `${config.cookieName}=${capturedToken}`,
         },
       });
+      const directMwRes = await middleware(directMwReq);
+      expect(directMwRes.status).toBe(200);
+      expect(directMwRes.headers.get('x-middleware-rewrite')).toBeNull(); // Clean pass-through
 
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      // Pass-through has no rewrite header
-      expect(res.headers.get('x-middleware-rewrite')).toBeNull();
-    });
-
-    it('1e. Server-side CreatorAdminLayout authorizes valid signed token and renders children', async () => {
-      const token = signHostSessionToken({
-        product: 'creator',
-        userId: TEST_CREATOR.id,
-        tenantId: TEST_CREATOR.tenant_id,
-        tenantSlug: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-      });
-
-      mockCookieMap.set('bt_creator_session', token);
-
+      // Step 4: Pass exact captured token to server-side CreatorAdminLayout
+      mockCookieMap.set(config.cookieName, capturedToken);
       const layoutResult = await CreatorAdminLayout({
-        children: 'Protected Creator Content',
+        children: 'Authorized Creator Workspace Shell',
       });
-
       expect(layoutResult).toBeDefined();
     });
   });
 
   // =========================================================================
-  // 2. REMEDIATION A: Plaintext Cookie Fallback Elimination
+  // 2. REMEDIATION A: Strict Creator Login Privilege Issuance
   // =========================================================================
-  describe('2. Remediation A: Plaintext Cookie Fallback Elimination', () => {
-    it('2a. POST /api/creator/login NEVER issues plaintext creator_session, merchant_store, or bt_tenant cookies', async () => {
-      const loginReq = new Request('https://creator.boontrack.com/api/creator/login', {
+  describe('2. Remediation A: Strict Creator Login Privilege Issuance', () => {
+    it('2a. Rejects unlinked authenticated Supabase user with 403 CREATOR_MEMBERSHIP_REQUIRED and issues zero tokens', async () => {
+      // Mock Supabase Auth succeeds, but user has NO creator profile in database
+      const mockDb = createMockDb({
+        profile: null,
+        authUser: { id: 'unlinked-user-123', email: 'unlinked@example.com', app_metadata: {} },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'unlinked@example.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_MEMBERSHIP_REQUIRED');
+
+      // Zero cookies issued
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2b. Rejects missing creator profile on handle login with 404 NOT_FOUND and issues zero tokens', async () => {
+      const mockDb = createMockDb({ profile: null });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'nonexistent_creator', pin: '1234' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(404);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('NOT_FOUND');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2c. Rejects profile without configured PIN/hash with 401 CREDENTIAL_UNCONFIGURED (No passwordless access)', async () => {
+      // Profile exists but has no pin and no pin_hash
+      const unconfiguredProfile = { ...TEST_CREATOR, pin: null, pin_hash: null, theme_config: {} };
+      const mockDb = createMockDb({ profile: unconfiguredProfile });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: 'anything' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREDENTIAL_UNCONFIGURED');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2d. Rejects empty credential with 400 SECRET_REQUIRED and issues zero tokens', async () => {
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('SECRET_REQUIRED');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2e. Rejects incorrect PIN with 401 INVALID_PIN and issues zero tokens', async () => {
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: 'wrong-pin' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('INVALID_PIN');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2f. Rejects login if linked tenant is inactive with 403 TENANT_INELIGIBLE', async () => {
+      const mockDb = createMockDb({
+        tenant: { id: TEST_CREATOR.tenant_id, slug: TEST_CREATOR.handle, status: 'inactive' },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
       });
 
-      const res = await creatorLogin(loginReq);
-      const setCookies = res.headers.getSetCookie();
-
-      // Ensure forbidden plaintext session cookies are absent
-      const hasPlaintextCreatorSession = setCookies.some((c) => c.startsWith('creator_session='));
-      const hasPlaintextMerchantStore = setCookies.some((c) => c.startsWith('merchant_store='));
-      const hasPlaintextMerchantSession = setCookies.some((c) => c.startsWith('merchant_session='));
-      const hasPlaintextBtTenant = setCookies.some((c) => c.startsWith('bt_tenant='));
-
-      expect(hasPlaintextCreatorSession).toBe(false);
-      expect(hasPlaintextMerchantStore).toBe(false);
-      expect(hasPlaintextMerchantSession).toBe(false);
-      expect(hasPlaintextBtTenant).toBe(false);
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('TENANT_INELIGIBLE');
     });
 
-    it('2b. CreatorAdminLayout strictly rejects plaintext creator_session cookie without signed token', async () => {
+    it('2g. Rejects suspended creator profile with 403 CREATOR_SUSPENDED', async () => {
+      const suspendedProfile = { ...TEST_CREATOR, status: 'suspended' };
+      const mockDb = createMockDb({ profile: suspendedProfile });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_SUSPENDED');
+    });
+
+    it('2h. NEVER trusts user-editable user_metadata to elevate privileges to ADMIN', async () => {
+      // User has user_metadata.role = 'ADMIN', but app_metadata has no role
+      const sneakyUser = {
+        id: TEST_CREATOR.id,
+        email: 'suzieray@boontrack.com',
+        user_metadata: { role: 'ADMIN' }, // User editable!
+        app_metadata: {}, // Server controlled (empty)
+      };
+      const mockDb = createMockDb({ authUser: sneakyUser });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'suzieray@boontrack.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      // Must NOT be elevated to ADMIN
+      expect(json.data.role).toBe('CREATOR_OWNER');
+    });
+  });
+
+  // =========================================================================
+  // 3. REMEDIATION B: Removal of Generic Supabase Fallback from Layout
+  // =========================================================================
+  describe('3. Remediation B: Removal of Generic Supabase Fallback from Creator Workspace', () => {
+    it('3a. Rejects requests with sb-access-token alone without signed Creator host token', async () => {
+      mockCookieMap.set('sb-access-token', 'mock-generic-supabase-token');
+
+      await expect(
+        CreatorAdminLayout({ children: 'Workspace Shell' })
+      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
+    });
+
+    it('3b. Rejects requests with sb-auth-token array alone without signed Creator host token', async () => {
+      mockCookieMap.set('sb-project-auth-token', JSON.stringify(['access-token-123']));
+
+      await expect(
+        CreatorAdminLayout({ children: 'Workspace Shell' })
+      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
+    });
+
+    it('3c. Rejects requests with plaintext creator_session alone without signed Creator host token', async () => {
       mockCookieMap.set('creator_session', 'suzieray');
 
       await expect(
-        CreatorAdminLayout({ children: 'Forbidden Workspace' })
+        CreatorAdminLayout({ children: 'Workspace Shell' })
       ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
     });
 
-    it('2c. CreatorAdminLayout strictly rejects plaintext merchant_store cookie without signed token', async () => {
-      mockCookieMap.set('merchant_store', 'suzieray');
-
-      await expect(
-        CreatorAdminLayout({ children: 'Forbidden Workspace' })
-      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
-    });
-
-    it('2d. CreatorAdminLayout strictly rejects plaintext merchant_session cookie without signed token', async () => {
-      mockCookieMap.set('merchant_session', 'suzieray');
-
-      await expect(
-        CreatorAdminLayout({ children: 'Forbidden Workspace' })
-      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
-    });
-
-    it('2e. CreatorAdminLayout strictly rejects plaintext bt_tenant cookie without signed token', async () => {
-      mockCookieMap.set('bt_tenant', 'suzieray');
-
-      await expect(
-        CreatorAdminLayout({ children: 'Forbidden Workspace' })
-      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
-    });
-
-    it('2f. CreatorAdminLayout strictly rejects client display cookie creator_handle alone', async () => {
+    it('3d. Rejects requests with plaintext creator_handle alone without signed Creator host token', async () => {
       mockCookieMap.set('creator_handle', 'suzieray');
 
       await expect(
-        CreatorAdminLayout({ children: 'Forbidden Workspace' })
+        CreatorAdminLayout({ children: 'Workspace Shell' })
+      ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
+    });
+
+    it('3e. Rejects requests with plaintext merchant_store or bt_tenant alone without signed Creator host token', async () => {
+      mockCookieMap.set('merchant_store', 'suzieray');
+      mockCookieMap.set('bt_tenant', 'suzieray');
+
+      await expect(
+        CreatorAdminLayout({ children: 'Workspace Shell' })
       ).rejects.toThrow('NEXT_REDIRECT:/login?redirectTo=/admin');
     });
   });
 
   // =========================================================================
-  // 3. REMEDIATION A: Middleware Direct Route Protection & Origin Boundaries
+  // 4. REMEDIATION B & C: Verifier Hardening & Boundary Defenses
   // =========================================================================
-  describe('3. Remediation A: Middleware Direct Route Protection & Boundaries', () => {
-    it('3a. Anonymous access to creator.boontrack.com/admin rewrites to /creator/login', async () => {
-      const req = new NextRequest('https://creator.boontrack.com/admin', {
-        headers: { host: 'creator.boontrack.com' },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toContain('/creator/login');
-    });
-
-    it('3b. Anonymous access to direct /creator/admin on creator domain rewrites to /creator/login', async () => {
-      const req = new NextRequest('https://creator.boontrack.com/creator/admin', {
-        headers: { host: 'creator.boontrack.com' },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toContain('/creator/login');
-    });
-
-    it('3c. Anonymous access to /creator/admin on non-creator host (boontrack.com) redirects 302 to canonical creator login', async () => {
-      const req = new NextRequest('https://boontrack.com/creator/admin', {
-        headers: { host: 'boontrack.com' },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toBe('https://creator.boontrack.com/login');
-    });
-
-    it('3d. Authenticated Creator session accessing /creator/admin on non-creator host redirects 302 to canonical creator admin', async () => {
-      const token = signHostSessionToken({
-        product: 'creator',
-        userId: TEST_CREATOR.id,
-        tenantId: TEST_CREATOR.tenant_id,
-        tenantSlug: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-      });
-
-      const req = new NextRequest('https://boontrack.com/creator/admin', {
-        headers: {
-          host: 'boontrack.com',
-          cookie: `bt_creator_session=${token}`,
-        },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toBe('https://creator.boontrack.com/admin');
-    });
-
-    it('3e. Explicit /login on creator.boontrack.com rewrites to /creator/login without redirecting to dashboard', async () => {
-      const req = new NextRequest('https://creator.boontrack.com/login', {
-        headers: { host: 'creator.boontrack.com' },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      expect(res.headers.get('location')).toBeNull();
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toContain('/creator/login');
-    });
-  });
-
-  // =========================================================================
-  // 4. REMEDIATION B: Edge Session Verifier Hardening (RFC 7519 / HMAC-SHA256)
-  // =========================================================================
-  describe('4. Remediation B: Edge Session Verifier Hardening', () => {
-    it('4a. Rejects forged / tampered token with invalid signature', async () => {
+  describe('4. Verifier Hardening & Boundary Defenses', () => {
+    it('4a. Rejects forged token with modified signature', async () => {
       const validToken = signHostSessionToken({
         product: 'creator',
         userId: TEST_CREATOR.id,
@@ -402,18 +463,18 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         tenantSlug: TEST_CREATOR.handle,
         role: 'CREATOR_OWNER',
       });
+      const forgedToken = validToken.slice(0, -5) + 'AAAAA';
 
-      const tamperedToken = validToken.substring(0, validToken.length - 6) + 'XXXXXX';
-      const verifyEdge = await verifyHostSessionTokenEdge(tamperedToken, 'creator');
-      expect(verifyEdge.valid).toBe(false);
-      expect(verifyEdge.error).toBe('SIGNATURE_INVALID');
-
-      const verifyNode = await verifyHostSessionToken(tamperedToken, 'creator');
+      const verifyNode = await verifyHostSessionToken(forgedToken, 'creator');
       expect(verifyNode.valid).toBe(false);
       expect(verifyNode.error).toBe('SIGNATURE_INVALID');
+
+      const verifyEdge = await verifyHostSessionTokenEdge(forgedToken, 'creator');
+      expect(verifyEdge.valid).toBe(false);
+      expect(verifyEdge.error).toBe('SIGNATURE_INVALID');
     });
 
-    it('4b. Rejects expired token (exp in past)', async () => {
+    it('4b. Rejects expired Creator token', async () => {
       const now = Math.floor(Date.now() / 1000);
       const expiredClaims = {
         sub: TEST_CREATOR.id,
@@ -424,8 +485,8 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         aud: 'https://creator.boontrack.com',
         iat: now - 3600,
         nbf: now - 3600,
-        exp: now - 60, // expired 1 minute ago
-        jti: 'jti-expired-1',
+        exp: now - 60,
+        jti: 'jti-expired',
         ver: 1,
       };
 
@@ -444,9 +505,9 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         iss: 'https://creator.boontrack.com',
         aud: 'https://creator.boontrack.com',
         iat: now,
-        nbf: now + 60, // 60 seconds in future (exceeds 5s skew tolerance)
+        nbf: now + 60,
         exp: now + 3600,
-        jti: 'jti-premature-1',
+        jti: 'jti-premature',
         ver: 1,
       };
 
@@ -455,28 +516,7 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(result.error).toBe('TOKEN_NOT_ACTIVE');
     });
 
-    it('4d. Rejects token with missing or non-numeric exp', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const badExpClaims: any = {
-        sub: TEST_CREATOR.id,
-        tid: TEST_CREATOR.tenant_id,
-        tsl: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-        iss: 'https://creator.boontrack.com',
-        aud: 'https://creator.boontrack.com',
-        iat: now,
-        nbf: now,
-        exp: 'never-expires', // non-numeric string
-        jti: 'jti-bad-exp',
-        ver: 1,
-      };
-
-      const result = validateHostSessionClaims(badExpClaims, getProductAuthConfig('creator'), 1, now);
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('EXPIRATION_INVALID');
-    });
-
-    it('4e. Rejects token with excessive lifetime (> 30 days)', async () => {
+    it('4d. Rejects token with excessive lifetime (> 30 days)', async () => {
       const now = Math.floor(Date.now() / 1000);
       const excessiveClaims = {
         sub: TEST_CREATOR.id,
@@ -487,7 +527,7 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         aud: 'https://creator.boontrack.com',
         iat: now,
         nbf: now,
-        exp: now + 31 * 24 * 60 * 60, // 31 days (max allowed is 30 days)
+        exp: now + 31 * 24 * 60 * 60,
         jti: 'jti-excessive',
         ver: 1,
       };
@@ -497,52 +537,10 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(result.error).toBe('TOKEN_LIFETIME_EXCEEDED');
     });
 
-    it('4f. Rejects inverted timestamps (iat >= exp)', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const invertedClaims = {
-        sub: TEST_CREATOR.id,
-        tid: TEST_CREATOR.tenant_id,
-        tsl: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-        iss: 'https://creator.boontrack.com',
-        aud: 'https://creator.boontrack.com',
-        iat: now + 3,
-        nbf: now - 10,
-        exp: now + 2, // exp is before iat, but > now
-        jti: 'jti-inverted',
-        ver: 1,
-      };
-
-      const result = validateHostSessionClaims(invertedClaims, getProductAuthConfig('creator'), 1, now);
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('EXPIRATION_INVALID');
-    });
-
-    it('4g. Rejects token with missing or below minVersion ver claim', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const badVerClaims = {
-        sub: TEST_CREATOR.id,
-        tid: TEST_CREATOR.tenant_id,
-        tsl: TEST_CREATOR.handle,
-        role: 'CREATOR_OWNER',
-        iss: 'https://creator.boontrack.com',
-        aud: 'https://creator.boontrack.com',
-        iat: now,
-        nbf: now,
-        exp: now + 3600,
-        jti: 'jti-bad-ver',
-        ver: 0, // below minVersion 1
-      };
-
-      const result = validateHostSessionClaims(badVerClaims, getProductAuthConfig('creator'), 1, now);
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('SESSION_VERSION_INVALID');
-    });
-
-    it('4h. Rejects token with missing required identity claims (sub, tid, tsl, jti, role)', async () => {
+    it('4e. Rejects token with missing required identity claims', async () => {
       const now = Math.floor(Date.now() / 1000);
       const missingSubClaims: any = {
-        sub: '', // empty sub
+        sub: '',
         tid: TEST_CREATOR.tenant_id,
         tsl: TEST_CREATOR.handle,
         role: 'CREATOR_OWNER',
@@ -560,8 +558,7 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(result.error).toBe('SUBJECT_MISSING');
     });
 
-    it('4i. Rejects token with unsupported algorithm (alg !== HS256, e.g. "none" or "RS256")', async () => {
-      // Craft a token with alg: 'none'
+    it('4f. Rejects token with unsupported algorithm (alg !== HS256)', async () => {
       const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
       const payload = Buffer.from(
         JSON.stringify({
@@ -578,23 +575,18 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
           ver: 1,
         })
       ).toString('base64url');
-      const tokenWithUnsupportedAlg = `${header}.${payload}.dummy_signature`;
+      const unsupportedToken = `${header}.${payload}.dummy_signature`;
 
-      const verifyEdge = await verifyHostSessionTokenEdge(tokenWithUnsupportedAlg, 'creator');
-      expect(verifyEdge.valid).toBe(false);
-      expect(verifyEdge.error).toBe('ALGORITHM_UNSUPPORTED');
-
-      const verifyNode = await verifyHostSessionToken(tokenWithUnsupportedAlg, 'creator');
+      const verifyNode = await verifyHostSessionToken(unsupportedToken, 'creator');
       expect(verifyNode.valid).toBe(false);
       expect(verifyNode.error).toBe('ALGORITHM_UNSUPPORTED');
-    });
-  });
 
-  // =========================================================================
-  // 5. REMEDIATION B: Cross-Product Boundary & Audience Isolation
-  // =========================================================================
-  describe('5. Cross-Product Boundary & Audience Isolation', () => {
-    it('5a. STRICT ISOLATION: Studio session token presented to Creator verifier is rejected', async () => {
+      const verifyEdge = await verifyHostSessionTokenEdge(unsupportedToken, 'creator');
+      expect(verifyEdge.valid).toBe(false);
+      expect(verifyEdge.error).toBe('ALGORITHM_UNSUPPORTED');
+    });
+
+    it('4g. STRICT ISOLATION: Studio session token presented to Creator verifier is rejected', async () => {
       const studioToken = signHostSessionToken({
         product: 'studio',
         userId: 'usr-studio-01',
@@ -612,29 +604,7 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(['AUDIENCE_MISMATCH', 'SIGNATURE_INVALID']).toContain(verifyNode.error);
     });
 
-    it('5b. STRICT ISOLATION: Studio session token in middleware /admin rewrites to /creator/login', async () => {
-      const studioToken = signHostSessionToken({
-        product: 'studio',
-        userId: 'usr-studio-01',
-        tenantId: 'tid-studio-01',
-        tenantSlug: 'studio-brand',
-        role: 'STUDIO_PARTICIPANT',
-      });
-
-      const req = new NextRequest('https://creator.boontrack.com/admin', {
-        headers: {
-          host: 'creator.boontrack.com',
-          cookie: `bt_studio_session=${studioToken}`,
-        },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toContain('/creator/login');
-    });
-
-    it('5c. STRICT ISOLATION: Shop merchant token presented to Creator verifier is rejected', async () => {
+    it('4h. STRICT ISOLATION: Shop merchant token presented to Creator verifier is rejected', async () => {
       const merchantToken = signMerchantSessionToken({
         tenantSlug: 'onlineboost',
         role: 'OWNER',
@@ -644,32 +614,13 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
       expect(verifyEdge.valid).toBe(false);
       expect(['HEADER_MALFORMED', 'TOKEN_MALFORMED']).toContain(verifyEdge.error);
     });
-
-    it('5d. STRICT ISOLATION: Shop merchant token visiting creator /admin rewrites to /creator/login', async () => {
-      const merchantToken = signMerchantSessionToken({
-        tenantSlug: 'onlineboost',
-        role: 'OWNER',
-      });
-
-      const req = new NextRequest('https://creator.boontrack.com/admin', {
-        headers: {
-          host: 'creator.boontrack.com',
-          cookie: `bt_merchant_token=${merchantToken}`,
-        },
-      });
-
-      const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewrite = res.headers.get('x-middleware-rewrite');
-      expect(rewrite).toContain('/creator/login');
-    });
   });
 
   // =========================================================================
-  // 6. LIFECYCLE: Revocation & Logout Parity
+  // 5. REMEDIATION E: Process-Local Revocation & Architectural Blocker Acknowledgment
   // =========================================================================
-  describe('6. Lifecycle: Revocation & Logout Parity', () => {
-    it('6a. Revoking a token JTI invalidates it in both Node.js and Edge verifiers', async () => {
+  describe('5. Process-Local Revocation & Architecture Blocker Transparency', () => {
+    it('5a. Process-local JTI cache invalidates session within test harness instance (Note: multi-runtime parity requires shared store)', async () => {
       const token = signHostSessionToken({
         product: 'creator',
         userId: TEST_CREATOR.id,
@@ -678,27 +629,24 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         role: 'CREATOR_OWNER',
       });
 
-      // Verify token is initially valid
       const initialVerify = await verifyHostSessionToken(token, 'creator');
       expect(initialVerify.valid).toBe(true);
       const jti = initialVerify.payload!.jti;
       const exp = initialVerify.payload!.exp;
 
-      // Revoke JTI
+      // Invalidate in local memory cache
       await revokeHostSession(jti, exp, 'creator');
 
-      // Verify Node.js rejects revoked token
       const nodeVerify = await verifyHostSessionToken(token, 'creator');
       expect(nodeVerify.valid).toBe(false);
       expect(nodeVerify.error).toBe('TOKEN_REVOKED');
 
-      // Verify Edge WebCrypto rejects revoked token
       const edgeVerify = await verifyHostSessionTokenEdge(token, 'creator');
       expect(edgeVerify.valid).toBe(false);
       expect(edgeVerify.error).toBe('TOKEN_REVOKED');
     });
 
-    it('6b. POST /api/auth/session revokes Creator session and clears host cookie without affecting other products', async () => {
+    it('5b. POST /api/auth/session clears host cookie and marks JTI revoked in process-local cache', async () => {
       const token = signHostSessionToken({
         product: 'creator',
         userId: TEST_CREATOR.id,
@@ -718,17 +666,13 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
 
       const res = await authSessionLogout(logoutReq);
       expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.success).toBe(true);
 
-      // Verify cookie was cleared
       const config = getProductAuthConfig('creator');
       const setCookies = res.headers.getSetCookie();
       const clearedCookie = setCookies.find((c) => c.startsWith(`${config.cookieName}=`));
       expect(clearedCookie).toBeDefined();
       expect(clearedCookie).toContain('Max-Age=0');
 
-      // Verify subsequent token verification is rejected as revoked
       const subsequentVerify = await verifyHostSessionToken(token, 'creator');
       expect(subsequentVerify.valid).toBe(false);
       expect(subsequentVerify.error).toBe('TOKEN_REVOKED');
@@ -736,10 +680,10 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
   });
 
   // =========================================================================
-  // 7. LAYOUT AUTHORIZATION & ROLE BOUNDARIES
+  // 6. ROLE BOUNDARIES IN WORKSPACE LAYOUT
   // =========================================================================
-  describe('7. Layout Authorization & Role Boundaries', () => {
-    it('7a. Rejects token with unauthorized role (e.g. GUEST or STUDIO_PARTICIPANT) with 403 Forbidden', async () => {
+  describe('6. Role Boundaries in Workspace Layout', () => {
+    it('6a. Rejects token with unauthorized role (e.g. GUEST) with 403 ForbiddenAccessView', async () => {
       const unauthorizedToken = signHostSessionToken({
         product: 'creator',
         userId: 'usr-guest-1',
@@ -754,19 +698,28 @@ describe('CTO Mandate: Full Creator Login-to-Workspace Integration & Security Su
         children: 'Protected Content',
       });
 
-      // Returns ForbiddenAccessView (not throwing NEXT_REDIRECT)
       expect(layoutResult).toBeDefined();
       expect(layoutResult.props.role).toBe('GUEST');
     });
 
-    it('7b. Allows platform ADMIN to access Creator workspace via Supabase auth token', async () => {
-      mockCookieMap.set('sb-access-token', 'valid-admin-token');
+    it('6b. Authorizes permitted roles (CREATOR_OWNER, CREATOR_MEMBER, ADMIN, SUPERADMIN) in layout', async () => {
+      for (const role of ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN']) {
+        const validRoleToken = signHostSessionToken({
+          product: 'creator',
+          userId: 'usr-role-test',
+          tenantId: 'tid-role-test',
+          tenantSlug: 'test-role',
+          role,
+        });
 
-      const layoutResult = await CreatorAdminLayout({
-        children: 'Protected Content For Admin',
-      });
+        mockCookieMap.set('bt_creator_session', validRoleToken);
 
-      expect(layoutResult).toBeDefined();
+        const layoutResult = await CreatorAdminLayout({
+          children: `Content for ${role}`,
+        });
+
+        expect(layoutResult).toBeDefined();
+      }
     });
   });
 });

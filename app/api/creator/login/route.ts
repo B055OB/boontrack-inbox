@@ -97,54 +97,6 @@ export async function POST(req: Request) {
       });
 
       if (authError || !authData?.user) {
-        // Fallback: cek apakah email terdaftar di tabel tenants (seperti akun Alldy Studio)
-        const { data: tenantByEmail } = await supabaseAdmin
-          .from('tenants')
-          .select('id, slug, name, access_password, metadata')
-          .eq('metadata->>email', rawId.toLowerCase())
-          .maybeSingle();
-
-        if (tenantByEmail) {
-          const expectedPwd =
-            tenantByEmail.access_password ||
-            tenantByEmail.metadata?.access_pin ||
-            tenantByEmail.metadata?.pin ||
-            '';
-
-          let isMatch = expectedPwd === rawSecret;
-          if (!isMatch && tenantByEmail.metadata?.password_hash) {
-            // Check SHA-256 or bcrypt
-            const crypto = require('crypto');
-            const sha256 = crypto.createHash('sha256').update(rawSecret).digest('hex');
-            isMatch = sha256 === tenantByEmail.metadata.password_hash;
-          }
-
-          if (isMatch) {
-            const res = NextResponse.json({
-              success: true,
-              message: `Selamat datang kembali, ${tenantByEmail.name || rawId}!`,
-              data: {
-                handle: tenantByEmail.slug,
-                name: tenantByEmail.name,
-                role: 'CREATOR_OWNER',
-                redirect: `/admin?handle=${encodeURIComponent(tenantByEmail.slug)}`,
-              },
-            });
-
-            applyCreatorSessionCookie(
-              res,
-              {
-                userId: tenantByEmail.id,
-                tenantId: tenantByEmail.id,
-                tenantSlug: tenantByEmail.slug,
-                role: 'CREATOR_OWNER',
-              },
-              isSecure
-            );
-            return res;
-          }
-        }
-
         return NextResponse.json(
           { success: false, error: 'AUTH_FAILED', message: authError?.message || 'Email atau password tidak sesuai.' },
           { status: 401 }
@@ -152,18 +104,76 @@ export async function POST(req: Request) {
       }
 
       const user = authData.user;
-      const appRole = String(user.app_metadata?.role || user.user_metadata?.role || '').toUpperCase();
-      const isAdmin = appRole === 'ADMIN' || appRole === 'SUPERADMIN';
 
-      // Cek apakah ada creator_profile atau tenant yang terhubung
+      // Authoritative role validation: ONLY trust server-controlled app_metadata, NEVER user_metadata
+      const serverAppRole = String(user.app_metadata?.role || '').trim().toUpperCase();
+      const isPlatformAdmin = serverAppRole === 'ADMIN' || serverAppRole === 'SUPERADMIN';
+
+      // Cek apakah ada creator_profile yang terhubung secara sah
       const { data: creatorProf } = await supabaseAdmin
         .from('creator_profiles')
-        .select('handle, display_name, id, tenant_id')
-        .or(`tenant_id.eq.${user.id},handle.eq.${user.email}`)
+        .select('id, handle, display_name, tenant_id, role, status')
+        .or(`tenant_id.eq.${user.id},handle.eq.${user.email},id.eq.${user.id}`)
         .maybeSingle();
 
-      const resolvedHandle = creatorProf?.handle || user.email?.split('@')[0] || 'creator';
-      const resolvedTenantId = creatorProf?.tenant_id || user.id;
+      // Mandat CTO A1: Generic Supabase user tanpa relasi Creator TIDAK BOLEH diberi token Creator
+      if (!creatorProf) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CREATOR_MEMBERSHIP_REQUIRED',
+            message: 'Akun Anda tidak terhubung dengan profil atau membership Creator yang sah.',
+          },
+          { status: 403 }
+        );
+      }
+
+      if (creatorProf.status === 'inactive' || creatorProf.status === 'suspended') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CREATOR_SUSPENDED',
+            message: 'Profil kreator sedang berstatus nonaktif atau ditangguhkan.',
+          },
+          { status: 403 }
+        );
+      }
+
+      const resolvedTenantId = creatorProf.tenant_id;
+      if (!resolvedTenantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CREATOR_TENANT_MISSING',
+            message: 'Profil kreator tidak memiliki relasi tenant yang sah.',
+          },
+          { status: 403 }
+        );
+      }
+
+      // Validasi bahwa tenant aktif
+      const { data: linkedTenant } = await supabaseAdmin
+        .from('tenants')
+        .select('id, slug, status')
+        .eq('id', resolvedTenantId)
+        .maybeSingle();
+
+      if (linkedTenant && linkedTenant.status === 'inactive') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'TENANT_INELIGIBLE',
+            message: 'Tenant kreator tidak aktif atau tidak memenuhi syarat.',
+          },
+          { status: 403 }
+        );
+      }
+
+      const assignedRole = isPlatformAdmin
+        ? serverAppRole
+        : (creatorProf.role && ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'].includes(String(creatorProf.role).toUpperCase()))
+          ? String(creatorProf.role).toUpperCase()
+          : 'CREATOR_OWNER';
 
       const res = NextResponse.json({
         success: true,
@@ -171,28 +181,19 @@ export async function POST(req: Request) {
         data: {
           user_id: user.id,
           email: user.email,
-          role: isAdmin ? 'ADMIN' : 'CREATOR_OWNER',
-          handle: resolvedHandle,
-          redirect: `/admin?handle=${encodeURIComponent(resolvedHandle)}`,
+          role: assignedRole,
+          handle: creatorProf.handle,
+          redirect: `/admin?handle=${encodeURIComponent(creatorProf.handle)}`,
         },
       });
 
-      // Set session cookies
-      if (authData.session?.access_token) {
-        res.cookies.set('sb-access-token', authData.session.access_token, {
-          path: '/',
-          maxAge: 2592000,
-          sameSite: 'lax',
-          httpOnly: true,
-        });
-      }
       applyCreatorSessionCookie(
         res,
         {
           userId: user.id,
           tenantId: resolvedTenantId,
-          tenantSlug: resolvedHandle,
-          role: isAdmin ? 'ADMIN' : 'CREATOR_OWNER',
+          tenantSlug: creatorProf.handle,
+          role: assignedRole,
         },
         isSecure
       );
@@ -204,7 +205,7 @@ export async function POST(req: Request) {
     const cleanHandle = rawId.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase();
     const baseHandle = cleanHandle.replace(/_+$/, '');
 
-    // Cari di creator_profiles
+    // Cari di creator_profiles (Hanya entitas sah creator_profiles yang berhak mengakses)
     const { data: profile } = await supabaseAdmin
       .from('creator_profiles')
       .select('*')
@@ -213,109 +214,114 @@ export async function POST(req: Request) {
       .limit(1)
       .maybeSingle();
 
-    if (profile) {
-      const storedPin = profile.pin || profile.theme_config?.pin || '';
-      const storedHash = profile.pin_hash || profile.theme_config?.pin_hash || '';
-
-      let pinValid = false;
-      if (!storedPin && !storedHash) {
-        // Jika profil dibuat tanpa PIN, izinkan login atau jika rawSecret diisi cocok
-        pinValid = true;
-      } else if (storedHash) {
-        pinValid = await verifyPassword(rawSecret, storedHash);
-      } else if (storedPin) {
-        pinValid = storedPin === rawSecret;
-      }
-
-      if (!pinValid) {
-        return NextResponse.json(
-          { success: false, error: 'INVALID_PIN', message: 'PIN atau password akses salah.' },
-          { status: 401 }
-        );
-      }
-
-      const res = NextResponse.json({
-        success: true,
-        message: `Selamat datang kembali, ${profile.display_name || profile.handle}!`,
-        data: {
-          handle: profile.handle,
-          display_name: profile.display_name,
-          role: 'CREATOR_OWNER',
-          redirect: `/admin?handle=${encodeURIComponent(profile.handle)}`,
-        },
-      });
-
-      applyCreatorSessionCookie(
-        res,
+    if (!profile) {
+      return NextResponse.json(
         {
-          userId: profile.id || profile.tenant_id || profile.handle,
-          tenantId: profile.tenant_id || profile.id || profile.handle,
-          tenantSlug: profile.handle,
-          role: 'CREATOR_OWNER',
+          success: false,
+          error: 'NOT_FOUND',
+          message: `Handle @${cleanHandle} belum terdaftar sebagai kreator. Silakan daftar terlebih dahulu.`,
         },
-        isSecure
+        { status: 404 }
       );
-
-      return res;
     }
 
-    // Cari di tabel tenants jika belum ada di creator_profiles (seperti slug tenant toko/creator/studio)
-    const { data: tenant } = await supabaseAdmin
-      .from('tenants')
-      .select('id, slug, name, access_password, metadata')
-      .eq('slug', cleanHandle)
-      .maybeSingle();
-
-    if (tenant) {
-      const expectedPwd =
-        tenant.access_password ||
-        tenant.metadata?.access_pin ||
-        tenant.metadata?.pin ||
-        '';
-
-      let isMatch = expectedPwd === rawSecret;
-      if (!isMatch && tenant.metadata?.password_hash) {
-        const crypto = require('crypto');
-        const sha256 = crypto.createHash('sha256').update(rawSecret).digest('hex');
-        isMatch = sha256 === tenant.metadata.password_hash;
-      }
-
-      if (!isMatch && expectedPwd) {
-        return NextResponse.json(
-          { success: false, error: 'INVALID_PIN', message: 'PIN atau password akses toko/kreator salah.' },
-          { status: 401 }
-        );
-      }
-
-      const res = NextResponse.json({
-        success: true,
-        message: `Selamat datang kembali, ${tenant.name || tenant.slug}!`,
-        data: {
-          handle: tenant.slug,
-          name: tenant.name,
-          role: 'CREATOR_OWNER',
-          redirect: `/admin?handle=${encodeURIComponent(tenant.slug)}`,
-        },
-      });
-
-      applyCreatorSessionCookie(
-        res,
-        {
-          userId: tenant.id,
-          tenantId: tenant.id,
-          tenantSlug: tenant.slug,
-          role: 'CREATOR_OWNER',
-        },
-        isSecure
+    // Mandat CTO A2: Wajib verifikasi PIN/password secara ketat — TIDAK ADA passwordless path
+    if (!rawSecret) {
+      return NextResponse.json(
+        { success: false, error: 'SECRET_REQUIRED', message: 'PIN atau password akses wajib diisi.' },
+        { status: 400 }
       );
-
-      return res;
     }
 
-    return NextResponse.json(
-      { success: false, error: 'NOT_FOUND', message: `Handle @${cleanHandle} belum terdaftar. Silakan daftar terlebih dahulu.` },
-      { status: 404 }
+    const storedPin = String(profile.pin || profile.theme_config?.pin || '').trim();
+    const storedHash = String(profile.pin_hash || profile.theme_config?.pin_hash || '').trim();
+
+    if (!storedPin && !storedHash) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'CREDENTIAL_UNCONFIGURED',
+          message: 'Kredensial akun kreator belum dikonfigurasi. Hubungi admin untuk mengeset PIN/password.',
+        },
+        { status: 401 }
+      );
+    }
+
+    let pinValid = false;
+    if (storedHash) {
+      pinValid = await verifyPassword(rawSecret, storedHash);
+    } else if (storedPin) {
+      pinValid = storedPin === rawSecret;
+    }
+
+    if (!pinValid) {
+      return NextResponse.json(
+        { success: false, error: 'INVALID_PIN', message: 'PIN atau password akses salah.' },
+        { status: 401 }
+      );
+    }
+
+    // Verifikasi relasi tenant yang sah & status tenant
+    let resolvedTenantId = profile.tenant_id || profile.id;
+    if (!resolvedTenantId) {
+      return NextResponse.json(
+        { success: false, error: 'CREATOR_TENANT_MISSING', message: 'Relasi tenant kreator tidak ditemukan.' },
+        { status: 403 }
+      );
+    }
+
+    if (profile.tenant_id) {
+      const { data: tenantRow } = await supabaseAdmin
+        .from('tenants')
+        .select('id, slug, status')
+        .eq('id', profile.tenant_id)
+        .maybeSingle();
+
+      if (tenantRow) {
+        resolvedTenantId = tenantRow.id;
+        if (tenantRow.status === 'inactive' || tenantRow.status === 'suspended') {
+          return NextResponse.json(
+            { success: false, error: 'TENANT_INELIGIBLE', message: 'Tenant kreator sedang nonaktif.' },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    if (profile.status === 'inactive' || profile.status === 'suspended') {
+      return NextResponse.json(
+        { success: false, error: 'CREATOR_SUSPENDED', message: 'Profil kreator sedang berstatus nonaktif.' },
+        { status: 403 }
+      );
+    }
+
+    const resolvedRole = (profile.role && ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'].includes(String(profile.role).toUpperCase()))
+      ? String(profile.role).toUpperCase()
+      : 'CREATOR_OWNER';
+
+    const res = NextResponse.json({
+      success: true,
+      message: `Selamat datang kembali, ${profile.display_name || profile.handle}!`,
+      data: {
+        handle: profile.handle,
+        display_name: profile.display_name,
+        role: resolvedRole,
+        redirect: `/admin?handle=${encodeURIComponent(profile.handle)}`,
+      },
+    });
+
+    applyCreatorSessionCookie(
+      res,
+      {
+        userId: profile.id || resolvedTenantId,
+        tenantId: resolvedTenantId,
+        tenantSlug: profile.handle,
+        role: resolvedRole,
+      },
+      isSecure
     );
+
+    return res;
   } catch (err: any) {
     console.error('[Creator Login API] Fatal error:', err);
     return NextResponse.json(

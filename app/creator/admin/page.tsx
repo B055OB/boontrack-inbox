@@ -186,9 +186,9 @@ export default function CreatorAdminPage() {
         setTenantDisplay(cleanTenant);
       }
 
-      // Check query param, localStorage, or cookies for dynamic creator handle
+      // Check query param, localStorage, or non-authoritative display cookie for creator handle
       const urlParams = new URLSearchParams(window.location.search);
-      const cookieMatch = document.cookie.match(/(?:creator_handle|creator_session|merchant_store|merchant_session|bt_tenant)=([^;]+)/);
+      const cookieMatch = document.cookie.match(/creator_handle=([^;]+)/);
       const cookieHandle = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim().toLowerCase() : '';
       const resolvedHandle = (urlParams.get('handle') || localStorage.getItem('creator_handle') || cookieHandle || '').replace(/^@+/, '').trim().toLowerCase();
 
