@@ -38,7 +38,7 @@ describe('Global Fix Modal Kurir & Tenant Dr. Harys Verification', () => {
       expect(modalCode).toContain('requires_shipping: isPhysical');
       expect(modalCode).toContain("const isPhysical = normPt === 'PHYSICAL'");
       expect(modalCode).toContain("isPhysicalProduct || (normProductType === 'FOOD')");
-      expect(modalCode).toContain('requires_shipping: isPhysical && !isAffiliate');
+      expect(modalCode).toContain('requires_shipping: isPhysicalOrFood && !isAffiliate');
     });
 
     it('should expose ProductEditModal.tsx as an alias for ProductFormModal', () => {

@@ -252,16 +252,14 @@ describe('BoonTrack Independent Product Routing & Simplification Master Suite', 
   // PRODUCT 3: STUDIO (studio.boontrack.com)
   // =========================================================================
   describe('Product 3: Studio Entry & Cryptographic Isolation Architecture', () => {
-    it('Scenario 13: Studio /desk anonymous on https://studio.boontrack.com/desk renders Studio login in-place at /studio/desk', async () => {
+    it('Scenario 13: Studio /desk anonymous on https://studio.boontrack.com/desk redirects to /login', async () => {
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: { host: 'studio.boontrack.com' },
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      expect(res.headers.get('location')).toBeNull();
-      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
-      expect(rewriteHeader).toContain('/studio/desk');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/login');
     });
 
     it('Scenario 14: Studio /desk authenticated on https://studio.boontrack.com/desk with valid token rewrites to /studio/desk workspace', async () => {
@@ -324,7 +322,7 @@ describe('BoonTrack Independent Product Routing & Simplification Master Suite', 
   // CROSS-PRODUCT SECURITY & PRIVILEGE BOUNDARY VERIFICATION
   // =========================================================================
   describe('Cross-Product Security & Privilege Boundary Verification', () => {
-    it('Scenario 15a: Forged/tampered Studio token is rejected and treated as unauthenticated', async () => {
+    it('Scenario 15a: Forged/tampered Studio token is rejected and redirects to /login', async () => {
       const forgedToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.tampered_signature';
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: {
@@ -334,10 +332,8 @@ describe('BoonTrack Independent Product Routing & Simplification Master Suite', 
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      // Rewrites to /studio/desk as unauthenticated shell (does NOT grant workspace privileges)
-      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
-      expect(rewriteHeader).toContain('/studio/desk');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/login');
     });
 
     it('Scenario 15b: Shop merchant token visiting Studio root CANNOT authorize Studio workspace (rewrites to /studio landing)', async () => {

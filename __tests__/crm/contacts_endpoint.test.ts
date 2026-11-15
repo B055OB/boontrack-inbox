@@ -5,12 +5,18 @@
  */
 
 import { NextRequest } from 'next/server';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 // ---------------------------------------------------------------------------
 // Mock Database State & Fixtures
 // ---------------------------------------------------------------------------
 const MOCK_TENANT_ID = '52967979-4760-4cea-b686-cdbdb389c0e1';
 const MOCK_TENANT_SLUG = 'onlineboost';
+const VALID_AUTH_COOKIE = `bt_merchant_token=${signMerchantSessionToken({
+  tenantId: MOCK_TENANT_ID,
+  tenantSlug: MOCK_TENANT_SLUG,
+  role: 'OWNER',
+})}`;
 const MOCK_CONTACT_1_ID = '11111111-1111-4111-8111-111111111111';
 const MOCK_CONTACT_2_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -417,7 +423,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
 
     it('3. successfully returns dynamic CRM contacts and unique tags for onlineboost (list query)', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
-        headers: { cookie: 'merchant_store=onlineboost' },
+        headers: { cookie: VALID_AUTH_COOKIE },
       });
       const res = await GET(req);
       expect(res.status).toBe(200);
@@ -438,7 +444,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
 
     it('4. returns single contact with details when queried by phone', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&phone=081234567890', {
-        headers: { cookie: 'merchant_store=onlineboost' },
+        headers: { cookie: VALID_AUTH_COOKIE },
       });
       const res = await GET(req);
       expect(res.status).toBe(200);
@@ -454,7 +460,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
 
     it('5. returns single contact with details when queried by contact_id', async () => {
       const req = new NextRequest(`http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&contact_id=${MOCK_CONTACT_1_ID}`, {
-        headers: { cookie: 'merchant_store=onlineboost' },
+        headers: { cookie: VALID_AUTH_COOKIE },
       });
       const res = await GET(req);
       expect(res.status).toBe(200);
@@ -518,7 +524,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -543,7 +549,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -568,7 +574,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -592,7 +598,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -616,7 +622,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -637,7 +643,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
@@ -655,7 +661,7 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=onlineboost',
+          cookie: VALID_AUTH_COOKIE,
         },
         body: JSON.stringify({
           tenant_id: 'onlineboost',

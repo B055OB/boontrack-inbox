@@ -9,6 +9,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 // ---------------------------------------------------------------------------
 // Dynamic Mock State
@@ -223,8 +224,13 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
     });
 
     it('1.4 GET /api/v1/crm/contacts returns 503 on database query failure', async () => {
+      const validAuthToken = signMerchantSessionToken({
+        tenantId: VALID_TENANT_ID,
+        tenantSlug: VALID_TENANT_SLUG,
+        role: 'OWNER',
+      });
       const req = new NextRequest(`http://localhost:3000/api/v1/crm/contacts?tenant_id=${VALID_TENANT_SLUG}`, {
-        headers: { cookie: `merchant_store=${VALID_TENANT_SLUG}` },
+        headers: { cookie: `bt_merchant_token=${validAuthToken}` },
       });
       const res = await getCrmContacts(req);
 
@@ -395,8 +401,13 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
     });
 
     it('4.3 GET /api/v1/crm/contacts normalizes null contact fields safely', async () => {
+      const validAuthToken = signMerchantSessionToken({
+        tenantId: VALID_TENANT_ID,
+        tenantSlug: VALID_TENANT_SLUG,
+        role: 'OWNER',
+      });
       const req = new NextRequest(`http://localhost:3000/api/v1/crm/contacts?tenant_id=${VALID_TENANT_SLUG}`, {
-        headers: { cookie: `merchant_store=${VALID_TENANT_SLUG}` },
+        headers: { cookie: `bt_merchant_token=${validAuthToken}` },
       });
       const res = await getCrmContacts(req);
 

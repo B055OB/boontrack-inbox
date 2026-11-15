@@ -1,11 +1,18 @@
 import { GET } from '@/app/api/v1/crm/contacts/route';
 import { NextRequest } from 'next/server';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
+
+const AUTH_COOKIE = `bt_merchant_token=${signMerchantSessionToken({
+  tenantId: '52967979-4760-4cea-b686-cdbdb389c0e1',
+  tenantSlug: 'onlineboost',
+  role: 'OPERATOR',
+})}`;
 
 describe('Audit & Sanitization: WhatsApp Gateway & Broadcast Module for onlineboost', () => {
   describe('1. Real CRM Contacts Binding & Dynamic Tag Resolution', () => {
     it('successfully fetches CRM contacts for onlineboost without mock data', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
-        headers: { 'x-tenant-slug': 'onlineboost' },
+        headers: { 'x-tenant-slug': 'onlineboost', cookie: AUTH_COOKIE },
       });
       const res = await GET(req);
       expect(res.status).toBe(200);
@@ -26,7 +33,7 @@ describe('Audit & Sanitization: WhatsApp Gateway & Broadcast Module for onlinebo
     it('returns empty state array with 0 contacts when queried for a fresh tenant', async () => {
       // Testing with a simulated fresh tenant or empty contacts
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
-        headers: { 'x-tenant-slug': 'onlineboost' },
+        headers: { 'x-tenant-slug': 'onlineboost', cookie: AUTH_COOKIE },
       });
       const res = await GET(req);
       const json = await res.json();

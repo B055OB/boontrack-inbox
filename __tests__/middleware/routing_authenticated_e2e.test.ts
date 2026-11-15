@@ -254,7 +254,7 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       expect(rewriteHeader).not.toContain('/studio/desk');
     });
 
-    it('D4. Forged Studio cookie on /desk is rejected and renders unauthenticated login in-place', async () => {
+    it('D4. Forged Studio cookie on /desk is rejected and redirects to /login', async () => {
       const forgedToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.tampered_hmac';
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: {
@@ -264,10 +264,8 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      // Renders login shell at /studio/desk without granting authenticated privileges
-      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
-      expect(rewriteHeader).toContain('/studio/desk');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/login');
     });
 
     it('D5. Expired Studio token on root / is rejected and user lands on public /studio', async () => {
@@ -455,7 +453,7 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       expect(res.headers.get('location')).toContain('/login?redirectTo=');
     });
 
-    it('F4. Cross-audience replay: Creator token used on Studio /desk is rejected and renders Studio login', async () => {
+    it('F4. Cross-audience replay: Creator token used on Studio /desk is rejected and redirects to /login', async () => {
       const creatorToken = signHostSessionToken({
         product: 'creator',
         userId: 'usr-creator-404',
@@ -471,10 +469,8 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      // Fails verification due to secret and audience mismatch; renders unauthenticated shell
-      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
-      expect(rewriteHeader).toContain('/studio/desk');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/login');
     });
 
     it('F5. Open redirect defense: Redirection targets with malicious schemes (javascript:, evil.com) are sanitized to safe root /', async () => {

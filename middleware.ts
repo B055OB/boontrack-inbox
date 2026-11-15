@@ -1010,10 +1010,16 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.next();
     }
 
-    // 2. /desk -> rewrite ke /studio/desk (URL stabil https://studio.boontrack.com/desk — CTO § 4 Studio Target)
+    // 2. /desk -> rewrite ke /studio/desk (Wajib Sesi Login Aktif)
     //    - Authenticated: render Studio Desk workspace
-    //    - Anonymous: render Studio-specific login directly on /desk shell
+    //    - Anonymous: redirect (302) to /login with return URL
     if (pathname === '/desk' || pathname.startsWith('/desk/')) {
+      if (!hasStudioAuth) {
+        const loginUrl = req.nextUrl.clone();
+        loginUrl.pathname = '/login';
+        loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + (req.nextUrl.search || ''))}`;
+        return NextResponse.redirect(loginUrl, 302);
+      }
       const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
       url.pathname = `/studio/desk${deskSubpath}`;
       return NextResponse.rewrite(url);
@@ -1531,20 +1537,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(url, 307);
     }
 
-    // 3f-1. Root Portal: Render B2B Enterprise & Vertical Solutions Landing Page
+    // 3f-1. Commercial Showcase: Render BoonTrack Apps — Custom Business Solutions Landing Page
     if (pathname === '/' || pathname === '') {
       const url = req.nextUrl.clone();
       url.pathname = '/app-portal';
       return NextResponse.rewrite(url);
     }
 
-    // 3f. Standard Browser Navigation, Legacy Portal & Unknown Paths -> 301 to Dashboard
-    const url = req.nextUrl.clone();
-    url.protocol = 'https:';
-    url.host = 'dashboard.boontrack.com';
-    url.pathname = pathname === '/app-portal' || pathname.startsWith('/app-portal/') ? '/' : pathname;
-    url.port = '';
-    return NextResponse.redirect(url, 301);
+    // 3f-2. Existing Live Demos: /gym and /margasari
+    if (pathname === '/gym' || pathname.startsWith('/gym/')) {
+      return NextResponse.next();
+    }
+    if (pathname === '/margasari' || pathname.startsWith('/margasari/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = pathname;
+      return NextResponse.rewrite(url);
+    }
+
+    // 3f-3. Unknown Browser Paths on app.boontrack.com: Safe not-found (DO NOT redirect to Dashboard or Shop)
+    const notFoundUrl = req.nextUrl.clone();
+    notFoundUrl.pathname = '/404';
+    return NextResponse.rewrite(notFoundUrl);
   }
 
 
@@ -1601,6 +1614,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         });
 
         const res = NextResponse.redirect(targetUrl, 307);
+        res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
         if (platformRef) {
           setReferralCookies(res, platformRef, hostClean);
         }
@@ -1611,7 +1625,9 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       } else {
         const url = req.nextUrl.clone();
         url.pathname = '/404-store-not-found';
-        return NextResponse.rewrite(url);
+        const res = NextResponse.rewrite(url);
+        res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
+        return res;
       }
     }
 

@@ -402,14 +402,16 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
     const postApiRes = await middleware(postApiReq);
     expect(postApiRes.status).toBe(410);
 
-    // 13e. Tenant navigation on app.boontrack.com routes 301 to dashboard (ZERO silent Shop fallback)
+    // 13e. Unknown path on app.boontrack.com renders 404 (safe not-found, ZERO silent Shop fallback, does not redirect to dashboard)
     const navReq = new NextRequest('https://app.boontrack.com/tokosaya', {
       method: 'GET',
       headers: { host: 'app.boontrack.com' },
     });
     const navRes = await middleware(navReq);
-    expect(navRes.status).toBe(301);
-    expect(navRes.headers.get('location')).toBe('https://dashboard.boontrack.com/tokosaya');
+    expect(navRes.status).toBe(200);
+    expect(navRes.headers.get('location')).toBeNull();
+    const rewriteHeader = navRes.headers.get('x-middleware-rewrite') || '';
+    expect(rewriteHeader).toContain('/404');
   });
 
   // ── 14. Email Link Scanner Protection (GET landing vs POST redemption) ──

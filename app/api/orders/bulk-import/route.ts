@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
       payloadData = body.orders || body.rows || body.data || [];
     }
 
+    if (!tenantSlug) {
+      return NextResponse.json(
+        { success: false, error: 'tenantSlug wajib disertakan' },
+        { status: 400 }
+      );
+    }
+
     // Authoritative Server-Side Tenant Context Resolution (P0 Security)
     const authResult = await resolveVerifiedTenantContext(req, tenantSlug || undefined);
     if (!authResult.success) {
