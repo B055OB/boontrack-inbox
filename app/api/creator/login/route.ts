@@ -112,11 +112,11 @@ export async function POST(req: Request) {
       // Cek apakah ada creator_profile yang terhubung secara sah
       const { data: creatorProf } = await supabaseAdmin
         .from('creator_profiles')
-        .select('id, handle, display_name, tenant_id, role, status')
+        .select('id, handle, display_name, tenant_id, role, status, is_active')
         .or(`tenant_id.eq.${user.id},handle.eq.${user.email},id.eq.${user.id}`)
         .maybeSingle();
 
-      // Mandat CTO A1: Generic Supabase user tanpa relasi Creator TIDAK BOLEH diberi token Creator
+      // Mandat CTO: Generic Supabase user tanpa relasi Creator TIDAK BOLEH diberi token Creator
       if (!creatorProf) {
         return NextResponse.json(
           {
@@ -128,7 +128,9 @@ export async function POST(req: Request) {
         );
       }
 
-      if (creatorProf.status === 'inactive' || creatorProf.status === 'suspended') {
+      // Tolak jika profil kreator inactive atau suspended
+      const profStatus = String(creatorProf.status || '').toLowerCase().trim();
+      if (profStatus === 'inactive' || profStatus === 'suspended' || creatorProf.is_active === false) {
         return NextResponse.json(
           {
             success: false,
@@ -139,8 +141,9 @@ export async function POST(req: Request) {
         );
       }
 
-      const resolvedTenantId = creatorProf.tenant_id;
-      if (!resolvedTenantId) {
+      // Wajib explicit, non-empty tenant_id (DILARANG KERAS substitusi user.id atau profile.id)
+      const explicitTenantId = (creatorProf.tenant_id || '').toString().trim();
+      if (!explicitTenantId) {
         return NextResponse.json(
           {
             success: false,
@@ -151,14 +154,28 @@ export async function POST(req: Request) {
         );
       }
 
-      // Validasi bahwa tenant aktif
+      // Wajib linked tenant row exist
       const { data: linkedTenant } = await supabaseAdmin
         .from('tenants')
-        .select('id, slug, status')
-        .eq('id', resolvedTenantId)
+        .select('id, slug, status, is_active')
+        .eq('id', explicitTenantId)
         .maybeSingle();
 
-      if (linkedTenant && linkedTenant.status === 'inactive') {
+      if (!linkedTenant) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CREATOR_TENANT_MISSING',
+            message: 'Tenant terkait tidak ditemukan.',
+          },
+          { status: 403 }
+        );
+      }
+
+      // Tolak tenant inactive, suspended, atau tidak memenuhi syarat
+      const tenantStatus = String(linkedTenant.status || '').toLowerCase().trim();
+      const isTenantEligible = linkedTenant.is_active !== false && tenantStatus !== 'inactive' && tenantStatus !== 'suspended' && tenantStatus !== 'expired';
+      if (!isTenantEligible) {
         return NextResponse.json(
           {
             success: false,
@@ -169,11 +186,25 @@ export async function POST(req: Request) {
         );
       }
 
-      const assignedRole = isPlatformAdmin
-        ? serverAppRole
-        : (creatorProf.role && ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'].includes(String(creatorProf.role).toUpperCase()))
-          ? String(creatorProf.role).toUpperCase()
-          : 'CREATOR_OWNER';
+      // Validasi Role: DILARANG default ke CREATOR_OWNER jika role missing atau unsupported
+      let assignedRole: string;
+      if (isPlatformAdmin) {
+        assignedRole = serverAppRole;
+      } else {
+        const rawRole = String(creatorProf.role || '').trim().toUpperCase();
+        const supportedRoles = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'];
+        if (!rawRole || !supportedRoles.includes(rawRole)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'CREATOR_ROLE_UNAUTHORIZED',
+              message: 'Role akun kreator tidak valid atau tidak memiliki hak akses.',
+            },
+            { status: 403 }
+          );
+        }
+        assignedRole = rawRole;
+      }
 
       const res = NextResponse.json({
         success: true,
@@ -191,7 +222,7 @@ export async function POST(req: Request) {
         res,
         {
           userId: user.id,
-          tenantId: resolvedTenantId,
+          tenantId: explicitTenantId,
           tenantSlug: creatorProf.handle,
           role: assignedRole,
         },
@@ -261,43 +292,62 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verifikasi relasi tenant yang sah & status tenant
-    let resolvedTenantId = profile.tenant_id || profile.id;
-    if (!resolvedTenantId) {
+    // Tolak profil kreator inactive atau suspended
+    const profStatus = String(profile.status || '').toLowerCase().trim();
+    if (profStatus === 'inactive' || profStatus === 'suspended' || profile.is_active === false) {
+      return NextResponse.json(
+        { success: false, error: 'CREATOR_SUSPENDED', message: 'Profil kreator sedang berstatus nonaktif atau ditangguhkan.' },
+        { status: 403 }
+      );
+    }
+
+    // Wajib explicit, non-empty tenant_id (DILARANG KERAS substitusi profile.id)
+    const explicitTenantId = (profile.tenant_id || '').toString().trim();
+    if (!explicitTenantId) {
       return NextResponse.json(
         { success: false, error: 'CREATOR_TENANT_MISSING', message: 'Relasi tenant kreator tidak ditemukan.' },
         { status: 403 }
       );
     }
 
-    if (profile.tenant_id) {
-      const { data: tenantRow } = await supabaseAdmin
-        .from('tenants')
-        .select('id, slug, status')
-        .eq('id', profile.tenant_id)
-        .maybeSingle();
+    // Wajib linked tenant row exist
+    const { data: tenantRow } = await supabaseAdmin
+      .from('tenants')
+      .select('id, slug, status, is_active')
+      .eq('id', explicitTenantId)
+      .maybeSingle();
 
-      if (tenantRow) {
-        resolvedTenantId = tenantRow.id;
-        if (tenantRow.status === 'inactive' || tenantRow.status === 'suspended') {
-          return NextResponse.json(
-            { success: false, error: 'TENANT_INELIGIBLE', message: 'Tenant kreator sedang nonaktif.' },
-            { status: 403 }
-          );
-        }
-      }
-    }
-
-    if (profile.status === 'inactive' || profile.status === 'suspended') {
+    if (!tenantRow) {
       return NextResponse.json(
-        { success: false, error: 'CREATOR_SUSPENDED', message: 'Profil kreator sedang berstatus nonaktif.' },
+        { success: false, error: 'CREATOR_TENANT_MISSING', message: 'Tenant terkait tidak ditemukan.' },
         { status: 403 }
       );
     }
 
-    const resolvedRole = (profile.role && ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'].includes(String(profile.role).toUpperCase()))
-      ? String(profile.role).toUpperCase()
-      : 'CREATOR_OWNER';
+    // Tolak tenant inactive, suspended, atau tidak memenuhi syarat
+    const tenantStatus = String(tenantRow.status || '').toLowerCase().trim();
+    const isTenantEligible = tenantRow.is_active !== false && tenantStatus !== 'inactive' && tenantStatus !== 'suspended' && tenantStatus !== 'expired';
+    if (!isTenantEligible) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_INELIGIBLE', message: 'Tenant kreator sedang nonaktif atau tidak memenuhi syarat.' },
+        { status: 403 }
+      );
+    }
+
+    // Validasi Role: DILARANG default ke CREATOR_OWNER jika role missing atau unsupported
+    const rawRole = String(profile.role || '').trim().toUpperCase();
+    const supportedRoles = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'];
+    if (!rawRole || !supportedRoles.includes(rawRole)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'CREATOR_ROLE_UNAUTHORIZED',
+          message: 'Role akun kreator tidak valid atau tidak memiliki hak akses.',
+        },
+        { status: 403 }
+      );
+    }
+    const resolvedRole = rawRole;
 
     const res = NextResponse.json({
       success: true,
@@ -313,8 +363,8 @@ export async function POST(req: Request) {
     applyCreatorSessionCookie(
       res,
       {
-        userId: profile.id || resolvedTenantId,
-        tenantId: resolvedTenantId,
+        userId: profile.id,
+        tenantId: explicitTenantId,
         tenantSlug: profile.handle,
         role: resolvedRole,
       },

@@ -30,6 +30,9 @@
 import { NextRequest } from 'next/server';
 import { POST as creatorLogin } from '@/app/api/creator/login/route';
 import { POST as authSessionLogout } from '@/app/api/auth/session/route';
+import { PUT as creatorProfilePUT } from '@/app/api/creator/profile/route';
+import { GET as resellerAppsGET, PATCH as resellerAppsPATCH } from '@/app/api/v1/creators/[handle]/reseller-applications/route';
+import { PATCH as tipsPATCH } from '@/app/api/v1/creators/[handle]/tips/[id]/route';
 import { middleware } from '@/middleware';
 import CreatorAdminLayout from '@/app/creator/admin/layout';
 import {
@@ -403,6 +406,190 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
       // Must NOT be elevated to ADMIN
       expect(json.data.role).toBe('CREATOR_OWNER');
     });
+
+    it('2i. Rejects login if linked tenant row is missing (null) with 403 CREATOR_TENANT_MISSING and zero cookies', async () => {
+      const mockDb = createMockDb({
+        tenant: null,
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_TENANT_MISSING');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2j. Rejects login if linked tenant is suspended with 403 TENANT_INELIGIBLE and zero cookies', async () => {
+      const mockDb = createMockDb({
+        tenant: { id: TEST_CREATOR.tenant_id, slug: TEST_CREATOR.handle, status: 'suspended', is_active: false },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('TENANT_INELIGIBLE');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2k. Rejects login if profile.tenant_id is missing/empty with 403 CREATOR_TENANT_MISSING and never substitutes profile.id', async () => {
+      const profileWithoutTenantId = { ...TEST_CREATOR, tenant_id: null };
+      const mockDb = createMockDb({ profile: profileWithoutTenantId });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_TENANT_MISSING');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2l. Rejects login if creator role is missing or unsupported (e.g. GUEST) with 403 CREATOR_ROLE_UNAUTHORIZED and never defaults to CREATOR_OWNER', async () => {
+      const profileWithGuestRole = { ...TEST_CREATOR, role: 'GUEST' };
+      const mockDb = createMockDb({ profile: profileWithGuestRole });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'suzieray', pin: '9876' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_ROLE_UNAUTHORIZED');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2m. For email login: Rejects if linked tenant row is missing (null) with 403 CREATOR_TENANT_MISSING and zero cookies', async () => {
+      const mockDb = createMockDb({
+        tenant: null,
+        authUser: { id: TEST_CREATOR.id, email: 'suzieray@boontrack.com', app_metadata: {} },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'suzieray@boontrack.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_TENANT_MISSING');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2n. For email login: Rejects if linked tenant is suspended with 403 TENANT_INELIGIBLE and zero cookies', async () => {
+      const mockDb = createMockDb({
+        tenant: { id: TEST_CREATOR.tenant_id, slug: TEST_CREATOR.handle, status: 'suspended', is_active: false },
+        authUser: { id: TEST_CREATOR.id, email: 'suzieray@boontrack.com', app_metadata: {} },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'suzieray@boontrack.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('TENANT_INELIGIBLE');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2o. For email login: Rejects if profile.tenant_id is missing with 403 CREATOR_TENANT_MISSING and zero cookies', async () => {
+      const profileNoTenant = { ...TEST_CREATOR, tenant_id: null };
+      const mockDb = createMockDb({
+        profile: profileNoTenant,
+        authUser: { id: TEST_CREATOR.id, email: 'suzieray@boontrack.com', app_metadata: {} },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'suzieray@boontrack.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_TENANT_MISSING');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2p. For email login: Rejects if creator role is missing/unsupported with 403 CREATOR_ROLE_UNAUTHORIZED and zero cookies', async () => {
+      const profileNoRole = { ...TEST_CREATOR, role: null };
+      const mockDb = createMockDb({
+        profile: profileNoRole,
+        authUser: { id: TEST_CREATOR.id, email: 'suzieray@boontrack.com', app_metadata: {} },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'suzieray@boontrack.com', password: 'valid-password' }),
+      });
+
+      const res = await creatorLogin(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('CREATOR_ROLE_UNAUTHORIZED');
+
+      const setCookies = res.headers.getSetCookie();
+      expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
   });
 
   // =========================================================================
@@ -720,6 +907,157 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
 
         expect(layoutResult).toBeDefined();
       }
+    });
+  });
+
+  // =========================================================================
+  // 7. PROTECTED CREATOR SERVER APIS AUTHORIZATION VERIFICATION
+  // =========================================================================
+  describe('7. Protected Creator Server APIs Authorization Verification', () => {
+    const validCreatorToken = signHostSessionToken({
+      product: 'creator',
+      userId: TEST_CREATOR.id,
+      tenantId: TEST_CREATOR.tenant_id,
+      tenantSlug: TEST_CREATOR.handle,
+      role: 'CREATOR_OWNER',
+    });
+
+    const otherCreatorToken = signHostSessionToken({
+      product: 'creator',
+      userId: 'usr-attacker-666',
+      tenantId: 'tid-attacker-666',
+      tenantSlug: 'attackerhandle',
+      role: 'CREATOR_OWNER',
+    });
+
+    it('7a. PUT /api/creator/profile rejects generic Supabase bearer token with 401', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer generic-supabase-access-token',
+        },
+        body: JSON.stringify({
+          handle: TEST_CREATOR.handle,
+          tenant_id: TEST_CREATOR.tenant_id,
+          displayName: 'Updated Name',
+        }),
+      });
+
+      const res = await creatorProfilePUT(req);
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('UNAUTHORIZED');
+    });
+
+    it('7b. PUT /api/creator/profile rejects cross-tenant token with 403 (Anti-IDOR)', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request('https://creator.boontrack.com/api/creator/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_creator_session=${otherCreatorToken}`,
+        },
+        body: JSON.stringify({
+          handle: TEST_CREATOR.handle,
+          tenant_id: TEST_CREATOR.tenant_id,
+          displayName: 'Attacker Name',
+        }),
+      });
+
+      const res = await creatorProfilePUT(req);
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('FORBIDDEN');
+    });
+
+    it('7c. GET /api/v1/creators/[handle]/reseller-applications rejects generic Supabase bearer token with 401', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest(`https://creator.boontrack.com/api/v1/creators/${TEST_CREATOR.handle}/reseller-applications`, {
+        headers: {
+          authorization: 'Bearer generic-supabase-access-token',
+        },
+      });
+
+      const res = await resellerAppsGET(req, {
+        params: Promise.resolve({ handle: TEST_CREATOR.handle }),
+      });
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('UNAUTHORIZED');
+    });
+
+    it('7d. GET /api/v1/creators/[handle]/reseller-applications rejects cross-tenant signed token with 403', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest(`https://creator.boontrack.com/api/v1/creators/${TEST_CREATOR.handle}/reseller-applications`, {
+        headers: {
+          cookie: `bt_creator_session=${otherCreatorToken}`,
+        },
+      });
+
+      const res = await resellerAppsGET(req, {
+        params: Promise.resolve({ handle: TEST_CREATOR.handle }),
+      });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('FORBIDDEN');
+    });
+
+    it('7e. PATCH /api/v1/creators/[handle]/tips/[id] rejects generic Supabase bearer token with 401', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request(`https://creator.boontrack.com/api/v1/creators/${TEST_CREATOR.handle}/tips/tip-123`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer generic-supabase-access-token',
+        },
+        body: JSON.stringify({ status: 'VERIFIED' }),
+      });
+
+      const res = await tipsPATCH(req, {
+        params: Promise.resolve({ handle: TEST_CREATOR.handle, id: 'tip-123' }),
+      });
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('UNAUTHORIZED');
+    });
+
+    it('7f. PATCH /api/v1/creators/[handle]/tips/[id] rejects cross-tenant signed token with 403', async () => {
+      const mockDb = createMockDb();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new Request(`https://creator.boontrack.com/api/v1/creators/${TEST_CREATOR.handle}/tips/tip-123`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_creator_session=${otherCreatorToken}`,
+        },
+        body: JSON.stringify({ status: 'VERIFIED' }),
+      });
+
+      const res = await tipsPATCH(req, {
+        params: Promise.resolve({ handle: TEST_CREATOR.handle, id: 'tip-123' }),
+      });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('FORBIDDEN');
     });
   });
 });
