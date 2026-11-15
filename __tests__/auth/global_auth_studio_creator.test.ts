@@ -408,10 +408,10 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
       headers: { host: 'app.boontrack.com' },
     });
     const navRes = await middleware(navReq);
-    expect(navRes.status).toBe(200);
+    expect(navRes.status).toBe(404);
     expect(navRes.headers.get('location')).toBeNull();
     const rewriteHeader = navRes.headers.get('x-middleware-rewrite') || '';
-    expect(rewriteHeader).toContain('/404');
+    expect(rewriteHeader).toContain('/app-portal/404');
   });
 
   // ── 14. Email Link Scanner Protection (GET landing vs POST redemption) ──
