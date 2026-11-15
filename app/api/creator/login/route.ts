@@ -237,7 +237,7 @@ export async function POST(req: Request) {
         },
       });
 
-      applyCreatorSessionCookie(
+      const sessionApplied = applyCreatorSessionCookie(
         res,
         {
           userId: user.id,
@@ -247,6 +247,17 @@ export async function POST(req: Request) {
         },
         isSecure
       );
+
+      if (!sessionApplied) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CREATOR_ROLE_UNAUTHORIZED',
+            message: 'Penerbitan sesi Creator tidak diizinkan untuk role ini.',
+          },
+          { status: 403 }
+        );
+      }
 
       return res;
     }
@@ -379,7 +390,7 @@ export async function POST(req: Request) {
       },
     });
 
-    applyCreatorSessionCookie(
+    const sessionApplied = applyCreatorSessionCookie(
       res,
       {
         userId: profile.id,
@@ -389,6 +400,17 @@ export async function POST(req: Request) {
       },
       isSecure
     );
+
+    if (!sessionApplied) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'CREATOR_ROLE_UNAUTHORIZED',
+          message: 'Penerbitan sesi Creator tidak diizinkan untuk role ini.',
+        },
+        { status: 403 }
+      );
+    }
 
     return res;
   } catch (err: any) {

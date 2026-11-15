@@ -591,20 +591,46 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
       expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
     });
 
-    it('2q. Signing helper (applyCreatorSessionCookie) strictly refuses missing or unsupported roles without defaulting to CREATOR_OWNER', () => {
-      // 1. Missing role (empty string)
-      const resMissing = NextResponse.json({ success: true });
-      const resultMissing = applyCreatorSessionCookie(resMissing, {
+    it('2q. Signing helper (applyCreatorSessionCookie) strictly refuses missing, undefined, omitted, or unsupported roles without defaulting to CREATOR_OWNER', () => {
+      // 1. Empty role string
+      const resEmpty = NextResponse.json({ success: true });
+      const resultEmpty = applyCreatorSessionCookie(resEmpty, {
         userId: 'usr-test-123',
         tenantId: 'tid-test-123',
         tenantSlug: 'testcreator',
         role: '' as any,
       });
-      expect(resultMissing).toBe(false);
-      expect(resMissing.cookies.get('bt_creator_session')).toBeUndefined();
-      expect(resMissing.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+      expect(resultEmpty).toBe(false);
+      expect(resEmpty.cookies.get('bt_creator_session')).toBeUndefined();
+      expect(resEmpty.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+      expect(resEmpty.cookies.get('creator_handle')).toBeUndefined();
 
-      // 2. Unsupported role ('GUEST', 'VISITOR', 'USER')
+      // 2. Explicit undefined role
+      const resUndefined = NextResponse.json({ success: true });
+      const resultUndefined = applyCreatorSessionCookie(resUndefined, {
+        userId: 'usr-test-123',
+        tenantId: 'tid-test-123',
+        tenantSlug: 'testcreator',
+        role: undefined as any,
+      });
+      expect(resultUndefined).toBe(false);
+      expect(resUndefined.cookies.get('bt_creator_session')).toBeUndefined();
+      expect(resUndefined.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+      expect(resUndefined.cookies.get('creator_handle')).toBeUndefined();
+
+      // 3. Omitted role property entirely
+      const resOmitted = NextResponse.json({ success: true });
+      const resultOmitted = applyCreatorSessionCookie(resOmitted, {
+        userId: 'usr-test-123',
+        tenantId: 'tid-test-123',
+        tenantSlug: 'testcreator',
+      } as any);
+      expect(resultOmitted).toBe(false);
+      expect(resOmitted.cookies.get('bt_creator_session')).toBeUndefined();
+      expect(resOmitted.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+      expect(resOmitted.cookies.get('creator_handle')).toBeUndefined();
+
+      // 4. Unsupported roles: GUEST, VISITOR, USER, MEMBER
       for (const unsupportedRole of ['GUEST', 'VISITOR', 'USER', 'MEMBER']) {
         const resUnsupported = NextResponse.json({ success: true });
         const resultUnsupported = applyCreatorSessionCookie(resUnsupported, {
@@ -616,9 +642,10 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
         expect(resultUnsupported).toBe(false);
         expect(resUnsupported.cookies.get('bt_creator_session')).toBeUndefined();
         expect(resUnsupported.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+        expect(resUnsupported.cookies.get('creator_handle')).toBeUndefined();
       }
 
-      // 3. Valid roles succeed
+      // 5. Valid roles succeed and emit expected cookies
       for (const validRole of ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN']) {
         const resValid = NextResponse.json({ success: true });
         const resultValid = applyCreatorSessionCookie(resValid, {
@@ -629,6 +656,7 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
         });
         expect(resultValid).toBe(true);
         expect(resValid.cookies.get('bt_creator_session')).toBeDefined();
+        expect(resValid.cookies.get('creator_handle')).toBeDefined();
       }
     });
   });
