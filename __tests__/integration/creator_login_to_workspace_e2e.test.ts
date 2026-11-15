@@ -27,8 +27,8 @@
  *    - Accurately states process-local cache boundaries without false claims of multi-runtime parity.
  */
 
-import { NextRequest } from 'next/server';
-import { POST as creatorLogin } from '@/app/api/creator/login/route';
+import { NextRequest, NextResponse } from 'next/server';
+import { POST as creatorLogin, applyCreatorSessionCookie } from '@/app/api/creator/login/route';
 import { POST as authSessionLogout } from '@/app/api/auth/session/route';
 import { PUT as creatorProfilePUT } from '@/app/api/creator/profile/route';
 import { GET as resellerAppsGET, PATCH as resellerAppsPATCH } from '@/app/api/v1/creators/[handle]/reseller-applications/route';
@@ -589,6 +589,47 @@ describe('CTO Mandate Round 2: Connected Creator Login-to-Workspace Integration 
 
       const setCookies = res.headers.getSetCookie();
       expect(setCookies.some((c) => c.includes('bt_creator_session'))).toBe(false);
+    });
+
+    it('2q. Signing helper (applyCreatorSessionCookie) strictly refuses missing or unsupported roles without defaulting to CREATOR_OWNER', () => {
+      // 1. Missing role (empty string)
+      const resMissing = NextResponse.json({ success: true });
+      const resultMissing = applyCreatorSessionCookie(resMissing, {
+        userId: 'usr-test-123',
+        tenantId: 'tid-test-123',
+        tenantSlug: 'testcreator',
+        role: '' as any,
+      });
+      expect(resultMissing).toBe(false);
+      expect(resMissing.cookies.get('bt_creator_session')).toBeUndefined();
+      expect(resMissing.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+
+      // 2. Unsupported role ('GUEST', 'VISITOR', 'USER')
+      for (const unsupportedRole of ['GUEST', 'VISITOR', 'USER', 'MEMBER']) {
+        const resUnsupported = NextResponse.json({ success: true });
+        const resultUnsupported = applyCreatorSessionCookie(resUnsupported, {
+          userId: 'usr-test-123',
+          tenantId: 'tid-test-123',
+          tenantSlug: 'testcreator',
+          role: unsupportedRole,
+        });
+        expect(resultUnsupported).toBe(false);
+        expect(resUnsupported.cookies.get('bt_creator_session')).toBeUndefined();
+        expect(resUnsupported.cookies.get('__Host-bt_creator_session')).toBeUndefined();
+      }
+
+      // 3. Valid roles succeed
+      for (const validRole of ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN']) {
+        const resValid = NextResponse.json({ success: true });
+        const resultValid = applyCreatorSessionCookie(resValid, {
+          userId: 'usr-test-123',
+          tenantId: 'tid-test-123',
+          tenantSlug: 'testcreator',
+          role: validRole,
+        });
+        expect(resultValid).toBe(true);
+        expect(resValid.cookies.get('bt_creator_session')).toBeDefined();
+      }
     });
   });
 

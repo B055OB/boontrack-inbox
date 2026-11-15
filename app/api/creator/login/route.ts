@@ -9,26 +9,43 @@ import {
 
 export const runtime = 'nodejs';
 
+export const ALLOWED_CREATOR_ROLES = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'] as const;
+export type CreatorSessionRole = (typeof ALLOWED_CREATOR_ROLES)[number];
+
 /**
  * Issues signed Creator host-session cookie adhering to RFC 6265bis host-only semantics.
  * Eliminates plaintext authentication cookies and prevents merchant privilege leakage.
+ *
+ * MANDAT CTO:
+ * 1. params.role wajib mandatory string.
+ * 2. Tidak ada implicit fallback ke 'CREATOR_OWNER'.
+ * 3. Wajib divalidasi terhadap ALLOWED_CREATOR_ROLES sebelum signing token.
+ * 4. Invalid atau missing role menghasilkan zero signed token dan zero authenticated cookie.
  */
-function applyCreatorSessionCookie(
+export function applyCreatorSessionCookie(
   res: NextResponse,
   params: {
     userId: string;
     tenantId: string;
     tenantSlug: string;
-    role?: string;
+    role: string;
   },
   isSecure?: boolean
-) {
+): boolean {
+  const normalizedRole = String(params.role || '').trim().toUpperCase();
+
+  // Validate the role against the explicit Creator role allowlist before token signing
+  if (!normalizedRole || !ALLOWED_CREATOR_ROLES.includes(normalizedRole as any)) {
+    // Missing or unsupported role: strictly refuse to sign token or set session cookies
+    return false;
+  }
+
   const signedToken = signHostSessionToken({
     product: 'creator',
     userId: params.userId,
     tenantId: params.tenantId,
     tenantSlug: params.tenantSlug,
-    role: params.role || 'CREATOR_OWNER',
+    role: normalizedRole,
   });
 
   const config = getProductAuthConfig('creator');
@@ -51,6 +68,8 @@ function applyCreatorSessionCookie(
     maxAge: 7 * 24 * 60 * 60,
     sameSite: 'lax',
   });
+
+  return true;
 }
 
 /**
