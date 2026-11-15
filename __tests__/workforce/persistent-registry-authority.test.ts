@@ -14,10 +14,8 @@
  * 9. Operasi sah tenant tetap berjalan tanpa degradasi.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { Pool } from 'pg';
-import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
+import { createSafePgTestPool } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 import {
   registerOrderPreCheckout,
   bindProviderTransaction,
@@ -27,49 +25,17 @@ import {
   SecurityInvariantViolation,
 } from '@/packages/workforce-billing';
 
-function getDatabaseConnectionString(): string {
-  let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-  let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-  if (!directUrl || !poolerUrl) {
-    try {
-      const envPath = path.resolve('.env.local');
-      if (fs.existsSync(envPath)) {
-        const envFile = fs.readFileSync(envPath, 'utf8');
-        const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-        const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-        if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-        if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const connStr = directUrl || poolerUrl;
-  if (!connStr) {
-    throw new Error('STAGING_DB_REQUIRED: Persistent registry test must run against real PostgreSQL');
-  }
-  assertStagingDatabaseTarget(connStr);
-  return connStr;
-}
-
 describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Mandate Round 2)', () => {
   let poolA: Pool;
   let poolB: Pool;
-  const connStr = getDatabaseConnectionString();
 
   beforeAll(async () => {
-    poolA = new Pool({
-      connectionString: connStr,
-      ssl: { rejectUnauthorized: false },
+    poolA = createSafePgTestPool({
       max: 5,
       connectionTimeoutMillis: 10000,
     });
 
-    poolB = new Pool({
-      connectionString: connStr,
-      ssl: { rejectUnauthorized: false },
+    poolB = createSafePgTestPool({
       max: 5,
       connectionTimeoutMillis: 10000,
     });
@@ -1704,9 +1670,7 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
       const providerTxId = `tx_norm_restart_${ts}`;
 
       // Ephemeral Pool registers & binds
-      const ephemeralPool = new Pool({
-        connectionString: connStr,
-        ssl: { rejectUnauthorized: false },
+      const ephemeralPool = createSafePgTestPool({
         max: 2,
       });
 
@@ -1732,9 +1696,7 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
       await ephemeralPool.end();
 
       // Restarted pool connects and settles
-      const restartedPool = new Pool({
-        connectionString: connStr,
-        ssl: { rejectUnauthorized: false },
+      const restartedPool = createSafePgTestPool({
         max: 2,
       });
 

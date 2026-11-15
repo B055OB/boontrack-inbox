@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
+import { createSafePgTestPool } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 import {
   calculateMarginalProgressivePrice,
   RFC_BWM_014_V1_TIERS,
@@ -689,29 +690,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
     });
 
     test('Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant (FAIL-CLOSED)', async () => {
-      let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-      let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-      if (!directUrl || !poolerUrl) {
-        try {
-          const envFile = fs.readFileSync(path.resolve('.env.local'), 'utf8');
-          const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-          const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-          if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-          if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-        } catch {
-          // ignore
-        }
-      }
-
-      const connStr = directUrl || poolerUrl;
-      if (!connStr) {
-        throw new Error("STAGING_DB_REQUIRED: Concurrency test must run against real PostgreSQL");
-      }
-
-      const pool = new Pool({
-        connectionString: connStr,
-        ssl: { rejectUnauthorized: false },
+      const pool = createSafePgTestPool({
         max: 10,
         connectionTimeoutMillis: 10000,
       });
@@ -782,29 +761,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       let pool: Pool;
 
       beforeAll(async () => {
-        let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-        let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-        if (!directUrl || !poolerUrl) {
-          try {
-            const envFile = fs.readFileSync(path.resolve('.env.local'), 'utf8');
-            const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-            const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-            if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-            if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-          } catch {
-            // ignore
-          }
-        }
-
-        const connStr = directUrl || poolerUrl;
-        if (!connStr) {
-          throw new Error('STAGING_DB_REQUIRED: Concurrency test must run against real PostgreSQL');
-        }
-
-        pool = new Pool({
-          connectionString: connStr,
-          ssl: { rejectUnauthorized: false },
+        pool = createSafePgTestPool({
           max: 10,
           connectionTimeoutMillis: 10000,
         });
@@ -819,8 +776,8 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       });
 
       afterAll(async () => {
-        if (pool) {
-          await pool.end();
+        if (pool && !(pool as any).ended) {
+          await pool.end().catch(() => {});
         }
       });
 
