@@ -768,6 +768,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       'privacy',
       'refund',
       'contact',
+      '404',
       '404-store-not-found',
     ]);
 
@@ -1286,7 +1287,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       'app', 'register', 'affiliate', 'manager', 'pricing', 'checkout',
       'login', 'auth', 'daftar', 'onboarding', 'pilot-onboarding', 'enterprise',
       'terms', 'privacy', 'privacy-policy', 'data-deletion', 'acceptable-use',
-      'refund', 'store-original'
+      'refund', 'store-original', '404', '404-store-not-found'
     ]);
 
     const segments = pathname.split('/').filter(Boolean);
@@ -1579,10 +1580,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.rewrite(url);
     }
 
-    // 3f-3. Unknown Browser Paths on app.boontrack.com: Safe not-found (DO NOT redirect to Dashboard or Shop)
+    // 3f-3. Unknown Browser Paths on app.boontrack.com: Isolated App Hub 404 Not Found (DO NOT redirect to Dashboard or Shop)
     const notFoundUrl = req.nextUrl.clone();
-    notFoundUrl.pathname = '/404';
-    return NextResponse.rewrite(notFoundUrl);
+    notFoundUrl.pathname = '/app-portal/404';
+    const res = NextResponse.rewrite(notFoundUrl, { status: 404 });
+    res.headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate');
+    res.headers.set('X-Matched-Path', '/app-portal/404');
+    return res;
   }
 
 
@@ -1606,7 +1610,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       'login', 'register', 'daftar', 'auth', 'checkout', 'affiliate', 'manager',
       'pricing', 'app', 'app-portal', 'onboarding', 'pilot-onboarding', 'enterprise',
       'career', 'terms', 'privacy', 'privacy-policy', 'data-deletion',
-      'acceptable-use', 'refund', 'store-original', '404-store-not-found',
+      'acceptable-use', 'refund', 'store-original', '404', '404-store-not-found',
       'favicon.ico', 'icon.png', 'apple-touch-icon.png',
     ]);
     const pathSegments = pathname.split('/').filter(Boolean);
