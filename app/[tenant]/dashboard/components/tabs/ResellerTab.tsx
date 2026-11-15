@@ -33,6 +33,7 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 import ResellerComplianceModal from '../ResellerComplianceModal';
 import ResellerQrDownloadModal from '@/components/reseller/ResellerQrDownloadModal';
 
@@ -256,8 +257,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
   // Copy helper
   const handleCopyLink = (code: string) => {
-    const storeBase = typeof window !== 'undefined' ? window.location.origin : 'https://shop.boontrack.com';
-    const link = `${storeBase}/${tenantSlug}?r=${code}`;
+    const storeBase = getStorefrontUrl(tenantSlug);
+    const link = `${storeBase}?r=${code}`;
     navigator.clipboard.writeText(link);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2500);
@@ -265,8 +266,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
   // WhatsApp Share helper
   const handleShareToWhatsApp = (reseller: ResellerMember) => {
-    const storeBase = typeof window !== 'undefined' ? window.location.origin : 'https://shop.boontrack.com';
-    const link = `${storeBase}/${tenantSlug}?r=${reseller.code}`;
+    const storeBase = getStorefrontUrl(tenantSlug);
+    const link = `${storeBase}?r=${reseller.code}`;
     const cleanPhone = reseller.phone.replace(/[^0-9]/g, '');
     const targetPhone = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone.startsWith('8') ? '62' + cleanPhone : cleanPhone;
     
@@ -1504,11 +1505,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
           onClose={() => setQrModalReseller(null)}
           resellerName={qrModalReseller.name}
           referralCode={qrModalReseller.code}
-          referralUrl={
-            typeof window !== 'undefined'
-              ? `${window.location.origin}/${tenantSlug}?r=${encodeURIComponent(qrModalReseller.code)}`
-              : `https://shop.boontrack.com/${tenantSlug}?r=${encodeURIComponent(qrModalReseller.code)}`
-          }
+          referralUrl={`${getStorefrontUrl(tenantSlug)}?r=${encodeURIComponent(qrModalReseller.code)}`}
           tenantSlug={tenantSlug}
           resellerPhone={qrModalReseller.phone}
           storeName={tenantData?.name || tenantSlug}

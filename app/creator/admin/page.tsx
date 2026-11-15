@@ -550,8 +550,46 @@ export default function CreatorAdminPage() {
     }
   };
 
+  const getPublicBioUrl = () => {
+    const cleanHandle = handle.replace(/^@+/, '');
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.vercel.app') ||
+        host === 'staging.boontrack.com' ||
+        host.endsWith('.staging.boontrack.com') ||
+        host.startsWith('staging.')
+      ) {
+        return `${window.location.origin}/@${cleanHandle}`;
+      }
+    }
+    return `https://creator.boontrack.com/@${cleanHandle}`;
+  };
+
+  const getDisplayBioLink = () => {
+    const cleanHandle = handle.replace(/^@+/, '');
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.vercel.app') ||
+        host === 'staging.boontrack.com' ||
+        host.endsWith('.staging.boontrack.com') ||
+        host.startsWith('staging.')
+      ) {
+        return `${window.location.host}/@${cleanHandle}`;
+      }
+    }
+    return `creator.boontrack.com/@${cleanHandle}`;
+  };
+
   const copyPublicUrl = () => {
-    const fullUrl = `https://boontrack.com/@${handle.replace(/^@+/, '')}`;
+    const fullUrl = getPublicBioUrl();
     navigator.clipboard.writeText(fullUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -597,7 +635,7 @@ export default function CreatorAdminPage() {
               ) : (
                 <>
                   <Share2 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>boontrack.com/@{handle}</span>
+                  <span>{getDisplayBioLink()}</span>
                 </>
               )}
             </button>

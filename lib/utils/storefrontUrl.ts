@@ -6,17 +6,38 @@
 export const CANONICAL_DOMAIN = 'https://shop.boontrack.com';
 
 /**
+ * Helper to determine if a hostname belongs to Vercel Preview or Staging environments.
+ */
+export function isPreviewOrStagingDomain(hostname: string): boolean {
+  if (!hostname) return false;
+  const clean = hostname.split(':')[0].toLowerCase().trim();
+  return (
+    clean === 'localhost' ||
+    clean === '127.0.0.1' ||
+    clean.endsWith('.localhost') ||
+    clean.endsWith('.vercel.app') ||
+    clean === 'staging.boontrack.com' ||
+    clean.endsWith('.staging.boontrack.com') ||
+    clean.startsWith('staging.')
+  );
+}
+
+/**
  * Resolves the clean, canonical storefront bio link for any tenant.
  * Example: getStorefrontUrl('om-budi') -> 'https://shop.boontrack.com/om-budi'
+ * In Preview/Staging or local development, preserves active origin.
  */
 export function getStorefrontUrl(tenantSlug?: string | null, customDomain?: string | null): string {
   if (customDomain) {
     const cleanDomain = customDomain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
     if (cleanDomain) return `https://${cleanDomain}`;
   }
-  if (!tenantSlug) return CANONICAL_DOMAIN;
-  const cleanSlug = tenantSlug.trim().toLowerCase();
-  return cleanSlug ? `${CANONICAL_DOMAIN}/${cleanSlug}` : CANONICAL_DOMAIN;
+  const cleanSlug = tenantSlug ? tenantSlug.trim().toLowerCase() : '';
+  if (typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname)) {
+    return cleanSlug ? `${window.location.origin}/${cleanSlug}` : window.location.origin;
+  }
+  if (!cleanSlug) return CANONICAL_DOMAIN;
+  return `${CANONICAL_DOMAIN}/${cleanSlug}`;
 }
 
 /**
@@ -45,6 +66,9 @@ export function getStorefrontShortlink(tenantSlug: string): string {
  */
 export function getRotatorUrl(tenantSlug: string): string {
   const cleanSlug = (tenantSlug || '').trim().toLowerCase();
+  if (typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname)) {
+    return `${window.location.origin}/r/${cleanSlug}`;
+  }
   return `${CANONICAL_DOMAIN}/r/${cleanSlug}`;
 }
 
@@ -52,7 +76,11 @@ export function getRotatorUrl(tenantSlug: string): string {
  * Resolves digital delivery URL on canonical domain.
  */
 export function getDigitalDeliveryUrl(orderId: string): string {
-  return `${CANONICAL_DOMAIN}/d/${(orderId || '').trim()}`;
+  const cleanOrderId = (orderId || '').trim();
+  if (typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname)) {
+    return `${window.location.origin}/d/${cleanOrderId}`;
+  }
+  return `${CANONICAL_DOMAIN}/d/${cleanOrderId}`;
 }
 
 export const STOREFRONT_DOMAIN = 'https://shop.boontrack.com';
@@ -67,7 +95,7 @@ export function getStorefrontShopUrl(tenantSlug?: string | null): string {
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
+    if (isPreviewOrStagingDomain(host)) {
       return `/${cleanSlug}`;
     }
   }
@@ -90,7 +118,7 @@ export function getStorefrontInvoiceUrl(tenantSlug?: string | null, orderId?: st
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
+    if (isPreviewOrStagingDomain(host)) {
       return `/${cleanSlug}/invoice/${cleanOrderId}`;
     }
   }
@@ -113,7 +141,7 @@ export function getStorefrontPayUrl(tenantSlug?: string | null, token?: string |
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
+    if (isPreviewOrStagingDomain(host)) {
       return `/${cleanSlug}/pay/${cleanToken}`;
     }
   }

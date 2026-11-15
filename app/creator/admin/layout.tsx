@@ -103,7 +103,7 @@ export default async function CreatorAdminLayout({
 
   // 3. Fail-Closed: Jika tidak ada token DAN tidak ada session cookie sama sekali
   if (!token && !candidateHandle) {
-    redirect('/login?redirectTo=/admin');
+    redirect('/creator/login?redirectTo=/admin');
   }
 
   let supabaseAdmin;
@@ -111,7 +111,7 @@ export default async function CreatorAdminLayout({
     supabaseAdmin = getSupabaseAdmin();
   } catch (err) {
     console.error('[Creator Admin Guard] Failed to initialize Supabase Admin:', err);
-    redirect('/login?redirectTo=/admin');
+    redirect('/creator/login?redirectTo=/admin');
   }
 
   // 4. Validasi Supabase Auth Token jika ada
