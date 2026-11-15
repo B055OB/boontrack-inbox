@@ -701,6 +701,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean.startsWith('creator.') ||
     subdomain === 'creator';
 
+  const isShopHost =
+    hostClean === 'shop.boontrack.com' ||
+    hostClean.startsWith('shop.') ||
+    subdomain === 'shop';
+
   // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
   // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
   // Non-dashboard hosts (such as boontrack.com/login, shop.boontrack.com/login) redirect 302 to canonical dashboard.
@@ -955,6 +960,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
+    // 0. Block direct /admin & /admin/* access on Studio host (Executive plane isolation)
+    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      const notFoundUrl = req.nextUrl.clone();
+      notFoundUrl.pathname = '/404-store-not-found';
+      return NextResponse.rewrite(notFoundUrl, { status: 404 });
+    }
+
     // Deteksi sesi login aktif Studio / Merchant (Host-only Studio session or signed merchant token)
     const hasStudioAuth = Boolean(
       req.cookies.get('__Host-bt_studio_session')?.value ||
@@ -1031,8 +1043,32 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.rewrite(url);
   }
 
-  // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
-  if (pathname.startsWith('/admin')) {
+  // ── 2. EXECUTIVE CONTROL PLANE (/admin) HOST-BASED LOCKDOWN (P0 SECURITY MANDATE) ──
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    // A. Creator Host: cleanly rewrites to /creator/admin (never reaches root /admin)
+    if (isCreatorHost) {
+      const adminSubpath = pathname === '/admin' ? '' : pathname.replace(/^\/admin/, '');
+      const url = req.nextUrl.clone();
+      url.pathname = `/creator/admin${adminSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // B. Public storefront, Studio, Custom Domain, or Storefront Subdomain:
+    // Block direct /admin access completely (Fail-closed 404 rewrite to /404-store-not-found)
+    const isCustomDomain = !isSystemOrBoonTrackHost(hostClean) && hostClean.length > 0;
+    const isPublicStorefrontSubdomain =
+      Boolean(subdomain) &&
+      !['admin', 'dashboard', 'preview', 'affiliate', 'api'].includes(subdomain!) &&
+      hostClean.endsWith('.boontrack.com') &&
+      !isPreviewOrStagingHost(hostClean);
+
+    if (isShopHost || isStudioHost || isCustomDomain || isPublicStorefrontSubdomain) {
+      const notFoundUrl = req.nextUrl.clone();
+      notFoundUrl.pathname = '/404-store-not-found';
+      return NextResponse.rewrite(notFoundUrl, { status: 404 });
+    }
+
+    // C. Authorized Administrative Hosts (admin.boontrack.com, preview/staging, localhost):
     const res = NextResponse.next();
     applySensitiveCacheHeaders(res);
     return res;
@@ -1151,11 +1187,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ARCHITECTURE.md § 63: shop.boontrack.com adalah rumah kanonikal storefront pembeli.
   // Terisolasi penuh: JANGAN PERNAH dialihkan ke root boontrack.com atau custom domain lookup.
   // ===========================================================================
-  const isShopHost =
-    hostClean === 'shop.boontrack.com' ||
-    hostClean.startsWith('shop.') ||
-    subdomain === 'shop';
-
   if (isShopHost) {
     const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
     const shopDeskMatch = pathname.match(/^\/([^/]+)\/desk(?:\/(.*))?$/);
@@ -1424,12 +1455,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return res;
   }
 
-  // ── 2b. /admin always resolves to Super Admin Panel ──
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    const res = NextResponse.next();
-    applySensitiveCacheHeaders(res);
-    return res;
-  }
 
   // ── 3. KHUSUS APP.BOONTRACK.COM (Retired Legacy Hub -> Method-Aware Gateway) ──
   if (hostClean === 'app.boontrack.com' || hostClean === 'app.localhost') {

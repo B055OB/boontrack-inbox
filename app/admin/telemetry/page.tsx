@@ -155,7 +155,7 @@ export default function SuperAdminTelemetryPage() {
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <input
               type="password"
-              placeholder="PIN Super Admin (default: 998877)"
+              placeholder="Masukkan PIN Super Admin"
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value)}
               className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
