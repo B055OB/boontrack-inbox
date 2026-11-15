@@ -5,7 +5,7 @@ import { getAuthenticatedWorkforceSession } from '@/workforce-web/lib/auth/sessi
 import { getSupabaseAdmin } from '@/workforce-web/lib/supabase';
 
 // Authoritative Wholesale Packages Allowlist (USD)
-export const DODO_WHOLESALE_ALLOWLIST: Record<number, { priceUsd: number; tier: string; productId?: string }> = {
+const DODO_WHOLESALE_ALLOWLIST: Record<number, { priceUsd: number; tier: string; productId?: string }> = {
   25: { priceUsd: 102, tier: 'Starter Fleet (25 Passes)' },
   50: { priceUsd: 190, tier: 'Growth Fleet (50 Passes)' },
   100: { priceUsd: 350, tier: 'Scale Fleet (100 Passes)' },

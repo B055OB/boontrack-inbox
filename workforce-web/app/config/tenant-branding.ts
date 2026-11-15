@@ -22,11 +22,11 @@ export interface TenantBrandingConfig {
 // Canonical Host Default (Pure BWM Global Identity)
 export const CANONICAL_BWM_BRANDING: TenantBrandingConfig = {
   id: "bwm_global_v1",
-  tenantId: "bwm_canonical",
-  brandName: "BWM",
-  portalTitle: "BWM Operations Portal",
-  pwaAppName: "BWM Mobile Field Portal",
-  pwaShortName: "BWM Field",
+  tenantId: "boontrack",
+  brandName: "BoonTrack Workforce",
+  portalTitle: "BoonTrack Workforce Operations Portal",
+  pwaAppName: "BoonTrack Workforce Field Portal",
+  pwaShortName: "BoonTrack Field",
   pwaThemeColor: "#0F172A",
   pwaBgColor: "#020617",
   logoLightUrl: "/logo.png",
@@ -40,6 +40,7 @@ export const CANONICAL_BWM_BRANDING: TenantBrandingConfig = {
 // In-Memory Tenant Branding Registry
 export const TENANT_BRANDING_REGISTRY: Record<string, TenantBrandingConfig> = {
   bwm_canonical: CANONICAL_BWM_BRANDING,
+  boontrack: CANONICAL_BWM_BRANDING,
   'workforce.boontrack.com': CANONICAL_BWM_BRANDING,
   apex: {
     id: "apex_security_v1",

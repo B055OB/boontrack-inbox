@@ -5,30 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 export default function WorkforceLoginPage() {
-  const [slug, setSlug] = useState('apex');
-  const [nik, setNik] = useState('partner@apexsecurity.com');
-  const [pin, setPin] = useState('998877');
-  const [activePreset, setActivePreset] = useState<'sarah' | 'marcus' | 'apex'>('apex');
+  const [slug, setSlug] = useState('boontrack');
+  const [nik, setNik] = useState('');
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  function handleQuickFill(preset: 'sarah' | 'marcus' | 'apex') {
-    setActivePreset(preset);
-    setError(null);
-    setSlug('apex');
-
-    if (preset === 'sarah') {
-      setNik('sarah.jenkins@apexsecurity.com');
-      setPin('123456');
-    } else if (preset === 'marcus') {
-      setNik('marcus.vance@apexsecurity.com');
-      setPin('901105');
-    } else if (preset === 'apex') {
-      setNik('partner@apexsecurity.com');
-      setPin('998877');
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -102,96 +84,12 @@ export default function WorkforceLoginPage() {
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-bold mb-2">
               <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-              <span>Apex Security Services Ltd &bull; Sovereign Network</span>
+              <span>BoonTrack Workforce &bull; Sovereign Network</span>
             </div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">Workforce Operations Portal</h2>
             <p className="text-xs text-slate-500 mt-1 font-medium">
               Field Personnel, Operations Supervisors &amp; Main Agent Access
             </p>
-          </div>
-
-          {/* Quick Fill Helper Presets */}
-          <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider">
-                STAGING SIMULATION ACCESS
-              </span>
-              <span className="text-[10px] text-blue-600 font-semibold">1-Click Auto-Fill</span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              {/* Preset 1: Field Officer */}
-              <button
-                type="button"
-                onClick={() => handleQuickFill('sarah')}
-                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
-                  activePreset === 'sarah'
-                    ? 'bg-blue-50/80 border-blue-500 text-blue-950 font-semibold shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Sarah Jenkins - Senior Field Officer
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    sarah.jenkins@apexsecurity.com &bull; Badge #OP-4821
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
-                  /portal
-                </span>
-              </button>
-
-              {/* Preset 2: Branch Supervisor */}
-              <button
-                type="button"
-                onClick={() => handleQuickFill('marcus')}
-                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
-                  activePreset === 'marcus'
-                    ? 'bg-blue-50/80 border-blue-500 text-blue-950 font-semibold shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    Marcus Vance - Facility Operations Lead
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    marcus.vance@apexsecurity.com &bull; Badge #SUP-1092
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-bold">
-                  /ops
-                </span>
-              </button>
-
-              {/* Preset 3: Main Agent Command Center */}
-              <button
-                type="button"
-                onClick={() => handleQuickFill('apex')}
-                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
-                  activePreset === 'apex'
-                    ? 'bg-blue-50/80 border-blue-500 text-blue-950 font-semibold shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                    Apex Sovereign Partner - Main Agent Command Center
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Main Agent: partner@apexsecurity.com (Apex Security Services Ltd)
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold">
-                  /dashboard
-                </span>
-              </button>
-            </div>
           </div>
 
           {error && (
@@ -217,7 +115,7 @@ export default function WorkforceLoginPage() {
                 type="text"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="e.g. apex"
+                placeholder="e.g. boontrack"
                 disabled={loading}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition disabled:opacity-50 font-medium"
               />
@@ -231,7 +129,7 @@ export default function WorkforceLoginPage() {
                 type="text"
                 value={nik}
                 onChange={(e) => setNik(e.target.value)}
-                placeholder="e.g. sarah.jenkins@apexsecurity.com or partner@apexsecurity.com"
+                placeholder="e.g. officer@boontrack.com or NIK"
                 disabled={loading}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition disabled:opacity-50 font-mono"
               />

@@ -201,10 +201,10 @@ export default function WorkforceOperationsPortal({
   const [supervisorBranch, setSupervisorBranch] = useState('');
   const [supervisorSite, setSupervisorSite] = useState('');
 
-  // ROLE 3: MASTER RESELLER STATE (Apex Security Services Ltd)
-  const [resellerName, setResellerName] = useState('Apex Security Operations');
-  const [resellerEmail, setResellerEmail] = useState('partner@apexsecurity.com');
-  const [resellerAgency, setResellerAgency] = useState('Apex Security Services Ltd');
+  // ROLE 3: MASTER RESELLER STATE (BoonTrack Workforce Management)
+  const [resellerName, setResellerName] = useState('BoonTrack Workforce Operations');
+  const [resellerEmail, setResellerEmail] = useState('admin@boontrack.com');
+  const [resellerAgency, setResellerAgency] = useState('BoonTrack Workforce Management');
 
   // Initial tab preference subordinated strictly to server role
   const [activeNavTab, setActiveNavTab] = useState<string>(
@@ -4023,7 +4023,7 @@ export default function WorkforceOperationsPortal({
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs font-mono">
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Audit Scope:</span>
-                <span className="text-white font-bold">Apex Security Services Ltd (All Sites)</span>
+                <span className="text-white font-bold">BoonTrack Workforce Management (All Sites)</span>
               </div>
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Total Checkpoint Rounds:</span>

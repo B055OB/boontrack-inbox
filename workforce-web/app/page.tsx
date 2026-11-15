@@ -440,7 +440,7 @@ export default function BwmModernLandingPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Agency Client A</div>
-                <div className="text-sm font-bold text-slate-900">Apex Commercial Guarding</div>
+                <div className="text-sm font-bold text-slate-900">Enterprise Facility Guarding</div>
                 <div className="text-xs text-slate-500">London City &bull; 8 Branches</div>
               </div>
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
@@ -783,16 +783,16 @@ export default function BwmModernLandingPage() {
               Live Sovereign Brands Powered by BWM Engine
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Showcase 1: Apex */}
+              {/* Showcase 1: BoonTrack Partner */}
               <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white font-extrabold flex items-center justify-center text-sm">
-                      A
+                      B
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-slate-900">Apex Security Services Ltd</div>
-                      <div className="text-[10px] text-emerald-600 font-mono">apex.workforce.boontrack.com</div>
+                      <div className="text-sm font-bold text-slate-900">BoonTrack Partner Operations</div>
+                      <div className="text-[10px] text-emerald-600 font-mono">partner.workforce.boontrack.com</div>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1035,7 +1035,7 @@ export default function BwmModernLandingPage() {
                     type="text"
                     value={demoForm.companyName}
                     onChange={(e) => setDemoForm({ ...demoForm, companyName: e.target.value })}
-                    placeholder="e.g. Apex Security Services Ltd"
+                    placeholder="e.g. BoonTrack Enterprise / Partner Security Ltd"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>

@@ -39,9 +39,9 @@ export class DomainRegistryService {
   private seedDefaultDomains() {
     const defaults: VerifiedDomain[] = [
       {
-        tenantId: 'tenant_satya_001',
+        tenantId: 'boontrack',
         hostname: 'workforce.boontrack.com',
-        brandName: 'BWM Workforce Management OS',
+        brandName: 'BoonTrack Workforce Management OS',
         logoUrl: '/icons/workforce-192.png',
         primaryColor: '#1e293b',
         accentColor: '#2563eb',
