@@ -67,9 +67,9 @@ export default function CreatorCleanLandingPage() {
     e.preventDefault();
     const cleanHandle = handle.replace(/^@+/, '').trim().toLowerCase();
     if (cleanHandle) {
-      router.push(`/register?handle=${encodeURIComponent(cleanHandle)}&ref=creator_claim`);
+      router.push(`/creator/register?handle=${encodeURIComponent(cleanHandle)}&ref=creator_claim`);
     } else {
-      router.push('/register?ref=creator_landing');
+      router.push('/creator/register?ref=creator_landing');
     }
   };
 
@@ -126,7 +126,7 @@ export default function CreatorCleanLandingPage() {
               Masuk
             </Link>
             <Link
-              href="/register"
+              href="/creator/register"
               className="px-5 py-2.5 rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-bold text-xs sm:text-sm tracking-wide shadow-md shadow-orange-500/25 hover:shadow-orange-500/40 transition-all active:scale-95 flex items-center gap-1.5"
             >
               <span>Mulai Gratis</span>
@@ -508,7 +508,7 @@ export default function CreatorCleanLandingPage() {
 
           <div className="relative z-10 flex flex-col sm:flex-row gap-3 w-full md:w-auto">
             <Link
-              href="/register"
+              href="/creator/register"
               className="px-8 py-4 rounded-full bg-white text-slate-900 hover:bg-slate-100 font-extrabold text-sm transition-all shadow-xl text-center active:scale-95 whitespace-nowrap"
             >
               Buat Bio Link Sekarang

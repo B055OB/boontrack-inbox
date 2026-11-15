@@ -296,7 +296,7 @@ function CreatorLoginFormContent() {
           <div className="pt-4 border-t border-slate-100 flex flex-col items-center gap-2 text-xs text-slate-500 text-center">
             <p>
               Belum punya bio link kreator?{' '}
-              <Link href="/register" className="font-bold text-orange-600 hover:underline">
+              <Link href="/creator/register" className="font-bold text-orange-600 hover:underline">
                 Daftar Gratis
               </Link>
             </p>

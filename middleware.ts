@@ -851,13 +851,18 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // SUBDOMAIN CREATOR (creator.boontrack.com) - ARSITEKTUR TERISOLASI
   // ===========================================================================
   if (isCreatorHost) {
-    // 1. Host-Aware 301 Legacy Redirect: /ugc-studio dialihkan ke studio.boontrack.com
+    // 1. Host-Aware 301 Legacy Redirect: /ugc-studio dialihkan ke studio
     if (
       pathname === '/ugc-studio' ||
       pathname.startsWith('/ugc-studio/') ||
       pathname === '/creator/ugc-studio' ||
       pathname.startsWith('/creator/ugc-studio/')
     ) {
+      if (isPreviewOrStagingHost(hostClean) || hostClean === 'localhost' || hostClean.endsWith('.localhost')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/studio/desk/ugc-studio';
+        return NextResponse.rewrite(url);
+      }
       const redirectPath = pathname.startsWith('/creator/ugc-studio')
         ? pathname.replace(/^\/creator/, '')
         : pathname;
@@ -1343,6 +1348,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (
     pathname === '/app' ||
     pathname.startsWith('/app/') ||
+    pathname === '/studio' ||
+    pathname.startsWith('/studio/') ||
+    pathname === '/desk' ||
+    pathname.startsWith('/desk/') ||
+    pathname === '/ugc-studio' ||
+    pathname.startsWith('/ugc-studio/') ||
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
     pathname === '/affiliate' ||
@@ -1400,6 +1411,8 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       pathname.startsWith('/checkout') ||
       pathname.startsWith('/admin') ||
       pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/desk') ||
+      pathname.startsWith('/studio') ||
       pathname.startsWith('/manager') ||
       pathname.startsWith('/login') ||
       pathname.startsWith('/auth') ||

@@ -272,4 +272,31 @@ describe('INBOX-PREVIEW-ROUTE-01: Preview & Staging Origin-Preserving Routing', 
       expect(getStorefrontBaseUrl()).toBe(`https://${PREVIEW_HOST}`);
     });
   });
+
+  describe('6. Module E: Studio & UGC-Studio Origin Preservation on Preview', () => {
+    it('Preview: Visiting /creator/ugc-studio does NOT redirect to production studio.boontrack.com', async () => {
+      const req = new NextRequest(`https://${PREVIEW_HOST}/creator/ugc-studio`, {
+        headers: {
+          host: PREVIEW_HOST,
+        },
+      });
+
+      const res = await middleware(req);
+      // On preview, must NOT redirect to https://studio.boontrack.com
+      const location = res.headers.get('location');
+      expect(location).toBeNull();
+    });
+
+    it('Preview: Visiting /studio passes through on active preview origin', async () => {
+      const req = new NextRequest(`https://${PREVIEW_HOST}/studio`, {
+        headers: {
+          host: PREVIEW_HOST,
+        },
+      });
+
+      const res = await middleware(req);
+      const location = res.headers.get('location');
+      expect(location).toBeNull();
+    });
+  });
 });

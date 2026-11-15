@@ -567,7 +567,7 @@ export default function SettingsTab({
           />
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] text-muted-foreground truncate">
-              URL Toko: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{customDomain ? customDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}</span>
+              URL Toko: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{getStorefrontUrl(tenantSlug, customDomain).replace(/^https?:\/\//i, '').replace(/\/+$/, '')}</span>
             </p>
             <a
               href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(getStorefrontUrl(tenantSlug, customDomain))}`}

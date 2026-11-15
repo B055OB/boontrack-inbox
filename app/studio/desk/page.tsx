@@ -298,7 +298,8 @@ export default function StudioDeskPage() {
 
   // ── UNATHENTICATED GATEWAY STATE (ELEGANT ACTIVATION CARD) ─────────
   if (!hasValidSession) {
-    const registerUrl = '/register';
+    const isStudioOrigin = typeof window !== 'undefined' && (window.location.hostname === 'studio.boontrack.com' || window.location.hostname.startsWith('studio.'));
+    const registerUrl = isStudioOrigin ? '/register' : '/studio/register';
 
     return (
       <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-hidden flex flex-col justify-between">

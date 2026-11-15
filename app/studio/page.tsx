@@ -752,7 +752,7 @@ export default function StudioLandingPage() {
             </div>
 
             <Link
-              href="/register"
+              href="/studio/register"
               className="px-5 py-2.5 rounded-xl bg-white text-slate-950 hover:bg-zinc-100 font-black text-xs shrink-0 shadow-md transition"
             >
               Coba Gratis 1 Video →
@@ -821,7 +821,7 @@ export default function StudioLandingPage() {
                   </div>
 
                   <Link
-                    href={`/register?plan=${pkg.id}`}
+                    href={`/studio/register?plan=${pkg.id}`}
                     className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs text-center border border-white/10 transition block"
                   >
                     Beli Paket Ketengan
@@ -876,7 +876,7 @@ export default function StudioLandingPage() {
                   </div>
 
                   <Link
-                    href={`/register?plan=${pkg.id}`}
+                    href={`/studio/register?plan=${pkg.id}`}
                     className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs text-center border border-white/10 transition block"
                   >
                     Beli Paket Starter
@@ -939,7 +939,7 @@ export default function StudioLandingPage() {
                   </div>
 
                   <Link
-                    href={`/register?plan=${pkg.id}`}
+                    href={`/studio/register?plan=${pkg.id}`}
                     className="w-full py-3.5 rounded-xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-xs text-center shadow-lg shadow-fuchsia-600/30 transition block active:scale-98"
                   >
                     Pilih Paket Creator (Rekomendasi)
