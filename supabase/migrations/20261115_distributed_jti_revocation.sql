@@ -54,6 +54,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.revoke_host_session_jti(TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.revoke_host_session_jti(TEXT, TEXT, TIMESTAMPTZ) TO service_role;
 
 -- 3. Public Read Access Policy for Direct PostgREST Lookup (Zero PII in studio_revoked_tokens)
@@ -81,6 +82,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.prune_expired_revoked_tokens() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.prune_expired_revoked_tokens() TO service_role;
 
 COMMENT ON FUNCTION public.is_jti_revoked IS
