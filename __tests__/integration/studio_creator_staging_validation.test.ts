@@ -45,6 +45,7 @@ import {
 } from '@/lib/creator/render-engine';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
 import * as merchantSessionModule from '@/lib/auth/merchant-session';
+import { signHostSessionToken } from '@/lib/auth/host-session';
 import * as supabaseClientModule from '@/lib/supabaseClient';
 
 describe('Studio & Creator Staging Readiness Integration Suite', () => {
@@ -153,15 +154,18 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
     });
 
     it('rewrites /desk to /studio/desk on studio.boontrack.com when authenticated', async () => {
-      const validToken = merchantSessionModule.signMerchantSessionToken({
+      const validToken = signHostSessionToken({
+        product: 'studio',
+        userId: 'usr-studio-staging',
+        tenantId: TEST_TENANT_ID,
         tenantSlug: TEST_TENANT_SLUG,
-        role: 'OWNER',
+        role: 'STUDIO_PARTICIPANT',
       });
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: {
           host: 'studio.boontrack.com',
           'x-forwarded-host': 'studio.boontrack.com',
-          cookie: `bt_merchant_token=${validToken}`,
+          cookie: `bt_studio_session=${validToken}`,
         },
       });
 
