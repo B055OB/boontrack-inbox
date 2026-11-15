@@ -15,11 +15,18 @@ import crypto from 'crypto';
 import {
   validateHostSessionClaims,
   revokeHostSessionEdge,
+  revokeHostSessionEdgeSync,
   resetRevokedJtiCacheEdge,
   isJtiRevokedEdge,
   CLOCK_SKEW_TOLERANCE_SECONDS,
   MAX_TOKEN_LIFETIME_SECONDS,
 } from './host-session-edge';
+import {
+  isJtiRevokedDistributed,
+  revokeHostSessionDistributed,
+  resetDistributedRevocationStore,
+  clearLocalJtiCache,
+} from './jti-revocation-store';
 
 export type AuthProduct = 'studio' | 'creator';
 
@@ -241,7 +248,7 @@ export async function verifyHostSessionToken(
 
   const payload = claimsResult.payload;
 
-  // 5. Product-Scoped Revocation List Check
+  // 5. Distributed JTI Revocation Verification (Node Runtime)
   const revocationKey = `${product}:${payload.jti}`;
   if (
     payload.jti &&
@@ -249,6 +256,15 @@ export async function verifyHostSessionToken(
       revokedJtiCache.has(payload.jti) ||
       isJtiRevokedEdge(payload.jti, product))
   ) {
+    return { valid: false, error: 'TOKEN_REVOKED' };
+  }
+
+  // Authoritatively query distributed revocation store across Serverless Node instances
+  const distributedCheck = await isJtiRevokedDistributed(payload.jti, product, payload.exp);
+  if (distributedCheck.error) {
+    return { valid: false, error: distributedCheck.error };
+  }
+  if (distributedCheck.revoked) {
     return { valid: false, error: 'TOKEN_REVOKED' };
   }
 
@@ -273,22 +289,47 @@ export function getHostSessionCookieOptions(product: AuthProduct, isSecure?: boo
 }
 
 /**
- * Records a session JTI as revoked (Product-Scoped)
+ * Records a session JTI as revoked (Product-Scoped & Distributed)
  */
-export async function revokeHostSession(jti: string, expSeconds: number, product?: AuthProduct) {
+export async function revokeHostSession(
+  jti: string,
+  expSeconds: number,
+  product?: AuthProduct,
+  meta?: { tenantId?: string; userId?: string }
+) {
   if (product) {
     revokedJtiCache.set(`${product}:${jti}`, expSeconds);
   } else {
     revokedJtiCache.set(jti, expSeconds);
   }
-  revokeHostSessionEdge(jti, expSeconds, product);
+  // Synchronously update local Edge memory cache
+  revokeHostSessionEdgeSync(jti, expSeconds, product);
+
+  // Authoritatively write through to distributed revocation store
+  await revokeHostSessionDistributed({
+    jti,
+    expSeconds,
+    product: product || 'studio',
+    tenantId: meta?.tenantId,
+    userId: meta?.userId,
+  });
 }
 
 /**
- * Resets the revoked JTI cache (used for test teardown)
+ * Clears ONLY local memory caches across Node and Edge
+ * (simulates fresh container / PoP memory) without touching shared persistent store.
+ */
+export function clearLocalSessionCache() {
+  revokedJtiCache.clear();
+  resetRevokedJtiCacheEdge();
+}
+
+/**
+ * Resets the revoked JTI cache and underlying store (used for test teardown)
  */
 export function resetRevokedJtiCache() {
   revokedJtiCache.clear();
   resetRevokedJtiCacheEdge();
+  resetDistributedRevocationStore();
 }
 
