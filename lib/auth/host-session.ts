@@ -12,6 +12,14 @@
  */
 
 import crypto from 'crypto';
+import {
+  validateHostSessionClaims,
+  revokeHostSessionEdge,
+  resetRevokedJtiCacheEdge,
+  isJtiRevokedEdge,
+  CLOCK_SKEW_TOLERANCE_SECONDS,
+  MAX_TOKEN_LIFETIME_SECONDS,
+} from './host-session-edge';
 
 export type AuthProduct = 'studio' | 'creator';
 
@@ -169,9 +177,33 @@ export async function verifyHostSessionToken(
   }
 
   const [encodedHeader, encodedPayload, signature] = parts;
+  if (!encodedHeader || !encodedPayload) {
+    return { valid: false, error: 'TOKEN_MALFORMED' };
+  }
+
+  // 1. Decode and Validate Header (Strict Algorithm Pinning: HS256 only)
+  try {
+    const header = JSON.parse(base64UrlDecode(encodedHeader));
+    if (!header || typeof header !== 'object') {
+      return { valid: false, error: 'HEADER_MALFORMED' };
+    }
+    if (header.alg !== 'HS256') {
+      return { valid: false, error: 'ALGORITHM_UNSUPPORTED' };
+    }
+    if (header.typ !== 'JWT') {
+      return { valid: false, error: 'HEADER_INVALID' };
+    }
+  } catch {
+    return { valid: false, error: 'HEADER_MALFORMED' };
+  }
+
+  if (!signature) {
+    return { valid: false, error: 'TOKEN_MALFORMED' };
+  }
+
   const config = getProductAuthConfig(product);
 
-  // 1. Verify Signature
+  // 2. Verify Signature
   const dataToSign = `${encodedHeader}.${encodedPayload}`;
   const expectedSig = crypto
     .createHmac('sha256', config.secret)
@@ -191,48 +223,32 @@ export async function verifyHostSessionToken(
     return { valid: false, error: 'SIGNATURE_INVALID' };
   }
 
-  // 2. Parse Payload
-  let payload: HostSessionPayload;
+  // 3. Parse and Validate Payload
+  let rawPayload: any;
   try {
-    payload = JSON.parse(base64UrlDecode(encodedPayload));
+    rawPayload = JSON.parse(base64UrlDecode(encodedPayload));
   } catch {
     return { valid: false, error: 'PAYLOAD_INVALID_JSON' };
   }
 
   const now = Math.floor(Date.now() / 1000);
 
-  // 3. Claims Validation
-  if (payload.iss !== config.issuer) {
-    return { valid: false, error: 'ISSUER_MISMATCH' };
+  // 4. Strict Canonical Claims Validation (Shared parity with Edge Runtime)
+  const claimsResult = validateHostSessionClaims(rawPayload, config, minVersion, now);
+  if (!claimsResult.valid || !claimsResult.payload) {
+    return claimsResult;
   }
 
-  if (payload.aud !== config.audience) {
-    return { valid: false, error: 'AUDIENCE_MISMATCH' };
-  }
+  const payload = claimsResult.payload;
 
-  if (!payload.sub || typeof payload.sub !== 'string') {
-    return { valid: false, error: 'SUBJECT_MISSING' };
-  }
-
-  if (!payload.tid || typeof payload.tid !== 'string') {
-    return { valid: false, error: 'TENANT_ID_MISSING' };
-  }
-
-  if (payload.exp && payload.exp <= now) {
-    return { valid: false, error: 'TOKEN_EXPIRED' };
-  }
-
-  if (payload.nbf && payload.nbf > now) {
-    return { valid: false, error: 'TOKEN_NOT_ACTIVE' };
-  }
-
-  if (payload.ver && payload.ver < minVersion) {
-    return { valid: false, error: 'SESSION_VERSION_SUPERSEDED' };
-  }
-
-  // 4. Product-Scoped Revocation List Check
+  // 5. Product-Scoped Revocation List Check
   const revocationKey = `${product}:${payload.jti}`;
-  if (payload.jti && (revokedJtiCache.has(revocationKey) || revokedJtiCache.has(payload.jti))) {
+  if (
+    payload.jti &&
+    (revokedJtiCache.has(revocationKey) ||
+      revokedJtiCache.has(payload.jti) ||
+      isJtiRevokedEdge(payload.jti, product))
+  ) {
     return { valid: false, error: 'TOKEN_REVOKED' };
   }
 
@@ -265,6 +281,7 @@ export async function revokeHostSession(jti: string, expSeconds: number, product
   } else {
     revokedJtiCache.set(jti, expSeconds);
   }
+  revokeHostSessionEdge(jti, expSeconds, product);
 }
 
 /**
@@ -272,5 +289,6 @@ export async function revokeHostSession(jti: string, expSeconds: number, product
  */
 export function resetRevokedJtiCache() {
   revokedJtiCache.clear();
+  resetRevokedJtiCacheEdge();
 }
 

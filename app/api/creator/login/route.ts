@@ -1,8 +1,57 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { verifyPassword } from '@/lib/auth/password-hasher';
+import {
+  signHostSessionToken,
+  getProductAuthConfig,
+  getHostSessionCookieOptions,
+} from '@/lib/auth/host-session';
 
 export const runtime = 'nodejs';
+
+/**
+ * Issues signed Creator host-session cookie adhering to RFC 6265bis host-only semantics.
+ * Eliminates plaintext authentication cookies and prevents merchant privilege leakage.
+ */
+function applyCreatorSessionCookie(
+  res: NextResponse,
+  params: {
+    userId: string;
+    tenantId: string;
+    tenantSlug: string;
+    role?: string;
+  },
+  isSecure?: boolean
+) {
+  const signedToken = signHostSessionToken({
+    product: 'creator',
+    userId: params.userId,
+    tenantId: params.tenantId,
+    tenantSlug: params.tenantSlug,
+    role: params.role || 'CREATOR_OWNER',
+  });
+
+  const config = getProductAuthConfig('creator');
+  const cookieOptions = getHostSessionCookieOptions('creator', isSecure);
+
+  // Set authoritative signed cookie (__Host-bt_creator_session in prod, bt_creator_session in dev)
+  res.cookies.set(config.cookieName, signedToken, cookieOptions);
+
+  // Fallback for local non-https testing if production host prefix is configured
+  if (config.cookieName !== 'bt_creator_session' && !isSecure) {
+    res.cookies.set('bt_creator_session', signedToken, {
+      ...cookieOptions,
+      secure: false,
+    });
+  }
+
+  // Non-authoritative display cookie only (for client-side UI greeting / handle display)
+  res.cookies.set('creator_handle', params.tenantSlug, {
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60,
+    sameSite: 'lax',
+  });
+}
 
 /**
  * POST /api/creator/login
@@ -13,6 +62,7 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request) {
   try {
+    const isSecure = req.headers.get('x-forwarded-proto') === 'https' || process.env.NODE_ENV === 'production';
     const body = await req.json().catch(() => ({}));
     const { identifier, pin, password, email } = body;
 
@@ -81,11 +131,16 @@ export async function POST(req: Request) {
               },
             });
 
-            res.cookies.set('creator_handle', tenantByEmail.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-            res.cookies.set('creator_session', tenantByEmail.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-            res.cookies.set('merchant_store', tenantByEmail.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-            res.cookies.set('merchant_session', tenantByEmail.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-            res.cookies.set('bt_tenant', tenantByEmail.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+            applyCreatorSessionCookie(
+              res,
+              {
+                userId: tenantByEmail.id,
+                tenantId: tenantByEmail.id,
+                tenantSlug: tenantByEmail.slug,
+                role: 'CREATOR_OWNER',
+              },
+              isSecure
+            );
             return res;
           }
         }
@@ -103,11 +158,12 @@ export async function POST(req: Request) {
       // Cek apakah ada creator_profile atau tenant yang terhubung
       const { data: creatorProf } = await supabaseAdmin
         .from('creator_profiles')
-        .select('handle, display_name')
+        .select('handle, display_name, id, tenant_id')
         .or(`tenant_id.eq.${user.id},handle.eq.${user.email}`)
         .maybeSingle();
 
       const resolvedHandle = creatorProf?.handle || user.email?.split('@')[0] || 'creator';
+      const resolvedTenantId = creatorProf?.tenant_id || user.id;
 
       const res = NextResponse.json({
         success: true,
@@ -130,8 +186,16 @@ export async function POST(req: Request) {
           httpOnly: true,
         });
       }
-      res.cookies.set('creator_handle', resolvedHandle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('creator_session', resolvedHandle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+      applyCreatorSessionCookie(
+        res,
+        {
+          userId: user.id,
+          tenantId: resolvedTenantId,
+          tenantSlug: resolvedHandle,
+          role: isAdmin ? 'ADMIN' : 'CREATOR_OWNER',
+        },
+        isSecure
+      );
 
       return res;
     }
@@ -181,11 +245,16 @@ export async function POST(req: Request) {
         },
       });
 
-      res.cookies.set('creator_handle', profile.handle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('creator_session', profile.handle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('merchant_store', profile.handle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('merchant_session', profile.handle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('bt_tenant', profile.handle, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+      applyCreatorSessionCookie(
+        res,
+        {
+          userId: profile.id || profile.tenant_id || profile.handle,
+          tenantId: profile.tenant_id || profile.id || profile.handle,
+          tenantSlug: profile.handle,
+          role: 'CREATOR_OWNER',
+        },
+        isSecure
+      );
 
       return res;
     }
@@ -229,11 +298,16 @@ export async function POST(req: Request) {
         },
       });
 
-      res.cookies.set('creator_handle', tenant.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('creator_session', tenant.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('merchant_store', tenant.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('merchant_session', tenant.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-      res.cookies.set('bt_tenant', tenant.slug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+      applyCreatorSessionCookie(
+        res,
+        {
+          userId: tenant.id,
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          role: 'CREATOR_OWNER',
+        },
+        isSecure
+      );
 
       return res;
     }

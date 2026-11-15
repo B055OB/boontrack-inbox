@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldAlert, Lock, ArrowLeft } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyHostSessionToken } from '@/lib/auth/host-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,13 @@ export default async function CreatorAdminLayout({
 }) {
   const cookieStore = await cookies();
 
-  // 1. Ekstrak Supabase Auth Token dari Cookies
+  // 1. Ekstrak Authoritative Signed Creator Host Session Token
+  const creatorSessionToken =
+    cookieStore.get('__Host-bt_creator_session')?.value ||
+    cookieStore.get('bt_creator_session')?.value ||
+    '';
+
+  // 2. Ekstrak Supabase Auth Token (hanya untuk SSO platform admin fallback)
   let authToken = cookieStore.get('sb-access-token')?.value || '';
   if (!authToken) {
     for (const c of cookieStore.getAll()) {
@@ -75,37 +82,35 @@ export default async function CreatorAdminLayout({
     }
   }
 
-  const customToken =
-    cookieStore.get('bt_creator_token')?.value ||
-    cookieStore.get('creator_token')?.value ||
-    cookieStore.get('bt_manager_token')?.value ||
-    '';
-
-  const token = (authToken || customToken).trim();
-
-  // 2. Ekstrak Creator Session Cookies
-  const cleanVal = (val?: string) => {
-    if (!val) return '';
-    try {
-      return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-    } catch {
-      return val.toLowerCase().trim();
-    }
-  };
-
-  const creatorHandle = cleanVal(cookieStore.get('creator_handle')?.value);
-  const creatorSession = cleanVal(cookieStore.get('creator_session')?.value);
-  const merchantStore = cleanVal(cookieStore.get('merchant_store')?.value);
-  const merchantSession = cleanVal(cookieStore.get('merchant_session')?.value);
-  const btTenant = cleanVal(cookieStore.get('bt_tenant')?.value);
-
-  const candidateHandle = creatorHandle || creatorSession || merchantStore || merchantSession || btTenant;
-
-  // 3. Fail-Closed: Jika tidak ada token DAN tidak ada session cookie sama sekali
-  if (!token && !candidateHandle) {
+  // 3. Fail-Closed: Tolak jika tidak ada signed token dan tidak ada Supabase auth token
+  // DILARANG KERAS mempercayai plaintext cookies (creator_handle, creator_session, merchant_store, dll)
+  if (!creatorSessionToken && !authToken) {
     redirect('/login?redirectTo=/admin');
   }
 
+  // 4. Validasi Authoritative Signed Creator Session Token
+  if (creatorSessionToken) {
+    const verification = await verifyHostSessionToken(creatorSessionToken, 'creator');
+    if (verification.valid && verification.payload) {
+      const payload = verification.payload;
+      const roleUpper = String(payload.role || '').toUpperCase();
+      const allowedRoles = ['CREATOR_OWNER', 'CREATOR_MEMBER', 'ADMIN', 'SUPERADMIN'];
+
+      if (allowedRoles.includes(roleUpper)) {
+        return <>{children}</>;
+      }
+
+      // Role tidak diizinkan di Creator Workspace
+      return <ForbiddenAccessView userEmail={payload.sub} role={payload.role} />;
+    }
+
+    // Token tidak valid, expired, atau di-revoke -> fail-closed jika tidak ada fallback auth
+    if (!authToken) {
+      redirect('/login?redirectTo=/admin');
+    }
+  }
+
+  // 5. Validasi Fallback: Platform Admin via Supabase Auth
   let supabaseAdmin;
   try {
     supabaseAdmin = getSupabaseAdmin();
@@ -114,9 +119,8 @@ export default async function CreatorAdminLayout({
     redirect('/login?redirectTo=/admin');
   }
 
-  // 4. Validasi Supabase Auth Token jika ada
-  if (token) {
-    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  if (authToken) {
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(authToken);
     if (!authError && authData?.user) {
       const user = authData.user;
       const appRole = String(user.app_metadata?.role || user.user_metadata?.role || '').toUpperCase();
@@ -163,34 +167,6 @@ export default async function CreatorAdminLayout({
     }
   }
 
-  // 5. Validasi Creator Handle Session Cookie terhadap Database (SSOT)
-  if (candidateHandle) {
-    const baseHandle = candidateHandle.replace(/_+$/, '');
-
-    // Cek di creator_profiles
-    const { data: profile } = await supabaseAdmin
-      .from('creator_profiles')
-      .select('id, handle, status')
-      .or(`handle.eq.${candidateHandle},handle.eq.${baseHandle},tenant_id.eq.${candidateHandle}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (profile) {
-      return <>{children}</>;
-    }
-
-    // Cek di tenants
-    const { data: tenant } = await supabaseAdmin
-      .from('tenants')
-      .select('id, slug, status, category, tenant_kind')
-      .eq('slug', candidateHandle)
-      .maybeSingle();
-
-    if (tenant && tenant.status !== 'inactive') {
-      return <>{children}</>;
-    }
-  }
-
-  // Session tidak valid atau tidak cocok dengan database
+  // Sesi tidak valid atau tidak lolos verifikasi
   redirect('/login?redirectTo=/admin');
 }

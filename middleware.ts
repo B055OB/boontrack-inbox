@@ -695,11 +695,16 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean.startsWith('studio.') ||
     subdomain === 'studio';
 
+  const isCreatorHost =
+    hostClean === 'creator.boontrack.com' ||
+    hostClean.startsWith('creator.') ||
+    subdomain === 'creator';
+
   // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
   // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
   // Non-dashboard hosts (such as boontrack.com/login, shop.boontrack.com/login) redirect 302 to canonical dashboard.
   if (pathname === '/login' || pathname.startsWith('/login/')) {
-    if (!isDashboardDomain && !isStudioHost) {
+    if (!isDashboardDomain && !isStudioHost && !isCreatorHost) {
       const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
       const targetBase = isLocal
         ? `${req.nextUrl.protocol}//dashboard.localhost${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`
@@ -819,11 +824,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.next();
   }
 
-  const isCreatorHost =
-    hostClean === 'creator.boontrack.com' ||
-    hostClean.startsWith('creator.') ||
-    subdomain === 'creator';
-
   // ===========================================================================
   // 1. CANONICAL ENFORCEMENT: SEMUA ROUTE /@handle WAJIB KE creator.boontrack.com
   // ===========================================================================
@@ -935,11 +935,20 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.rewrite(url);
     }
 
-    // 6. Direct /creator/* pass-through if already rewritten
-    if (
-      pathname.startsWith('/creator/admin') ||
-      pathname.startsWith('/creator/register')
-    ) {
+    // 6. Direct /creator/admin on Creator domain -> require valid creator session or rewrite to login
+    if (pathname === '/creator/admin' || pathname.startsWith('/creator/admin/')) {
+      const creatorToken = extractHostSessionToken(req, 'creator');
+      const creatorVerified = creatorToken ? await verifyHostSessionTokenEdge(creatorToken, 'creator') : null;
+      const isCreatorAuth = Boolean(creatorVerified && creatorVerified.valid && creatorVerified.payload);
+
+      if (!isCreatorAuth) {
+        url.pathname = '/creator/login';
+        return NextResponse.rewrite(url);
+      }
+      return NextResponse.next();
+    }
+
+    if (pathname.startsWith('/creator/register')) {
       return NextResponse.next();
     }
 
@@ -1057,6 +1066,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     // 6. Sub-path /[path] -> rewrite ke /studio/[path]
     url.pathname = `/studio${pathname}`;
     return NextResponse.rewrite(url);
+  }
+
+  // ── DIRECT CREATOR ADMIN ACCESS ON NON-CREATOR HOSTS ──
+  // Enforces canonical creator domain and cryptographic creator token verification
+  if (pathname === '/creator/admin' || pathname.startsWith('/creator/admin/')) {
+    const creatorToken = extractHostSessionToken(req, 'creator');
+    const creatorVerified = creatorToken ? await verifyHostSessionTokenEdge(creatorToken, 'creator') : null;
+    const isCreatorAuth = Boolean(creatorVerified && creatorVerified.valid && creatorVerified.payload);
+
+    const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
+    const targetHost = isLocal
+      ? `creator.localhost${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`
+      : 'creator.boontrack.com';
+    const targetBase = `${req.nextUrl.protocol}//${targetHost}`;
+
+    if (!isCreatorAuth) {
+      return NextResponse.redirect(new URL(`${targetBase}/login`, req.url), 302);
+    } else {
+      const adminSubpath = pathname === '/creator/admin' ? '' : pathname.replace(/^\/creator\/admin/, '');
+      return NextResponse.redirect(new URL(`${targetBase}/admin${adminSubpath}`, req.url), 302);
+    }
   }
 
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV

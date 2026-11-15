@@ -39,6 +39,152 @@ export interface VerifyHostSessionResult {
   error?: string;
 }
 
+export const CLOCK_SKEW_TOLERANCE_SECONDS = 5;
+export const MAX_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60; // 30 days maximum allowed lifetime
+
+// In-memory revocation cache for Edge runtime / test synchronization
+const edgeRevokedJtiCache = new Map<string, number>();
+
+/**
+ * Records a session JTI as revoked for Edge Runtime verifier
+ */
+export function revokeHostSessionEdge(jti: string, expSeconds: number, product?: AuthProduct) {
+  if (product) {
+    edgeRevokedJtiCache.set(`${product}:${jti}`, expSeconds);
+  } else {
+    edgeRevokedJtiCache.set(jti, expSeconds);
+  }
+}
+
+/**
+ * Resets Edge revoked JTI cache (used for test teardown)
+ */
+export function resetRevokedJtiCacheEdge() {
+  edgeRevokedJtiCache.clear();
+}
+
+/**
+ * Checks if a session JTI is revoked in Edge Runtime
+ */
+export function isJtiRevokedEdge(jti: string, product: AuthProduct): boolean {
+  if (!jti) return false;
+  const revocationKey = `${product}:${jti}`;
+  return edgeRevokedJtiCache.has(revocationKey) || edgeRevokedJtiCache.has(jti);
+}
+
+/**
+ * Authoritative Canonical Claim Validator for both Edge and Node runtimes (RFC 7519).
+ * Strictly validates exp, nbf, iat, ver, sub, tid, tsl, jti, role, iss, aud.
+ */
+export function validateHostSessionClaims(
+  payload: any,
+  config: { issuer: string; audience: string },
+  minVersion: number = 1,
+  nowSeconds?: number
+): VerifyHostSessionResult {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { valid: false, error: 'PAYLOAD_MALFORMED' };
+  }
+
+  const now = nowSeconds !== undefined ? nowSeconds : Math.floor(Date.now() / 1000);
+
+  // 1. Issuer & Audience (Strict exact string matches)
+  if (typeof payload.iss !== 'string' || payload.iss !== config.issuer) {
+    return { valid: false, error: 'ISSUER_MISMATCH' };
+  }
+
+  if (typeof payload.aud !== 'string' || payload.aud !== config.audience) {
+    return { valid: false, error: 'AUDIENCE_MISMATCH' };
+  }
+
+  // 2. Subject, Tenant ID, Tenant Slug, JTI, Role (Mandatory non-empty strings)
+  if (typeof payload.sub !== 'string' || payload.sub.trim().length === 0) {
+    return { valid: false, error: 'SUBJECT_MISSING' };
+  }
+
+  if (typeof payload.tid !== 'string' || payload.tid.trim().length === 0) {
+    return { valid: false, error: 'TENANT_ID_MISSING' };
+  }
+
+  if (typeof payload.tsl !== 'string' || payload.tsl.trim().length === 0) {
+    return { valid: false, error: 'TENANT_SLUG_MISSING' };
+  }
+
+  if (typeof payload.jti !== 'string' || payload.jti.trim().length === 0) {
+    return { valid: false, error: 'JTI_MISSING' };
+  }
+
+  if (typeof payload.role !== 'string' || payload.role.trim().length === 0) {
+    return { valid: false, error: 'ROLE_MISSING' };
+  }
+
+  // 3. Expiration Timestamp (exp) — Mandatory, finite positive integer
+  if (
+    typeof payload.exp !== 'number' ||
+    !Number.isFinite(payload.exp) ||
+    !Number.isInteger(payload.exp) ||
+    payload.exp <= 0
+  ) {
+    return { valid: false, error: 'EXPIRATION_INVALID' };
+  }
+
+  if (payload.exp <= now) {
+    return { valid: false, error: 'TOKEN_EXPIRED' };
+  }
+
+  // 4. Issued-At Timestamp (iat) — Mandatory, finite positive integer
+  if (
+    typeof payload.iat !== 'number' ||
+    !Number.isFinite(payload.iat) ||
+    !Number.isInteger(payload.iat) ||
+    payload.iat <= 0
+  ) {
+    return { valid: false, error: 'ISSUED_AT_INVALID' };
+  }
+
+  if (payload.iat > now + CLOCK_SKEW_TOLERANCE_SECONDS) {
+    return { valid: false, error: 'ISSUED_AT_FUTURE' };
+  }
+
+  if (payload.exp <= payload.iat) {
+    return { valid: false, error: 'EXPIRATION_INVALID' };
+  }
+
+  if (payload.exp - payload.iat > MAX_TOKEN_LIFETIME_SECONDS) {
+    return { valid: false, error: 'TOKEN_LIFETIME_EXCEEDED' };
+  }
+
+  // 5. Not-Before Timestamp (nbf) — Mandatory, finite positive integer
+  if (
+    typeof payload.nbf !== 'number' ||
+    !Number.isFinite(payload.nbf) ||
+    !Number.isInteger(payload.nbf) ||
+    payload.nbf <= 0
+  ) {
+    return { valid: false, error: 'NOT_BEFORE_INVALID' };
+  }
+
+  if (payload.nbf > now + CLOCK_SKEW_TOLERANCE_SECONDS) {
+    return { valid: false, error: 'TOKEN_NOT_ACTIVE' };
+  }
+
+  // 6. Session Version (ver) — Mandatory, finite positive integer >= 1
+  if (
+    typeof payload.ver !== 'number' ||
+    !Number.isFinite(payload.ver) ||
+    !Number.isInteger(payload.ver) ||
+    payload.ver < 1
+  ) {
+    return { valid: false, error: 'SESSION_VERSION_INVALID' };
+  }
+
+  if (payload.ver < minVersion) {
+    return { valid: false, error: 'SESSION_VERSION_SUPERSEDED' };
+  }
+
+  return { valid: true, payload: payload as HostSessionPayload };
+}
+
 /**
  * Constant-time string equality check to prevent timing attacks.
  */
@@ -201,7 +347,27 @@ export async function verifyHostSessionTokenEdge(
   }
 
   const [encodedHeader, encodedPayload, providedSignature] = parts;
-  if (!encodedHeader || !encodedPayload || !providedSignature) {
+  if (!encodedHeader || !encodedPayload) {
+    return { valid: false, error: 'TOKEN_MALFORMED' };
+  }
+
+  // 1. Decode and Validate Header (Strict Algorithm Pinning: HS256 only)
+  try {
+    const header = JSON.parse(decodeBase64Url(encodedHeader));
+    if (!header || typeof header !== 'object') {
+      return { valid: false, error: 'HEADER_MALFORMED' };
+    }
+    if (header.alg !== 'HS256') {
+      return { valid: false, error: 'ALGORITHM_UNSUPPORTED' };
+    }
+    if (header.typ !== 'JWT') {
+      return { valid: false, error: 'HEADER_INVALID' };
+    }
+  } catch {
+    return { valid: false, error: 'HEADER_MALFORMED' };
+  }
+
+  if (!providedSignature) {
     return { valid: false, error: 'TOKEN_MALFORMED' };
   }
 
@@ -213,7 +379,7 @@ export async function verifyHostSessionTokenEdge(
     };
   }
 
-  // 1. Verify HS256 Signature using Web Cryptography API
+  // 2. Verify HS256 Signature using Web Cryptography API
   const encoder = new TextEncoder();
   const dataToSign = `${encodedHeader}.${encodedPayload}`;
   const dataBytes = encoder.encode(dataToSign);
@@ -237,53 +403,27 @@ export async function verifyHostSessionTokenEdge(
     return { valid: false, error: 'CRYPTO_VERIFICATION_FAILED' };
   }
 
-  // 2. Decode and Validate Header
-  try {
-    const header = JSON.parse(decodeBase64Url(encodedHeader));
-    if (header.alg !== 'HS256' || header.typ !== 'JWT') {
-      return { valid: false, error: 'HEADER_INVALID' };
-    }
-  } catch {
-    return { valid: false, error: 'HEADER_MALFORMED' };
-  }
-
   // 3. Decode and Validate Payload
-  let payload: HostSessionPayload;
+  let rawPayload: any;
   try {
-    payload = JSON.parse(decodeBase64Url(encodedPayload));
+    rawPayload = JSON.parse(decodeBase64Url(encodedPayload));
   } catch {
     return { valid: false, error: 'PAYLOAD_MALFORMED' };
   }
 
   const now = Math.floor(Date.now() / 1000);
 
-  // 4. Claims & Namespace Verification
-  if (payload.iss !== config.issuer) {
-    return { valid: false, error: 'ISSUER_MISMATCH' };
+  // 4. Strict Canonical Claims Validation
+  const claimsResult = validateHostSessionClaims(rawPayload, config, minVersion, now);
+  if (!claimsResult.valid || !claimsResult.payload) {
+    return claimsResult;
   }
 
-  if (payload.aud !== config.audience) {
-    return { valid: false, error: 'AUDIENCE_MISMATCH' };
-  }
+  const payload = claimsResult.payload;
 
-  if (!payload.sub || typeof payload.sub !== 'string') {
-    return { valid: false, error: 'SUBJECT_MISSING' };
-  }
-
-  if (!payload.tid || typeof payload.tid !== 'string') {
-    return { valid: false, error: 'TENANT_ID_MISSING' };
-  }
-
-  if (payload.exp && payload.exp <= now) {
-    return { valid: false, error: 'TOKEN_EXPIRED' };
-  }
-
-  if (payload.nbf && payload.nbf > now) {
-    return { valid: false, error: 'TOKEN_NOT_ACTIVE' };
-  }
-
-  if (payload.ver && payload.ver < minVersion) {
-    return { valid: false, error: 'SESSION_VERSION_SUPERSEDED' };
+  // 5. JTI Revocation Verification (Edge Runtime)
+  if (isJtiRevokedEdge(payload.jti, product)) {
+    return { valid: false, error: 'TOKEN_REVOKED' };
   }
 
   return { valid: true, payload };
