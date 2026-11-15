@@ -254,7 +254,19 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       expect(rewriteHeader).not.toContain('/studio/desk');
     });
 
-    it('D4. Forged Studio cookie on /desk is rejected and redirects to /login', async () => {
+    it('D3b. Anonymous user on /desk stays at /desk via internal rewrite (renders Studio login UI, zero redirect)', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/desk', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('location')).toBeNull();
+      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
+      expect(rewriteHeader).toContain('/studio/desk');
+    });
+
+    it('D4. Forged Studio cookie on /desk rewrites to /studio/desk shell without external redirect (fails closed server-side)', async () => {
       const forgedToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.tampered_hmac';
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: {
@@ -264,8 +276,10 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toContain('/login');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('location')).toBeNull();
+      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
+      expect(rewriteHeader).toContain('/studio/desk');
     });
 
     it('D5. Expired Studio token on root / is rejected and user lands on public /studio', async () => {
@@ -453,7 +467,7 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       expect(res.headers.get('location')).toContain('/login?redirectTo=');
     });
 
-    it('F4. Cross-audience replay: Creator token used on Studio /desk is rejected and redirects to /login', async () => {
+    it('F4. Cross-audience replay: Creator token used on Studio /desk rewrites to /studio/desk (isolated from workspace)', async () => {
       const creatorToken = signHostSessionToken({
         product: 'creator',
         userId: 'usr-creator-404',
@@ -469,8 +483,10 @@ describe('Founder Directive § 3: Authenticated End-to-End Smoke & Security Suit
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toContain('/login');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('location')).toBeNull();
+      const rewriteHeader = res.headers.get('x-middleware-rewrite') || '';
+      expect(rewriteHeader).toContain('/studio/desk');
     });
 
     it('F5. Open redirect defense: Redirection targets with malicious schemes (javascript:, evil.com) are sanitized to safe root /', async () => {

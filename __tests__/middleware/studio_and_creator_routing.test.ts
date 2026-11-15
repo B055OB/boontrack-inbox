@@ -129,14 +129,17 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/studio/desk');
     });
 
-    it('8b. [P0 SECURITY] Unauthenticated /desk redirects to /login on studio domain', async () => {
+    it('8b. [P0 STABLE ENTRY] Unauthenticated /desk rewrites internally to /studio/desk without external redirect', async () => {
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: { host: 'studio.boontrack.com' },
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toContain('/login');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('location')).toBeNull();
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/desk');
     });
 
     it('8c. [P0 ISOLATION] Shop merchant token CANNOT authorize Studio workspace', async () => {

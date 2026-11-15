@@ -1010,16 +1010,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.next();
     }
 
-    // 2. /desk -> rewrite ke /studio/desk (Wajib Sesi Login Aktif)
-    //    - Authenticated: render Studio Desk workspace
-    //    - Anonymous: redirect (302) to /login with return URL
+    // 2. /desk -> internal rewrite ke /studio/desk (CTO Mandate: Stable Entry URL https://studio.boontrack.com/desk)
+    //    - Anonymous user: renders Studio-specific login and gateway interface directly inside the Desk shell
+    //    - Authenticated Studio session: renders Studio Desk workspace
+    //    - Browser URL remains /desk in both cases (Zero external redirect to /login)
     if (pathname === '/desk' || pathname.startsWith('/desk/')) {
-      if (!hasStudioAuth) {
-        const loginUrl = req.nextUrl.clone();
-        loginUrl.pathname = '/login';
-        loginUrl.search = `?redirectTo=${encodeURIComponent(pathname + (req.nextUrl.search || ''))}`;
-        return NextResponse.redirect(loginUrl, 302);
-      }
       const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
       url.pathname = `/studio/desk${deskSubpath}`;
       return NextResponse.rewrite(url);
