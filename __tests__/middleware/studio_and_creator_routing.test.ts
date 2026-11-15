@@ -18,6 +18,7 @@
 import { NextRequest } from 'next/server';
 import { middleware } from '@/middleware';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
+import { signHostSessionToken } from '@/lib/auth/host-session';
 
 describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () => {
   describe('A. studio.boontrack.com Host Detection & Rewriting', () => {
@@ -106,12 +107,18 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/branding/studio/manifest.json');
     });
 
-    it('8. Rewrites /desk to /studio/desk on studio.boontrack.com when authenticated', async () => {
-      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
+    it('8. Rewrites /desk to /studio/desk on studio.boontrack.com when authenticated with Studio token', async () => {
+      const validToken = signHostSessionToken({
+        product: 'studio',
+        userId: 'usr-studio-1',
+        tenantId: 'tid-studio-1',
+        tenantSlug: 'my-studio-brand',
+        role: 'STUDIO_PARTICIPANT',
+      });
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: {
           host: 'studio.boontrack.com',
-          cookie: `bt_merchant_token=${validToken}`,
+          cookie: `bt_studio_session=${validToken}`,
         },
       });
 
@@ -122,16 +129,32 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/studio/desk');
     });
 
-    it('8b. [P0 SECURITY] Redirects unauthenticated /desk access to /login on studio.boontrack.com', async () => {
+    it('8b. [FOUNDER DIRECTIVE § 3] Unauthenticated /desk renders Studio login in-place without redirecting to Shop', async () => {
       const req = new NextRequest('https://studio.boontrack.com/desk', {
         headers: { host: 'studio.boontrack.com' },
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(302);
-      const location = res.headers.get('location');
-      expect(location).toBeDefined();
-      expect(location).toContain('/login?redirectTo=');
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/desk');
+    });
+
+    it('8c. [P0 ISOLATION] Shop merchant token CANNOT authorize Studio workspace', async () => {
+      const shopToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
+      const req = new NextRequest('https://studio.boontrack.com/', {
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: `bt_merchant_token=${shopToken}`,
+        },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio'); // Rewrites to landing page because Shop token does not authorize Studio!
     });
 
     it('9. Rewrites /register to /studio/register on studio.boontrack.com', async () => {
@@ -158,12 +181,18 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/studio/fcd-automator');
     });
 
-    it('11. Redirects authenticated user with valid HMAC session token from root / to /desk', async () => {
-      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
+    it('11. Redirects authenticated user with valid HMAC Studio session token from root / to /desk', async () => {
+      const validToken = signHostSessionToken({
+        product: 'studio',
+        userId: 'usr-studio-1',
+        tenantId: 'tid-studio-1',
+        tenantSlug: 'my-studio-brand',
+        role: 'STUDIO_PARTICIPANT',
+      });
       const req = new NextRequest('https://studio.boontrack.com/', {
         headers: {
           host: 'studio.boontrack.com',
-          cookie: `bt_merchant_token=${validToken}`,
+          cookie: `bt_studio_session=${validToken}`,
         },
       });
 
@@ -188,12 +217,18 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/studio');
     });
 
-    it('12. Redirects authenticated user with valid HMAC session token visiting /studio to /desk', async () => {
-      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
+    it('12. Redirects authenticated user with valid HMAC Studio session token visiting /studio to /desk', async () => {
+      const validToken = signHostSessionToken({
+        product: 'studio',
+        userId: 'usr-studio-1',
+        tenantId: 'tid-studio-1',
+        tenantSlug: 'my-studio-brand',
+        role: 'STUDIO_PARTICIPANT',
+      });
       const req = new NextRequest('https://studio.boontrack.com/studio', {
         headers: {
           host: 'studio.boontrack.com',
-          cookie: `bt_merchant_token=${validToken}`,
+          cookie: `bt_studio_session=${validToken}`,
         },
       });
 
@@ -338,9 +373,31 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/branding/creator/manifest.json');
     });
 
-    it('7. Rewrites /admin to /creator/admin on creator.boontrack.com', async () => {
+    it('7. [FOUNDER DIRECTIVE § 4] Rewrites /admin to /creator/login on creator.boontrack.com when unauthenticated (stable entry)', async () => {
       const req = new NextRequest('https://creator.boontrack.com/admin', {
         headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/login');
+    });
+
+    it('7b. Rewrites /admin to /creator/admin on creator.boontrack.com when authenticated with Creator token', async () => {
+      const validToken = signHostSessionToken({
+        product: 'creator',
+        userId: 'user-creator-123',
+        tenantId: 'tid-creator-456',
+        tenantSlug: 'creator-handle',
+        role: 'CREATOR_OWNER',
+      });
+      const req = new NextRequest('https://creator.boontrack.com/admin', {
+        headers: {
+          host: 'creator.boontrack.com',
+          cookie: `bt_creator_session=${validToken}`,
+        },
       });
 
       const res = await middleware(req);
