@@ -1,2 +1,2 @@
 export const dynamic = 'force-dynamic';
-export { POST, parseStrictRupiahAmount } from '@/app/api/inbox/orders/custom/route';
+export { POST, parseStrictRupiahAmount, MAX_MANUAL_BANK_AMOUNT } from '@/app/api/inbox/orders/custom/route';

@@ -16,7 +16,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { POST, parseStrictRupiahAmount } from '@/app/api/inbox/orders/custom/route';
+import { POST, parseStrictRupiahAmount, MAX_MANUAL_BANK_AMOUNT } from '@/app/api/inbox/orders/custom/route';
 import { POST as POST_V1 } from '@/app/api/v1/inbox/orders/custom/route';
 import * as supabaseClientModule from '@/lib/supabaseClient';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
@@ -152,15 +152,35 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
           };
         }
         if (table === 'tenant_users') {
-          return {
+          const filters: Record<string, string> = {};
+          const queryBuilder: any = {
             select: jest.fn().mockReturnThis(),
-            eq: jest.fn().mockImplementation((col: string, val: string) => ({
-              maybeSingle: jest.fn().mockResolvedValue({
-                data: tenantUsers[val] || null,
-                error: null,
-              }),
-            })),
+            eq: jest.fn().mockImplementation((col: string, val: string) => {
+              filters[col] = String(val);
+              return queryBuilder;
+            }),
+            maybeSingle: jest.fn().mockImplementation(() => {
+              const compositeKey = `${filters.tenant_id}:${filters.id || filters.phone}`;
+              if (tenantUsers[compositeKey]) {
+                return Promise.resolve({ data: tenantUsers[compositeKey], error: null });
+              }
+              const userById = filters.id ? tenantUsers[filters.id] : (filters.phone ? tenantUsers[filters.phone] : null);
+              if (userById) {
+                if (!filters.tenant_id || userById.tenant_id === filters.tenant_id) {
+                  return Promise.resolve({ data: userById, error: null });
+                }
+              }
+              const matchingUser = Object.values(tenantUsers).find((u: any) => {
+                if (!u) return false;
+                if (filters.tenant_id && u.tenant_id !== filters.tenant_id) return false;
+                if (filters.id && u.id !== filters.id) return false;
+                if (filters.phone && u.phone !== filters.phone) return false;
+                return true;
+              });
+              return Promise.resolve({ data: matchingUser || null, error: null });
+            }),
           };
+          return queryBuilder;
         }
         return {
           select: jest.fn().mockReturnThis(),
@@ -872,6 +892,328 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.success).toBe(true);
       expect(data.amount).toBe(75000);
       expect(data.orderNumber).toMatch(/^ORD-POS-\d{6}-[0-9A-F]{6}$/);
+    });
+  });
+
+  describe('Patch 3: Machine Principal Authorization & Scope Isolation', () => {
+    const TEST_ADMIN_SECRET = 'secret_internal_admin_token_super_long_32_bytes!';
+
+    beforeEach(() => {
+      process.env.ADMIN_INTERNAL_SECRET = TEST_ADMIN_SECRET;
+    });
+
+    it('rejects machine request when ADMIN_INTERNAL_SECRET is provided but x-internal-scope is missing with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${TEST_ADMIN_SECRET}`,
+          'x-target-tenant': TEST_TENANT_SLUG,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('Operasi mesin tidak diizinkan');
+    });
+
+    it('rejects machine request when x-internal-scope is unauthorized (e.g. crm:read) with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': TEST_ADMIN_SECRET,
+          'x-internal-scope': 'crm:read',
+          'x-target-tenant': TEST_TENANT_SLUG,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('Operasi mesin tidak diizinkan');
+    });
+
+    it('rejects machine request when x-target-tenant is missing with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${TEST_ADMIN_SECRET}`,
+          'x-internal-scope': 'pos:create_order',
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('Prinsipal mesin wajib terikat pada scope tenant');
+    });
+
+    it('rejects machine request when x-target-tenant mismatches body tenantSlug with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': TEST_ADMIN_SECRET,
+          'x-internal-scope': 'pos:create_order',
+          'x-target-tenant': TEST_TENANT_SLUG,
+        },
+        body: JSON.stringify({
+          tenantSlug: ALIEN_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak cocok');
+    });
+
+    it('allows machine request with valid secret, valid operation scope, and matching target tenant with 200 OK', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': TEST_ADMIN_SECRET,
+          'x-internal-scope': 'pos:create_order',
+          'x-target-tenant': TEST_TENANT_SLUG,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '60000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(60000);
+      const captured = mockDb._getCapturedOrderPayload();
+      expect(captured.metadata.created_by_cs_id).toBe('system_machine');
+      expect(captured.metadata.created_by_cs_name).toBe('Internal Machine Principal');
+    });
+  });
+
+  describe('Patch 3: CS Tenant Membership DB Fallback Isolation', () => {
+    it('blocks CS user with active order permission on Tenant A from creating order on Tenant B via DB fallback query with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantData: {
+          id: ALIEN_TENANT_ID,
+          slug: ALIEN_TENANT_SLUG,
+          name: 'Toko Alien',
+          metadata: {
+            products: [{ id: 'prod_alien', name: 'Alien Item', price: 99000 }],
+          },
+        },
+        tenantUsers: {
+          'cs-alien-attacker': {
+            id: 'cs-alien-attacker',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: true,
+            can_create_orders: true,
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const token = mintTestToken({
+        tenantSlug: ALIEN_TENANT_SLUG,
+        tenantId: ALIEN_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-alien-attacker',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: ALIEN_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('CS tidak memiliki izin untuk membuat pesanan POS pada tenant ini');
+    });
+
+    it('blocks CS user when membership record in DB has status SUSPENDED or is_active false with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-inactive': {
+            id: 'cs-inactive',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: false,
+            can_create_orders: true,
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const token = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-inactive',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('CS tidak memiliki izin untuk membuat pesanan POS pada tenant ini');
+    });
+  });
+
+  describe('Patch 3: Strict Safe-Integer, Overflow & MANUAL_BANK Cap', () => {
+    it('parseStrictRupiahAmount rejects numbers above Number.MAX_SAFE_INTEGER with invalid status', () => {
+      const resNum = parseStrictRupiahAmount(Number.MAX_SAFE_INTEGER + 100);
+      expect(resNum.valid).toBe(false);
+      expect(resNum.error).toContain('MAX_SAFE_INTEGER');
+
+      const resStr = parseStrictRupiahAmount('9999999999999999999999999999');
+      expect(resStr.valid).toBe(false);
+      expect(resStr.error).toContain('MAX_SAFE_INTEGER');
+    });
+
+    it('rejects POST request with amount above Number.MAX_SAFE_INTEGER with 400 Bad Request', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const token = mintTestToken({ role: 'OWNER' });
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '9999999999999999999999999999',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('MAX_SAFE_INTEGER');
+    });
+
+    it('rejects MANUAL_BANK amount exceeding MAX_MANUAL_BANK_AMOUNT (Rp 500.000.000) with 400 Bad Request', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const token = mintTestToken({ role: 'OWNER' });
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          billingType: 'MANUAL_BANK',
+          customerPhone: '6281234567890',
+          rawAmount: MAX_MANUAL_BANK_AMOUNT + 1,
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('Batas maksimum transaksi transfer manual POS');
+    });
+
+    it('rejects amount + uniqueCode integer overflow with 400 Bad Request', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const token = mintTestToken({ role: 'OWNER' });
+      const overflowAmount = Number.MAX_SAFE_INTEGER - 100;
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          billingType: 'MANUAL_BANK',
+          customerPhone: '6281234567890',
+          rawAmount: overflowAmount,
+          uniqueCode: 999,
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toMatch(/(Batas maksimum transaksi transfer manual POS|safe integer)/);
     });
   });
 });
