@@ -38,7 +38,7 @@ describe('Workforce Isolated Middleware Routing Suite', () => {
     // Root is a public route: returns 200, no redirect to /login
     expect(res.status).toBe(200);
     expect(res.headers.get('location')).toBeNull();
-    expect(res.headers.get('x-tenant-id')).toBe('tenant_satya_001');
+    expect(res.headers.get('x-tenant-id')).toBe('boontrack');
   });
 
   it('should redirect unauthenticated access to internal/dashboard routes to /login', () => {
