@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { extractMerchantSessionToken, verifyMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,67 +17,224 @@ export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
   ENTERPRISE: 5,
 };
 
+const SENSITIVE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, private',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
+function maskPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const trimmed = phone.trim();
+  if (trimmed.length <= 4) return '***';
+  if (trimmed.length <= 6) return `${trimmed.slice(0, 2)}***${trimmed.slice(-1)}`;
+  return `${trimmed.slice(0, 4)}****${trimmed.slice(-2)}`;
+}
+
+function maskEmail(email?: string | null): string | null {
+  if (!email) return null;
+  const trimmed = email.trim();
+  const atIdx = trimmed.indexOf('@');
+  if (atIdx === -1) return '***';
+  const local = trimmed.slice(0, atIdx);
+  const domain = trimmed.slice(atIdx + 1);
+  if (local.length <= 1) return `*@${domain}`;
+  return `${local[0]}***${local.slice(-1)}@${domain}`;
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tenantParam = searchParams.get('tenant') || searchParams.get('tenantId') || searchParams.get('slug');
-
-    if (!tenantParam) {
-      return NextResponse.json({ success: false, error: 'tenant is required', teamMembers: [] }, { status: 400 });
+    // 1. Session Extraction & Cryptographic Token Verification
+    const token = extractMerchantSessionToken(req);
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan. Kredensial tidak ditemukan.', teamMembers: [], count: 0 },
+        { status: 401, headers: SENSITIVE_HEADERS }
+      );
     }
 
+    const sessionResult = verifyMerchantSessionToken(token);
+    if (!sessionResult.valid || !sessionResult.payload) {
+      const errorStatus = (sessionResult.status === 200 ? 401 : sessionResult.status) as 401 | 403;
+      return NextResponse.json(
+        { success: false, error: sessionResult.error || 'Unauthorized: Token sesi merchant tidak sah atau telah kedaluwarsa.', teamMembers: [], count: 0 },
+        { status: errorStatus, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    const { payload } = sessionResult;
+
+    // 2. Fail Closed on Missing Individual userId (Legacy PIN-only sessions rejected)
+    if (!payload.userId || typeof payload.userId !== 'string' || !payload.userId.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Sesi login membutuhkan identitas individual pengguna terdaftar (userId). Silakan login ulang.',
+          errorCode: 'USER_IDENTITY_REQUIRED',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 403, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    const actorUserId = payload.userId.trim();
+
+    // 3. Authoritative Tenant Identity from Verified Session Claims Only
+    const sessionTenantId = payload.tenantId?.trim() || null;
+    const sessionTenantSlug = payload.tenantSlug?.toLowerCase().trim() || null;
+
+    if (!sessionTenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Identitas tenant ID (UUID) sesi tidak valid atau hilang.',
+          errorCode: 'TENANT_IDENTITY_MISSING',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 403, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    // 4. Reject Mismatches Across All Client-Supplied Selector Aliases
+    const { searchParams } = new URL(req.url);
+    const qTenant = searchParams.get('tenant')?.trim();
+    const qTenantId = searchParams.get('tenantId')?.trim();
+    const qTenant_id = searchParams.get('tenant_id')?.trim();
+    const qSlug = searchParams.get('slug')?.trim();
+
+    const clientSelectors = [qTenant, qTenantId, qTenant_id, qSlug].filter(Boolean) as string[];
+
+    for (const selector of clientSelectors) {
+      const normSelector = selector.toLowerCase();
+      const matchesSlug = sessionTenantSlug ? normSelector === sessionTenantSlug : false;
+      const matchesId = sessionTenantId ? normSelector === sessionTenantId.toLowerCase() : false;
+
+      if (!matchesSlug && !matchesId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Parameter selector tenant tidak cocok dengan identitas sesi yang diautentikasi.',
+            errorCode: 'TENANT_MISMATCH',
+            teamMembers: [],
+            count: 0,
+          },
+          { status: 403, headers: SENSITIVE_HEADERS }
+        );
+      }
+    }
+
+    // 5. Database Connection
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: false, error: 'Database unavailable', teamMembers: [] }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Database service unavailable.', teamMembers: [], count: 0 },
+        { status: 500, headers: SENSITIVE_HEADERS }
+      );
     }
 
-    // Resolve tenant UUID and slug
-    let tenantUuid: string | null = null;
-    let tenantSlug: string | null = null;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantParam);
-
-    try {
-      let q = supabase.from('tenants').select('id, slug, tier, metadata');
-      if (isUuid) {
-        q = q.or(`id.eq.${tenantParam},slug.eq.${tenantParam}`);
-      } else {
-        q = q.or(`slug.eq.${tenantParam},id.eq.${tenantParam}`);
-      }
-      const { data: tRow } = await q.maybeSingle();
-      if (tRow) {
-        tenantUuid = tRow.id;
-        tenantSlug = tRow.slug;
-      }
-    } catch (_) {}
-
-    const orTokens = new Set<string>();
-    if (tenantUuid) orTokens.add(`tenant_id.eq.${tenantUuid}`);
-    if (tenantSlug) {
-      orTokens.add(`tenant_slug.eq.${tenantSlug}`);
-      orTokens.add(`tenant_id.eq.${tenantSlug}`);
-    }
-    orTokens.add(`tenant_id.eq.${tenantParam}`);
-    orTokens.add(`tenant_slug.eq.${tenantParam}`);
-
-    const { data: members, error } = await supabase
+    // 6. Verify Caller's Active Membership in the Same Tenant
+    const { data: callerUser, error: callerErr } = await supabase
       .from('tenant_users')
-      .select('*')
-      .or(Array.from(orTokens).join(','))
+      .select('id, tenant_id, tenant_slug, role, status, is_active')
+      .eq('id', actorUserId)
+      .maybeSingle();
+
+    if (callerErr || !callerUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Pengguna tidak terdaftar dalam catatan keanggotaan toko.',
+          errorCode: 'ACTOR_MEMBERSHIP_NOT_FOUND',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 403, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    const callerIsActive = callerUser.is_active === true && String(callerUser.status).toLowerCase().trim() === 'active';
+    if (!callerIsActive) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Status keanggotaan pengguna tidak aktif.',
+          errorCode: 'MEMBERSHIP_INACTIVE',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 403, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    // Tenant binding validation between callerUser and session (Strict UUID match)
+    const callerTenantId = (callerUser.tenant_id || '').toLowerCase().trim();
+    const matchesCallerTenant = callerTenantId === sessionTenantId.toLowerCase();
+
+    if (!matchesCallerTenant) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Pengguna tidak memiliki wewenang pada tenant ini.',
+          errorCode: 'TENANT_CROSS_ACCESS_FORBIDDEN',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 403, headers: SENSITIVE_HEADERS }
+      );
+    }
+
+    const callerRole = typeof callerUser.role === 'string' ? callerUser.role.toUpperCase().trim() : '';
+    const isOwner = callerRole === 'OWNER';
+
+    // 7. Query Team Members with Explicit Column Allowlist (Zero .select('*'))
+    const { data: members, error: queryErr } = await supabase
+      .from('tenant_users')
+      .select('id, tenant_id, tenant_slug, name, phone, email, role, access_level, status, is_active, created_at')
+      .eq('tenant_id', sessionTenantId)
       .eq('is_active', true)
       .order('created_at', { ascending: true });
 
-    if (error) {
-      console.warn('[API team-members] Query note:', error.message);
-      return NextResponse.json({ success: true, teamMembers: [], count: 0 });
+    if (queryErr) {
+      console.warn('[API team-members] Query warning:', queryErr.message);
+      return NextResponse.json(
+        { success: true, teamMembers: [], count: 0 },
+        { status: 200, headers: SENSITIVE_HEADERS }
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      teamMembers: members || [],
-      count: members?.length || 0,
-    });
+    // 8. Role-Based PII Masking: Only OWNER receives unmasked phone/email
+    const sanitizedMembers = (members || []).map((m: any) => ({
+      id: m.id,
+      tenant_id: m.tenant_id,
+      tenant_slug: m.tenant_slug,
+      name: m.name,
+      phone: isOwner ? m.phone : maskPhone(m.phone),
+      email: isOwner ? m.email : maskEmail(m.email),
+      role: m.role,
+      access_level: m.access_level,
+      status: m.status,
+      is_active: m.is_active,
+      created_at: m.created_at,
+    }));
+
+    return NextResponse.json(
+      {
+        success: true,
+        teamMembers: sanitizedMembers,
+        count: sanitizedMembers.length,
+      },
+      {
+        status: 200,
+        headers: SENSITIVE_HEADERS,
+      }
+    );
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message, teamMembers: [] }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Internal Server Error', teamMembers: [], count: 0 },
+      { status: 500, headers: SENSITIVE_HEADERS }
+    );
   }
 }
 
