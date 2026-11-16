@@ -7,7 +7,6 @@ import { getStorefrontPayUrl } from '@/lib/utils/storefrontUrl';
 import {
   extractMerchantSessionToken,
   verifyMerchantSessionToken,
-  isInternalMachineAuthorized,
   type MerchantSessionPayload,
 } from '@/lib/auth/merchant-session';
 import { extractTenantBankAccounts } from '@/lib/bank-accounts';
@@ -18,6 +17,131 @@ export const dynamic = 'force-dynamic';
  * Maximum permitted nominal for manual bank transfer POS orders (Rp 500.000.000).
  */
 export const MAX_MANUAL_BANK_AMOUNT = 500_000_000;
+
+/**
+ * Registered server-verified machine principal policy.
+ */
+export interface MachinePrincipal {
+  id: string;
+  name?: string;
+  secret: string;
+  allowedTenants: string[]; // List of tenant slugs or IDs, or '*'
+  allowedScopes: string[];  // e.g. ['pos:create_order']
+}
+
+/**
+ * Loads the server-side machine principal registry.
+ * Sources:
+ * 1. process.env.INTERNAL_MACHINE_PRINCIPALS (JSON map of principalId -> { secret, allowedTenants, allowedScopes, name })
+ *
+ * NOTE: Legacy global shared secrets (ADMIN_INTERNAL_SECRET / INTERNAL_API_SECRET)
+ * WITHOUT explicit server-configured tenant binding are strictly rejected (fail-closed).
+ */
+export function getRegisteredMachinePrincipals(): Record<string, MachinePrincipal> {
+  const registry: Record<string, MachinePrincipal> = {};
+
+  const envJson = process.env.INTERNAL_MACHINE_PRINCIPALS?.trim();
+  if (envJson) {
+    try {
+      const parsed = JSON.parse(envJson);
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const [id, cfg] of Object.entries(parsed)) {
+          if (cfg && typeof cfg === 'object') {
+            const anyCfg = cfg as any;
+            if (anyCfg.secret) {
+              registry[id] = {
+                id,
+                name: anyCfg.name || `Machine Principal (${id})`,
+                secret: String(anyCfg.secret),
+                allowedTenants: Array.isArray(anyCfg.allowedTenants) ? anyCfg.allowedTenants.map(String) : [],
+                allowedScopes: Array.isArray(anyCfg.allowedScopes) ? anyCfg.allowedScopes.map(String) : [],
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Machine Principal Registry Parse Error]:', e);
+    }
+  }
+
+  return registry;
+}
+
+/**
+ * Authenticates machine principal against server-side registry.
+ * Fails closed if:
+ * 1. No valid principal credentials provided
+ * 2. Secret does not match verified principal in server registry
+ * 3. Legacy shared secret provided without explicit principal binding
+ */
+export function authenticateMachinePrincipal(req: NextRequest): {
+  hasCandidate: boolean;
+  authenticated: boolean;
+  principal?: MachinePrincipal;
+  error?: string;
+} {
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
+  const principalIdHeader = (
+    req.headers.get('x-machine-principal-id') ||
+    req.headers.get('x-principal-id') ||
+    ''
+  ).trim();
+
+  let candidateSecret = internalSecret;
+  if (!candidateSecret && authHeader.toLowerCase().startsWith('bearer ')) {
+    candidateSecret = authHeader.slice(7).trim();
+  }
+
+  if (!candidateSecret) {
+    return { hasCandidate: false, authenticated: false };
+  }
+
+  const registry = getRegisteredMachinePrincipals();
+  const candidateBuf = Buffer.from(candidateSecret);
+
+  // 1. If explicit principal ID header provided, verify secret against that principal
+  if (principalIdHeader && registry[principalIdHeader]) {
+    const p = registry[principalIdHeader];
+    const secretBuf = Buffer.from(p.secret);
+    if (candidateBuf.length === secretBuf.length && crypto.timingSafeEqual(candidateBuf, secretBuf)) {
+      return { hasCandidate: true, authenticated: true, principal: p };
+    }
+    return {
+      hasCandidate: true,
+      authenticated: false,
+      error: 'Forbidden: Secret tidak cocok untuk Machine Principal yang diklaim.',
+    };
+  }
+
+  // 2. Check if candidate secret matches any registered principal in server registry
+  for (const p of Object.values(registry)) {
+    const secretBuf = Buffer.from(p.secret);
+    if (candidateBuf.length === secretBuf.length && crypto.timingSafeEqual(candidateBuf, secretBuf)) {
+      return { hasCandidate: true, authenticated: true, principal: p };
+    }
+  }
+
+  // 3. If candidate matches legacy global shared secret without registered tenant binding, reject fail-closed
+  const legacySecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  if (legacySecret && legacySecret.length >= 16) {
+    const legacyBuf = Buffer.from(legacySecret);
+    if (candidateBuf.length === legacyBuf.length && crypto.timingSafeEqual(candidateBuf, legacyBuf)) {
+      return {
+        hasCandidate: true,
+        authenticated: false,
+        error: 'Forbidden: Legacy shared machine secret dilarang tanpa registrasi principal dan binding tenant eksplisit di server (INTERNAL_MACHINE_PRINCIPALS).',
+      };
+    }
+  }
+
+  return {
+    hasCandidate: true,
+    authenticated: false,
+    error: 'Forbidden: Kredensial mesin tidak valid atau Machine Principal tidak terdaftar.',
+  };
+}
 
 /**
  * Strict Integer Rupiah Nominal Parser & ASPI Standard Enforcement (SEC-P5-03).
@@ -115,10 +239,10 @@ export function parseStrictRupiahAmount(rawAmount: any): { valid: boolean; amoun
 }
 
 /**
- * INBOX-POS-01 / Patch 3: Dedicated Server Gateway for Custom POS Order Generation
+ * INBOX-POS-01 / Patch 4: Dedicated Server Gateway for Custom POS Order Generation
  * Resolves SEC-01 & SEC-03 & CTO Security Remediation Order (SEC-P5-01, SEC-P5-02, SEC-P5-03):
- * 1. SEC-P5-01: Canonical Server-Side Authentication & Decoupled Machine Principal Scoping.
- * 2. SEC-P5-02: Authoritative Server Data (Strict Tenant User DB Query, Cross-Tenant Entity Lockdown).
+ * 1. SEC-P5-01: Server-Enforced Machine Principal Authorization (No self-asserted header authority).
+ * 2. SEC-P5-02: Mandatory Active DB Membership & Permission Enforcement for CS / OPERATOR (Zero token-claim short-circuits).
  * 3. SEC-P5-03: Strict Integer Rupiah Validation (Safe-Integer enforcement, MAX_MANUAL_BANK_AMOUNT cap, BI/ASPI limits).
  */
 export async function POST(req: NextRequest) {
@@ -148,88 +272,45 @@ export async function POST(req: NextRequest) {
     } = body;
 
     // -------------------------------------------------------------------------
-    // 1. SEC-P5-01: Server-Side Authentication (AuthN) & Machine Decoupling
+    // 1. SEC-P5-01: Machine Principal vs. Merchant Session Authentication
     // -------------------------------------------------------------------------
-    type ScopedSessionPayload =
-      | MerchantSessionPayload
-      | {
-          tenantSlug: string;
-          tenantId?: string;
-          role: 'SYSTEM_INTERNAL';
-          userId?: string;
-          name?: string;
-          phone?: string;
-          permissions?: string[];
-          access_level?: string;
-          canCreateOrders?: boolean;
-          iat: number;
-          exp: number;
-          nonce: string;
-        };
+    const machineAuth = authenticateMachinePrincipal(req);
 
-    let sessionPayload: ScopedSessionPayload | null = null;
-    const isMachine = isInternalMachineAuthorized(req);
+    if (machineAuth.hasCandidate && !machineAuth.authenticated) {
+      return NextResponse.json(
+        { success: false, error: machineAuth.error || 'Forbidden: Autentikasi mesin gagal.' },
+        { status: 403 }
+      );
+    }
+
+    let isMachine = false;
+    let machinePrincipal: MachinePrincipal | null = null;
+    let sessionPayload: MerchantSessionPayload | null = null;
     let targetTenantKey = '';
 
-    if (isMachine) {
-      // Machine-to-machine internal authorization (Decoupled from human merchant OWNER)
-      // Must supply explicit operation scope contract
-      const operationScope = (
-        req.headers.get('x-internal-scope') ||
-        req.headers.get('x-internal-operation') ||
-        ''
-      ).toLowerCase().trim();
-      const allowedMachineScopes = ['pos:create_order', 'inbox:custom_order', 'orders:create'];
+    if (machineAuth.authenticated && machineAuth.principal) {
+      isMachine = true;
+      machinePrincipal = machineAuth.principal;
 
-      if (!operationScope || !allowedMachineScopes.includes(operationScope)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Forbidden: Operasi mesin tidak diizinkan. Diperlukan x-internal-scope yang sah (misal: pos:create_order).',
-          },
-          { status: 403 }
-        );
-      }
-
-      // Must be bound to explicit scoped tenant
-      const machineTenantScope = (
+      // Machine callers determine target tenant from request (body or header),
+      // which will then be strictly validated against machinePrincipal.allowedTenants
+      const requestedTarget = (
+        body.tenantSlug ||
         req.headers.get('x-target-tenant') ||
         req.headers.get('x-internal-tenant') ||
         ''
       ).toLowerCase().trim();
 
-      if (!machineTenantScope) {
+      if (!requestedTarget) {
         return NextResponse.json(
-          {
-            success: false,
-            error: 'Forbidden: Prinsipal mesin wajib terikat pada scope tenant eksplisit (header x-target-tenant).',
-          },
-          { status: 403 }
+          { success: false, error: 'Parameter tenant wajib diisi untuk operasi mesin.' },
+          { status: 400 }
         );
       }
 
-      const requestedBodySlug = String(tenantSlug || '').toLowerCase().trim();
-      if (requestedBodySlug && requestedBodySlug !== machineTenantScope) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Forbidden: Target tenant dalam body ('${requestedBodySlug}') tidak cocok dengan scope mesin terikat ('${machineTenantScope}').`,
-          },
-          { status: 403 }
-        );
-      }
-
-      targetTenantKey = machineTenantScope;
-      sessionPayload = {
-        tenantSlug: machineTenantScope,
-        role: 'SYSTEM_INTERNAL',
-        name: 'Internal Machine Principal',
-        userId: 'system_machine',
-        iat: Date.now(),
-        exp: Date.now() + 60000,
-        nonce: 'internal_machine',
-      };
+      targetTenantKey = requestedTarget;
     } else {
+      // Human merchant session flow
       const token = extractMerchantSessionToken(req);
       if (!token) {
         return NextResponse.json(
@@ -276,13 +357,6 @@ export async function POST(req: NextRequest) {
       targetTenantKey = sessionTenantSlug || sessionTenantId;
     }
 
-    if (!sessionPayload) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi autentikasi tidak tersedia.' },
-        { status: 401 }
-      );
-    }
-
     // -------------------------------------------------------------------------
     // 2. Resolve Authoritative Tenant Record from Database
     // -------------------------------------------------------------------------
@@ -309,86 +383,140 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const authorizedTenantId = String(tenant.id).toLowerCase().trim();
-
     // -------------------------------------------------------------------------
-    // 3. SEC-P5-01: Server-Side Role Authorization (AuthZ) & CS Scoped Permission
+    // 3. SEC-P5-01: Server-Side Authorization Enforcement
     // -------------------------------------------------------------------------
-    const role = String(sessionPayload.role || '').toUpperCase().trim();
-    const isOwnerOrAdmin = ['OWNER', 'MERCHANT', 'ADMIN', 'SUPERADMIN'].includes(role);
-    const isCs = ['CS', 'OPERATOR'].includes(role);
-    const isMachinePrincipal = isMachine && role === 'SYSTEM_INTERNAL';
+    let authoritativeCsUserId: string | null = null;
+    let authoritativeCsUserName = 'Store Admin';
 
-    if (!isOwnerOrAdmin && !isCs && !isMachinePrincipal) {
-      return NextResponse.json(
-        { success: false, error: `Forbidden: Peran '${sessionPayload.role || role}' tidak memiliki wewenang untuk membuat pesanan POS.` },
-        { status: 403 }
+    if (isMachine && machinePrincipal) {
+      // A. Machine Principal Authorization:
+      // 1. Verify operation scope against server policy
+      const allowedMachineScopes = ['pos:create_order', 'inbox:custom_order', 'orders:create'];
+      const hasAllowedScope = machinePrincipal.allowedScopes.some((s) =>
+        allowedMachineScopes.includes(s.toLowerCase().trim())
       );
-    }
 
-    if (isCs) {
-      // Check explicit POS order-creation permission
-      const allowedPerms = ['pos', 'orders', 'create_order', 'create_orders', 'orders:create', 'pos:create', 'pos_orders', 'all', '*'];
-      let hasOrderPermission = false;
-
-      const anyPayload = sessionPayload as any;
-      if (anyPayload.canCreateOrders === false || anyPayload.can_create_orders === false) {
-        hasOrderPermission = false;
-      } else if (Array.isArray(anyPayload.permissions)) {
-        hasOrderPermission = anyPayload.permissions.some((p: string) => allowedPerms.includes(String(p).toLowerCase().trim()));
-      } else if (
-        anyPayload.access_level === 'FULL_DASHBOARD' ||
-        anyPayload.access_level === 'ALL_ACCESS' ||
-        anyPayload.access_level === 'POS'
-      ) {
-        hasOrderPermission = true;
-      } else if (anyPayload.canCreateOrders === true || anyPayload.can_create_orders === true) {
-        hasOrderPermission = true;
-      } else if (sessionPayload.userId || sessionPayload.phone) {
-        // Query database tenant_users for explicit permission bound strictly to authorizedTenantId
-        try {
-          let uQuery = supabase
-            .from('tenant_users')
-            .select('*')
-            .eq('tenant_id', tenant.id);
-
-          if (sessionPayload.userId) {
-            uQuery = uQuery.eq('id', sessionPayload.userId);
-          } else if (sessionPayload.phone) {
-            uQuery = uQuery.eq('phone', sessionPayload.phone);
-          }
-
-          const { data: dbUser } = await uQuery.maybeSingle();
-          if (dbUser && dbUser.is_active !== false && dbUser.status !== 'SUSPENDED') {
-            const dbPerms = dbUser.permissions || dbUser.metadata?.permissions;
-            if (
-              dbUser.role === 'OWNER_LEAD' ||
-              dbUser.access_level === 'FULL_DASHBOARD' ||
-              dbUser.can_create_orders === true ||
-              dbUser.metadata?.can_create_orders === true ||
-              (Array.isArray(dbPerms) && dbPerms.some((p: string) => allowedPerms.includes(String(p).toLowerCase().trim())))
-            ) {
-              hasOrderPermission = true;
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (!hasOrderPermission) {
+      if (!hasAllowedScope) {
         return NextResponse.json(
-          { success: false, error: 'Forbidden: CS tidak memiliki izin untuk membuat pesanan POS pada tenant ini.' },
+          {
+            success: false,
+            error: `Forbidden: Machine Principal '${machinePrincipal.id}' tidak diizinkan untuk operasi POS ('pos:create_order').`,
+          },
           { status: 403 }
         );
       }
+
+      // 2. Verify target tenant against server principal policy (NEVER trust caller headers)
+      const targetSlugLower = tenant.slug.toLowerCase().trim();
+      const targetIdLower = tenant.id.toLowerCase().trim();
+      const isTenantPermitted = machinePrincipal.allowedTenants.some((allowed) => {
+        const a = allowed.toLowerCase().trim();
+        return a === targetSlugLower || a === targetIdLower || a === '*';
+      });
+
+      if (!isTenantPermitted) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Forbidden: Machine Principal '${machinePrincipal.id}' tidak memiliki hak akses untuk tenant '${tenant.slug}'. Akses lintas tenant ditolak.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      authoritativeCsUserId = `machine:${machinePrincipal.id}`;
+      authoritativeCsUserName = machinePrincipal.name || `Machine Principal (${machinePrincipal.id})`;
+    } else if (sessionPayload) {
+      // B. Human Merchant Session Authorization:
+      const role = String(sessionPayload.role || '').toUpperCase().trim();
+      const isOwnerOrAdmin = ['OWNER', 'MERCHANT', 'ADMIN', 'SUPERADMIN'].includes(role);
+      const isCs = ['CS', 'OPERATOR'].includes(role);
+
+      if (!isOwnerOrAdmin && !isCs) {
+        return NextResponse.json(
+          { success: false, error: `Forbidden: Peran '${sessionPayload.role || role}' tidak memiliki wewenang untuk membuat pesanan POS.` },
+          { status: 403 }
+        );
+      }
+
+      if (isCs) {
+        // SEC-P5-02 (Patch 4): Mandatory Active DB Membership & Permission Check
+        // Zero token-claim short-circuits. Always query tenant_users for this tenant.id.
+        let uQuery = supabase
+          .from('tenant_users')
+          .select('*')
+          .eq('tenant_id', tenant.id);
+
+        if (sessionPayload.userId) {
+          uQuery = uQuery.eq('id', sessionPayload.userId);
+        } else if (sessionPayload.phone) {
+          uQuery = uQuery.eq('phone', sessionPayload.phone);
+        } else {
+          return NextResponse.json(
+            { success: false, error: 'Forbidden: CS session wajib memiliki userId atau phone terdaftar.' },
+            { status: 403 }
+          );
+        }
+
+        const { data: dbUser, error: dbUserErr } = await uQuery.maybeSingle();
+        if (dbUserErr || !dbUser) {
+          return NextResponse.json(
+            { success: false, error: 'Forbidden: Akun CS tidak terdaftar sebagai anggota tenant target.' },
+            { status: 403 }
+          );
+        }
+
+        const isActive = dbUser.is_active === true || (dbUser.is_active !== false && dbUser.status !== 'SUSPENDED');
+        if (!isActive || dbUser.status === 'SUSPENDED') {
+          return NextResponse.json(
+            { success: false, error: 'Forbidden: Status keanggotaan CS tidak aktif atau ditangguhkan (SUSPENDED).' },
+            { status: 403 }
+          );
+        }
+
+        const allowedPerms = ['pos', 'orders', 'create_order', 'create_orders', 'orders:create', 'pos:create', 'pos_orders', 'all', '*'];
+        const dbPerms = dbUser.permissions || dbUser.metadata?.permissions;
+        const hasDbOrderPerm =
+          dbUser.role === 'OWNER_LEAD' ||
+          dbUser.access_level === 'FULL_DASHBOARD' ||
+          dbUser.can_create_orders === true ||
+          dbUser.metadata?.can_create_orders === true ||
+          (Array.isArray(dbPerms) && dbPerms.some((p: string) => allowedPerms.includes(String(p).toLowerCase().trim())));
+
+        if (!hasDbOrderPerm) {
+          return NextResponse.json(
+            { success: false, error: 'Forbidden: CS tidak memiliki izin pembuatan pesanan POS pada keanggotaan tenant ini.' },
+            { status: 403 }
+          );
+        }
+
+        // Secondary restrictive context: if token explicitly denies orders, fail closed
+        const anyPayload = sessionPayload as any;
+        if (anyPayload.canCreateOrders === false || anyPayload.can_create_orders === false) {
+          return NextResponse.json(
+            { success: false, error: 'Forbidden: Izin pembuatan pesanan ditolak oleh token konteks sesi.' },
+            { status: 403 }
+          );
+        }
+
+        authoritativeCsUserId = sessionPayload.userId || dbUser.id || null;
+        authoritativeCsUserName = sessionPayload.name || dbUser.name || 'CS Officer';
+      } else {
+        // Owner or Admin
+        authoritativeCsUserId = sessionPayload.userId || null;
+        authoritativeCsUserName = sessionPayload.name || 'Store Admin';
+      }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi autentikasi tidak tersedia.' },
+        { status: 401 }
+      );
     }
 
     // -------------------------------------------------------------------------
     // 4. SEC-P5-02: Authoritative Server Data & Cross-Tenant Entity Checks
     // -------------------------------------------------------------------------
-    // Strict CS user identity resolved exclusively from authenticated session (ignore forged client values)
-    const authoritativeCsUserId = sessionPayload.userId || null;
-    const authoritativeCsUserName = sessionPayload.name || (sessionPayload.role === 'CS' ? 'CS Officer' : 'Store Admin');
-
     // Conversation ID validation & cross-tenant isolation
     if (conversationId) {
       const cleanConvId = String(conversationId).trim();

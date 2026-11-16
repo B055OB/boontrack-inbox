@@ -100,6 +100,41 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       tenantUsers = {},
     } = options;
 
+    const resolvedTenantUsers: Record<string, any> = {
+      'legitimate-cs-uuid-777': {
+        id: 'legitimate-cs-uuid-777',
+        tenant_id: TEST_TENANT_ID,
+        role: 'CS',
+        is_active: true,
+        can_create_orders: true,
+        name: 'Siti Legitimate CS',
+      },
+      'cs-auth-01': {
+        id: 'cs-auth-01',
+        tenant_id: TEST_TENANT_ID,
+        role: 'CS',
+        is_active: true,
+        can_create_orders: true,
+        name: 'Authorized CS Siti',
+      },
+      'cs-chat-only-1': {
+        id: 'cs-chat-only-1',
+        tenant_id: TEST_TENANT_ID,
+        role: 'CS',
+        is_active: true,
+        can_create_orders: false,
+        permissions: ['live_chat', 'view_messages'],
+      },
+      'cs-denied-1': {
+        id: 'cs-denied-1',
+        tenant_id: TEST_TENANT_ID,
+        role: 'CS',
+        is_active: true,
+        can_create_orders: true,
+      },
+      ...tenantUsers,
+    };
+
     let capturedOrderPayload: any = null;
 
     const mockSupabase: any = {
@@ -161,16 +196,17 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
             }),
             maybeSingle: jest.fn().mockImplementation(() => {
               const compositeKey = `${filters.tenant_id}:${filters.id || filters.phone}`;
-              if (tenantUsers[compositeKey]) {
-                return Promise.resolve({ data: tenantUsers[compositeKey], error: null });
+              if (resolvedTenantUsers[compositeKey] !== undefined) {
+                return Promise.resolve({ data: resolvedTenantUsers[compositeKey], error: null });
               }
-              const userById = filters.id ? tenantUsers[filters.id] : (filters.phone ? tenantUsers[filters.phone] : null);
-              if (userById) {
+              const userById = filters.id ? resolvedTenantUsers[filters.id] : (filters.phone ? resolvedTenantUsers[filters.phone] : null);
+              if (userById !== undefined && userById !== null) {
                 if (!filters.tenant_id || userById.tenant_id === filters.tenant_id) {
                   return Promise.resolve({ data: userById, error: null });
                 }
+                return Promise.resolve({ data: null, error: null });
               }
-              const matchingUser = Object.values(tenantUsers).find((u: any) => {
+              const matchingUser = Object.values(resolvedTenantUsers).find((u: any) => {
                 if (!u) return false;
                 if (filters.tenant_id && u.tenant_id !== filters.tenant_id) return false;
                 if (filters.id && u.id !== filters.id) return false;
@@ -895,14 +931,30 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
     });
   });
 
-  describe('Patch 3: Machine Principal Authorization & Scope Isolation', () => {
+  describe('Patch 4: Server-Enforced Machine Principal Registry & Scope Isolation', () => {
     const TEST_ADMIN_SECRET = 'secret_internal_admin_token_super_long_32_bytes!';
+    const PRINCIPAL_A_SECRET = 'machine_secret_principal_a_secure_token_32_bytes!';
+    const PRINCIPAL_UNAUTH_SECRET = 'machine_secret_unauthorized_scope_32_bytes!';
 
     beforeEach(() => {
+      process.env.INTERNAL_MACHINE_PRINCIPALS = JSON.stringify({
+        'principal-a': {
+          secret: PRINCIPAL_A_SECRET,
+          allowedTenants: [TEST_TENANT_SLUG, TEST_TENANT_ID],
+          allowedScopes: ['pos:create_order'],
+          name: 'Machine Principal A',
+        },
+        'principal-unauth': {
+          secret: PRINCIPAL_UNAUTH_SECRET,
+          allowedTenants: [TEST_TENANT_SLUG],
+          allowedScopes: ['crm:read'],
+          name: 'Principal With Limited Scope',
+        },
+      });
       process.env.ADMIN_INTERNAL_SECRET = TEST_ADMIN_SECRET;
     });
 
-    it('rejects machine request when ADMIN_INTERNAL_SECRET is provided but x-internal-scope is missing with 403 Forbidden', async () => {
+    it('rejects legacy global shared secret (ADMIN_INTERNAL_SECRET) without server-side principal binding with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
@@ -911,7 +963,6 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${TEST_ADMIN_SECRET}`,
-          'x-target-tenant': TEST_TENANT_SLUG,
         },
         body: JSON.stringify({
           tenantSlug: TEST_TENANT_SLUG,
@@ -924,10 +975,10 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('Operasi mesin tidak diizinkan');
+      expect(data.error).toContain('Legacy shared machine secret dilarang tanpa registrasi principal');
     });
 
-    it('rejects machine request when x-internal-scope is unauthorized (e.g. crm:read) with 403 Forbidden', async () => {
+    it('rejects unregistered machine principal or invalid secret with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
@@ -935,9 +986,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-secret': TEST_ADMIN_SECRET,
-          'x-internal-scope': 'crm:read',
-          'x-target-tenant': TEST_TENANT_SLUG,
+          'x-internal-secret': 'completely_unregistered_secret_1234567890!',
         },
         body: JSON.stringify({
           tenantSlug: TEST_TENANT_SLUG,
@@ -950,10 +999,10 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('Operasi mesin tidak diizinkan');
+      expect(data.error).toContain('Kredensial mesin tidak valid');
     });
 
-    it('rejects machine request when x-target-tenant is missing with 403 Forbidden', async () => {
+    it('rejects registered machine principal attempting unauthorized operation scope with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
@@ -961,8 +1010,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${TEST_ADMIN_SECRET}`,
-          'x-internal-scope': 'pos:create_order',
+          'Authorization': `Bearer ${PRINCIPAL_UNAUTH_SECRET}`,
         },
         body: JSON.stringify({
           tenantSlug: TEST_TENANT_SLUG,
@@ -975,20 +1023,29 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('Prinsipal mesin wajib terikat pada scope tenant');
+      expect(data.error).toContain('tidak diizinkan untuk operasi POS');
     });
 
-    it('rejects machine request when x-target-tenant mismatches body tenantSlug with 403 Forbidden', async () => {
-      const mockDb = createMockSupabase();
+    it('rejects registered Machine Principal A attempting Tenant B (even with matching x-target-tenant and body.tenantSlug) with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantData: {
+          id: ALIEN_TENANT_ID,
+          slug: ALIEN_TENANT_SLUG,
+          name: 'Toko Alien',
+          metadata: {
+            products: [{ id: 'prod_alien', name: 'Alien Item', price: 99000 }],
+          },
+        },
+      });
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      // Principal A only allowed for TEST_TENANT_SLUG, but attempts ALIEN_TENANT_SLUG
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-secret': TEST_ADMIN_SECRET,
-          'x-internal-scope': 'pos:create_order',
-          'x-target-tenant': TEST_TENANT_SLUG,
+          'Authorization': `Bearer ${PRINCIPAL_A_SECRET}`,
+          'x-target-tenant': ALIEN_TENANT_SLUG,
         },
         body: JSON.stringify({
           tenantSlug: ALIEN_TENANT_SLUG,
@@ -1001,10 +1058,11 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('tidak cocok');
+      expect(data.error).toContain('tidak memiliki hak akses untuk tenant');
+      expect(data.error).toContain('Akses lintas tenant ditolak');
     });
 
-    it('allows machine request with valid secret, valid operation scope, and matching target tenant with 200 OK', async () => {
+    it('allows registered Machine Principal A on authorized tenant with 200 OK and authoritative machine audit metadata', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
@@ -1012,9 +1070,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-secret': TEST_ADMIN_SECRET,
-          'x-internal-scope': 'pos:create_order',
-          'x-target-tenant': TEST_TENANT_SLUG,
+          'Authorization': `Bearer ${PRINCIPAL_A_SECRET}`,
         },
         body: JSON.stringify({
           tenantSlug: TEST_TENANT_SLUG,
@@ -1029,8 +1085,8 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.success).toBe(true);
       expect(data.amount).toBe(60000);
       const captured = mockDb._getCapturedOrderPayload();
-      expect(captured.metadata.created_by_cs_id).toBe('system_machine');
-      expect(captured.metadata.created_by_cs_name).toBe('Internal Machine Principal');
+      expect(captured.metadata.created_by_cs_id).toBe('machine:principal-a');
+      expect(captured.metadata.created_by_cs_name).toBe('Machine Principal A');
     });
   });
 
@@ -1081,7 +1137,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('CS tidak memiliki izin untuk membuat pesanan POS pada tenant ini');
+      expect(data.error).toMatch(/(tidak terdaftar sebagai anggota tenant target|tidak memiliki izin)/);
     });
 
     it('blocks CS user when membership record in DB has status SUSPENDED or is_active false with 403 Forbidden', async () => {
@@ -1122,7 +1178,236 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       const data = await res.json();
       expect(res.status).toBe(403);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('CS tidak memiliki izin untuk membuat pesanan POS pada tenant ini');
+      expect(data.error).toMatch(/(tidak aktif atau ditangguhkan|tidak memiliki izin)/);
+    });
+  });
+
+  describe('Patch 4: Mandatory Active DB Membership Enforcement for CS / OPERATOR', () => {
+    it('(a) blocks CS token carrying order permissions when DB tenant_users row is SUSPENDED with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-suspended-01': {
+            id: 'cs-suspended-01',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            status: 'SUSPENDED',
+            is_active: true,
+            can_create_orders: true,
+            name: 'Suspended CS User',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-suspended-01',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak aktif atau ditangguhkan (SUSPENDED)');
+    });
+
+    it('(b) blocks CS token carrying order permissions when DB tenant_users row has is_active: false with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-inactive-02': {
+            id: 'cs-inactive-02',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: false,
+            can_create_orders: true,
+            name: 'Inactive CS User',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-inactive-02',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak aktif atau ditangguhkan (SUSPENDED)');
+    });
+
+    it('(c) blocks CS token carrying order permissions when user is missing/not found in DB tenant_users with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-unregistered-unknown': null,
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-unregistered-unknown',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak terdaftar sebagai anggota tenant target');
+    });
+
+    it('(d) blocks CS token carrying order permissions belonging to Tenant A in DB attempting Tenant B with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantData: {
+          id: ALIEN_TENANT_ID,
+          slug: ALIEN_TENANT_SLUG,
+          name: 'Toko Alien',
+          metadata: {
+            products: [{ id: 'prod_alien', name: 'Alien Item', price: 99000 }],
+          },
+        },
+        tenantUsers: {
+          'cs-tenant-a-only': {
+            id: 'cs-tenant-a-only',
+            tenant_id: TEST_TENANT_ID, // DB row is on Tenant A
+            role: 'CS',
+            is_active: true,
+            can_create_orders: true,
+            name: 'Tenant A CS',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      // Token claims alien tenant, but DB row belongs to Tenant A
+      const csToken = mintTestToken({
+        tenantSlug: ALIEN_TENANT_SLUG,
+        tenantId: ALIEN_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-tenant-a-only',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: ALIEN_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak terdaftar sebagai anggota tenant target');
+    });
+
+    it('(e) allows valid active CS membership on target tenant with DB order permission with 200 OK', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-active-valid-99': {
+            id: 'cs-active-valid-99',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: true,
+            can_create_orders: true,
+            name: 'Valid Active CS',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-active-valid-99',
+        name: 'Valid Active CS',
+        permissions: ['pos'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '80000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(80000);
+      const captured = mockDb._getCapturedOrderPayload();
+      expect(captured.metadata.created_by_cs_id).toBe('cs-active-valid-99');
+      expect(captured.metadata.created_by_cs_name).toBe('Valid Active CS');
     });
   });
 
