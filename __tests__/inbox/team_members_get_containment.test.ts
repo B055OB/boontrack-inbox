@@ -29,6 +29,9 @@ const MOCK_OWNER_ID = '11111111-1111-1111-1111-111111111111';
 const MOCK_CS_ID = '22222222-2222-2222-2222-222222222222';
 const MOCK_INACTIVE_ID = '33333333-3333-3333-3333-333333333333';
 const MOCK_OTHER_TENANT_USER_ID = '44444444-4444-4444-4444-444444444444';
+const MOCK_ROLE_NULL_ID = '55555555-5555-5555-5555-555555555555';
+const MOCK_ROLE_EMPTY_ID = '66666666-6666-6666-6666-666666666666';
+const MOCK_ROLE_MANAGER_ID = '77777777-7777-7777-7777-777777777777';
 
 let mockTenantUsers: any[] = [];
 
@@ -474,5 +477,301 @@ describe('GET /api/inbox/team-members Gate 1 Security Containment', () => {
     );
     expect(res.headers.get('Pragma')).toBe('no-cache');
     expect(res.headers.get('Expires')).toBe('0');
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. Role Provenance Tests (Zero Fallback Enforcement)
+  // -------------------------------------------------------------------------
+  it('13. returns unmasked PII when DB role is OWNER even if session token claims role CS', async () => {
+    // Database member is OWNER, but token claims CS
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_OWNER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ownerMember = body.teamMembers.find((m: any) => m.id === MOCK_OWNER_ID);
+    expect(ownerMember.phone).toBe('081234567890'); // Unmasked because DB role is OWNER
+    expect(ownerMember.email).toBe('owner.alice@example.com'); // Unmasked
+
+    const csMember = body.teamMembers.find((m: any) => m.id === MOCK_CS_ID);
+    expect(csMember.phone).toBe('081200000002'); // Unmasked for owner
+    expect(csMember.email).toBe('cs.bob@example.com'); // Unmasked
+  });
+
+  it('14. returns masked PII when DB role is CS even if session token claims role OWNER (zero fallback)', async () => {
+    // Database member is CS, but token claims forged/escalated OWNER role
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_CS_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ownerMember = body.teamMembers.find((m: any) => m.id === MOCK_OWNER_ID);
+    expect(ownerMember.phone).toBe('0812****90'); // Masked because DB role is CS
+    expect(ownerMember.email).toBe('o***e@example.com'); // Masked
+
+    const csMember = body.teamMembers.find((m: any) => m.id === MOCK_CS_ID);
+    expect(csMember.phone).toBe('0812****02'); // Masked
+    expect(csMember.email).toBe('c***b@example.com'); // Masked
+  });
+
+  it('15. returns masked PII when DB role is NULL even if session token claims role OWNER', async () => {
+    mockTenantUsers.push({
+      id: MOCK_ROLE_NULL_ID,
+      tenant_id: MOCK_TENANT_ID_A,
+      tenant_slug: MOCK_TENANT_SLUG_A,
+      name: 'Null Role User',
+      phone: '081255555555',
+      email: 'null.role@example.com',
+      role: null,
+      access_level: 'LIVE_CHAT_ONLY',
+      status: 'active',
+      is_active: true,
+      created_at: '2026-01-05T00:00:00Z',
+    });
+
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_ROLE_NULL_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ownerMember = body.teamMembers.find((m: any) => m.id === MOCK_OWNER_ID);
+    expect(ownerMember.phone).toBe('0812****90'); // Masked because DB role is null
+    expect(ownerMember.email).toBe('o***e@example.com'); // Masked
+  });
+
+  it('16. returns masked PII when DB role is empty string "" even if session token claims role OWNER', async () => {
+    mockTenantUsers.push({
+      id: MOCK_ROLE_EMPTY_ID,
+      tenant_id: MOCK_TENANT_ID_A,
+      tenant_slug: MOCK_TENANT_SLUG_A,
+      name: 'Empty Role User',
+      phone: '081266666666',
+      email: 'empty.role@example.com',
+      role: '',
+      access_level: 'LIVE_CHAT_ONLY',
+      status: 'active',
+      is_active: true,
+      created_at: '2026-01-06T00:00:00Z',
+    });
+
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_ROLE_EMPTY_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ownerMember = body.teamMembers.find((m: any) => m.id === MOCK_OWNER_ID);
+    expect(ownerMember.phone).toBe('0812****90'); // Masked because DB role is empty
+    expect(ownerMember.email).toBe('o***e@example.com'); // Masked
+  });
+
+  it('17. returns masked PII when DB role is unknown (e.g. MANAGER) even if session token claims role OWNER', async () => {
+    mockTenantUsers.push({
+      id: MOCK_ROLE_MANAGER_ID,
+      tenant_id: MOCK_TENANT_ID_A,
+      tenant_slug: MOCK_TENANT_SLUG_A,
+      name: 'Manager User',
+      phone: '081277777777',
+      email: 'manager.user@example.com',
+      role: 'MANAGER',
+      access_level: 'OPERATOR',
+      status: 'active',
+      is_active: true,
+      created_at: '2026-01-07T00:00:00Z',
+    });
+
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_ROLE_MANAGER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ownerMember = body.teamMembers.find((m: any) => m.id === MOCK_OWNER_ID);
+    expect(ownerMember.phone).toBe('0812****90'); // Masked because DB role MANAGER !== OWNER
+    expect(ownerMember.email).toBe('o***e@example.com'); // Masked
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. Tenant Binding & Authoritative UUID Tests
+  // -------------------------------------------------------------------------
+  it('18. succeeds with 200 when Tenant ID and correct slug match session and database', async () => {
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_CS_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    for (const member of body.teamMembers) {
+      expect(member.tenant_id).toBe(MOCK_TENANT_ID_A);
+    }
+  });
+
+  it('19. succeeds with 200 when Tenant ID matches even if session contains stale/old slug (exact tenant_id authoritative)', async () => {
+    // Session token has outdated slug 'stale-legacy-slug', but exact tenantId matches DB
+    const token = signMerchantSessionToken({
+      tenantSlug: 'stale-legacy-slug',
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_CS_ID,
+    });
+
+    const req = new NextRequest(
+      `http://localhost:3000/api/inbox/team-members?tenantId=${MOCK_TENANT_ID_A}`,
+      {
+        method: 'GET',
+        headers: { 'x-merchant-token': token },
+      }
+    );
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.teamMembers.length).toBeGreaterThan(0);
+    for (const member of body.teamMembers) {
+      expect(member.tenant_id).toBe(MOCK_TENANT_ID_A);
+    }
+  });
+
+  it('20. rejects with 403 TENANT_MISMATCH when Tenant ID A session queries Tenant B slug on selector', async () => {
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_CS_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?slug=store-beta', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.errorCode).toBe('TENANT_MISMATCH');
+  });
+
+  it('21. rejects with 403 TENANT_CROSS_ACCESS_FORBIDDEN when Tenant A session caller belongs to Tenant B in database', async () => {
+    // Session claims Tenant A, but caller user belongs to Tenant B
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_OTHER_TENANT_USER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.errorCode).toBe('TENANT_CROSS_ACCESS_FORBIDDEN');
+  });
+
+  it('22. rejects with 403 TENANT_MISMATCH on conflicting multiple query aliases (?tenant=store-alpha&tenantId=store-beta)', async () => {
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'CS',
+      userId: MOCK_CS_ID,
+    });
+
+    const req = new NextRequest(
+      'http://localhost:3000/api/inbox/team-members?tenant=store-alpha&tenantId=store-beta',
+      {
+        method: 'GET',
+        headers: { 'x-merchant-token': token },
+      }
+    );
+
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.errorCode).toBe('TENANT_MISMATCH');
   });
 });

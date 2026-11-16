@@ -84,9 +84,15 @@ export async function GET(req: NextRequest) {
     const sessionTenantId = payload.tenantId?.trim() || null;
     const sessionTenantSlug = payload.tenantSlug?.toLowerCase().trim() || null;
 
-    if (!sessionTenantId && !sessionTenantSlug) {
+    if (!sessionTenantId) {
       return NextResponse.json(
-        { success: false, error: 'Forbidden: Identitas tenant sesi tidak valid.', errorCode: 'TENANT_IDENTITY_MISSING', teamMembers: [], count: 0 },
+        {
+          success: false,
+          error: 'Forbidden: Identitas tenant ID (UUID) sesi tidak valid atau hilang.',
+          errorCode: 'TENANT_IDENTITY_MISSING',
+          teamMembers: [],
+          count: 0,
+        },
         { status: 403, headers: SENSITIVE_HEADERS }
       );
     }
@@ -162,12 +168,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Tenant binding validation between callerUser and session
+    // Tenant binding validation between callerUser and session (Strict UUID match)
     const callerTenantId = (callerUser.tenant_id || '').toLowerCase().trim();
-    const callerTenantSlug = (callerUser.tenant_slug || '').toLowerCase().trim();
-    const matchesCallerTenant =
-      (sessionTenantId && callerTenantId === sessionTenantId.toLowerCase()) ||
-      (sessionTenantSlug && callerTenantSlug === sessionTenantSlug);
+    const matchesCallerTenant = callerTenantId === sessionTenantId.toLowerCase();
 
     if (!matchesCallerTenant) {
       return NextResponse.json(
@@ -182,21 +185,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const callerRole = (callerUser.role || payload.role || '').toUpperCase().trim();
+    const callerRole = typeof callerUser.role === 'string' ? callerUser.role.toUpperCase().trim() : '';
     const isOwner = callerRole === 'OWNER';
 
     // 7. Query Team Members with Explicit Column Allowlist (Zero .select('*'))
-    const orTokens = new Set<string>();
-    if (sessionTenantId) orTokens.add(`tenant_id.eq.${sessionTenantId}`);
-    if (sessionTenantSlug) {
-      orTokens.add(`tenant_slug.eq.${sessionTenantSlug}`);
-      orTokens.add(`tenant_id.eq.${sessionTenantSlug}`);
-    }
-
     const { data: members, error: queryErr } = await supabase
       .from('tenant_users')
       .select('id, tenant_id, tenant_slug, name, phone, email, role, access_level, status, is_active, created_at')
-      .or(Array.from(orTokens).join(','))
+      .eq('tenant_id', sessionTenantId)
       .eq('is_active', true)
       .order('created_at', { ascending: true });
 
