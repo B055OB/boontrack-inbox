@@ -239,11 +239,12 @@ export function parseStrictRupiahAmount(rawAmount: any): { valid: boolean; amoun
 }
 
 /**
- * INBOX-POS-01 / Patch 4: Dedicated Server Gateway for Custom POS Order Generation
- * Resolves SEC-01 & SEC-03 & CTO Security Remediation Order (SEC-P5-01, SEC-P5-02, SEC-P5-03):
- * 1. SEC-P5-01: Server-Enforced Machine Principal Authorization (No self-asserted header authority).
- * 2. SEC-P5-02: Mandatory Active DB Membership & Permission Enforcement for CS / OPERATOR (Zero token-claim short-circuits).
- * 3. SEC-P5-03: Strict Integer Rupiah Validation (Safe-Integer enforcement, MAX_MANUAL_BANK_AMOUNT cap, BI/ASPI limits).
+ * INBOX-POS-01 / Patch 5: Dedicated Server Gateway for Custom POS Order Generation
+ * Resolves SEC-01 & SEC-03 & CTO Security Remediation Orders (SEC-P5-01, SEC-P5-02, SEC-P5-03, P5-01, P5-02):
+ * 1. P5-01: Strict Authoritative Active Membership Check (is_active === true fail-closed, status === 'ACTIVE').
+ * 2. P5-02: Membership Role Integrity (Allowed CS/OPERATOR DB roles, explicit DB order perms, authoritative DB identity metadata).
+ * 3. SEC-P5-01: Server-Enforced Machine Principal Authorization (No self-asserted header authority).
+ * 4. SEC-P5-03: Strict Integer Rupiah Validation (Safe-Integer enforcement, MAX_MANUAL_BANK_AMOUNT cap, BI/ASPI limits).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -467,14 +468,39 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const isActive = dbUser.is_active === true || (dbUser.is_active !== false && dbUser.status !== 'SUSPENDED');
-        if (!isActive || dbUser.status === 'SUSPENDED') {
+        // P5-01: Strict Authoritative Active Membership Check (Fail-Closed)
+        // 1. is_active must be strictly boolean true (rejects null, undefined, missing, false, non-boolean)
+        if (dbUser.is_active !== true) {
           return NextResponse.json(
-            { success: false, error: 'Forbidden: Status keanggotaan CS tidak aktif atau ditangguhkan (SUSPENDED).' },
+            { success: false, error: 'Forbidden: Status keanggotaan CS tidak aktif (is_active bukan true).' },
             { status: 403 }
           );
         }
 
+        // 2. If status is defined/present, require exact active enum (e.g. 'ACTIVE').
+        // Reject unknown, inactive, and suspended states. Do NOT infer active membership from absence of suspension marker.
+        if (dbUser.status !== undefined && dbUser.status !== null) {
+          const normStatus = String(dbUser.status).toUpperCase().trim();
+          if (normStatus !== 'ACTIVE') {
+            return NextResponse.json(
+              { success: false, error: `Forbidden: Status keanggotaan CS '${dbUser.status}' tidak valid atau tidak aktif.` },
+              { status: 403 }
+            );
+          }
+        }
+
+        // P5-02: Membership Role Integrity
+        // Require the database membership role to be an allowed CS/OPERATOR role. Never trust token claims to grant DB roles.
+        const allowedCsRoles = ['CS', 'OPERATOR', 'CUSTOMER_SERVICE', 'CS_AGENT', 'AGENT', 'OWNER_LEAD'];
+        const dbRole = String(dbUser.role || '').toUpperCase().trim();
+        if (!dbRole || !allowedCsRoles.includes(dbRole)) {
+          return NextResponse.json(
+            { success: false, error: `Forbidden: Peran anggota pada database ('${dbUser.role || 'NONE'}') tidak diizinkan untuk operasional CS/POS.` },
+            { status: 403 }
+          );
+        }
+
+        // Explicit order-creation permission on that same membership record
         const allowedPerms = ['pos', 'orders', 'create_order', 'create_orders', 'orders:create', 'pos:create', 'pos_orders', 'all', '*'];
         const dbPerms = dbUser.permissions || dbUser.metadata?.permissions;
         const hasDbOrderPerm =
@@ -491,7 +517,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Secondary restrictive context: if token explicitly denies orders, fail closed
+        // Preserve restrictive token claims: explicit token denial must still fail closed
         const anyPayload = sessionPayload as any;
         if (anyPayload.canCreateOrders === false || anyPayload.can_create_orders === false) {
           return NextResponse.json(
@@ -500,8 +526,9 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        authoritativeCsUserId = sessionPayload.userId || dbUser.id || null;
-        authoritativeCsUserName = sessionPayload.name || dbUser.name || 'CS Officer';
+        // Authoritative DB identity/name for audit metadata (DB record takes precedence over session claims)
+        authoritativeCsUserId = dbUser.id || sessionPayload.userId || null;
+        authoritativeCsUserName = dbUser.name || sessionPayload.name || 'CS Officer';
       } else {
         // Owner or Admin
         authoritativeCsUserId = sessionPayload.userId || null;
