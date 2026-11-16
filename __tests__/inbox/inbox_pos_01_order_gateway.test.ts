@@ -1186,18 +1186,19 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
     });
   });
 
-  describe('P5 (INBOX-POS-01 Patch 5): Authoritative Active Membership & Role Integrity Suite', () => {
-    // 1. is_active missing and status missing -> 403
-    it('P5-Test-01: rejects CS when is_active is missing and status is missing with 403 Forbidden', async () => {
+  describe('P5 (INBOX-POS-01 Patch 6): Authoritative Membership Schema & Zero Implicit Bypass Suite', () => {
+    // 1. is_active: true, status missing -> 200 OK (verified schema: status is nullable/optional in tenant_users)
+    it('P6-Test-01: allows CS when is_active is true and status is missing according to verified schema with 200 OK', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-01': {
-            id: 'cs-p5-01',
+          'cs-p6-status-missing': {
+            id: 'cs-p6-status-missing',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
-            // Neither is_active nor status is present
+            is_active: true,
+            // status is missing/undefined
             can_create_orders: true,
-            name: 'CS Missing Active and Status',
+            name: 'CS Status Missing',
           },
         },
       });
@@ -1207,7 +1208,243 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-01',
+        userId: 'cs-p6-status-missing',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(50000);
+    });
+
+    // 2. is_active: true, status null -> 200 OK (verified schema: status is nullable)
+    it('P6-Test-02: allows CS when is_active is true and status is null according to verified schema with 200 OK', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-p6-status-null': {
+            id: 'cs-p6-status-null',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: true,
+            status: null, // explicit null
+            can_create_orders: true,
+            name: 'CS Status Null',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-p6-status-null',
+        permissions: ['pos', 'orders'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(50000);
+    });
+
+    // 3. OWNER_LEAD without explicit order permission -> 403 Forbidden (no implicit bypass)
+    it('P6-Test-03: rejects OWNER_LEAD membership when lacking explicit order permission with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-p6-owner-lead-no-perm': {
+            id: 'cs-p6-owner-lead-no-perm',
+            tenant_id: TEST_TENANT_ID,
+            role: 'OWNER_LEAD',
+            is_active: true,
+            status: 'ACTIVE',
+            can_create_orders: false, // lacks explicit order creation permission
+            permissions: ['live_chat', 'view_inbox'],
+            name: 'Owner Lead Without Order Perm',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-p6-owner-lead-no-perm',
+        name: 'Owner Lead User',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak memiliki izin pembuatan pesanan POS');
+    });
+
+    // 4. FULL_DASHBOARD without explicit order permission -> 403 Forbidden (no implicit bypass)
+    it('P6-Test-04: rejects FULL_DASHBOARD membership when lacking explicit order permission with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-p6-full-dash-no-perm': {
+            id: 'cs-p6-full-dash-no-perm',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            access_level: 'FULL_DASHBOARD',
+            is_active: true,
+            status: 'ACTIVE',
+            can_create_orders: false, // lacks explicit order creation permission
+            permissions: ['live_chat', 'view_inbox'],
+            name: 'Full Dashboard Agent Without Order Perm',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-p6-full-dash-no-perm',
+        name: 'Full Dashboard Agent',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak memiliki izin pembuatan pesanan POS');
+    });
+
+    // 5. Valid CS with explicit DB order permission -> 200 OK
+    it('P6-Test-05: allows valid CS with explicit DB order permission with 200 OK using authoritative DB identity', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-p6-valid-cs': {
+            id: 'cs-p6-valid-cs',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            is_active: true,
+            status: 'ACTIVE',
+            can_create_orders: true, // explicit permission
+            name: 'Explicit Perm CS Siti',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      // Token carries different name 'Client Forged Name', DB has 'Explicit Perm CS Siti'
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-p6-valid-cs',
+        name: 'Client Forged Name',
+        permissions: ['pos'],
+        canCreateOrders: true,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '80000',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(80000);
+      const captured = mockDb._getCapturedOrderPayload();
+      expect(captured.metadata.created_by_cs_id).toBe('cs-p6-valid-cs');
+      expect(captured.metadata.created_by_cs_name).toBe('Explicit Perm CS Siti');
+      expect(captured.metadata.created_by_cs_name).not.toBe('Client Forged Name');
+    });
+
+    // 6a. is_active missing and status missing -> 403 Forbidden
+    it('P6-Test-06a: rejects CS when is_active is missing and status is missing with 403 Forbidden', async () => {
+      const mockDb = createMockSupabase({
+        tenantUsers: {
+          'cs-p6-missing-active-status': {
+            id: 'cs-p6-missing-active-status',
+            tenant_id: TEST_TENANT_ID,
+            role: 'CS',
+            // is_active and status both omitted
+            can_create_orders: true,
+            name: 'Missing Active and Status',
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const csToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'cs-p6-missing-active-status',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1232,18 +1469,18 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak aktif (is_active bukan true)');
     });
 
-    // 2. is_active: null -> 403
-    it('P5-Test-02: rejects CS when is_active is null with 403 Forbidden', async () => {
+    // 6b. is_active: null -> 403 Forbidden
+    it('P6-Test-06b: rejects CS when is_active is null with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-02': {
-            id: 'cs-p5-02',
+          'cs-p6-null-active': {
+            id: 'cs-p6-null-active',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
             is_active: null,
             status: 'ACTIVE',
             can_create_orders: true,
-            name: 'CS Null is_active',
+            name: 'Null Active CS',
           },
         },
       });
@@ -1253,7 +1490,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-02',
+        userId: 'cs-p6-null-active',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1278,18 +1515,18 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak aktif (is_active bukan true)');
     });
 
-    // 3. Unknown status -> 403
-    it('P5-Test-03: rejects CS when status is unknown (e.g. UNKNOWN, PENDING, INACTIVE) with 403 Forbidden', async () => {
+    // 6c. Unknown status -> 403 Forbidden
+    it('P6-Test-06c: rejects CS when status is unknown (e.g. UNKNOWN, PENDING, INACTIVE) with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-03': {
-            id: 'cs-p5-03',
+          'cs-p6-unknown-status': {
+            id: 'cs-p6-unknown-status',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
             is_active: true,
             status: 'UNKNOWN_STATE',
             can_create_orders: true,
-            name: 'CS Unknown Status',
+            name: 'Unknown Status CS',
           },
         },
       });
@@ -1299,7 +1536,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-03',
+        userId: 'cs-p6-unknown-status',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1324,12 +1561,12 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak valid atau tidak aktif');
     });
 
-    // 4. status: SUSPENDED -> 403
-    it('P5-Test-04: rejects CS when status is SUSPENDED with 403 Forbidden', async () => {
+    // 6d. status: SUSPENDED -> 403 Forbidden
+    it('P6-Test-06d: rejects CS when status is SUSPENDED with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-04': {
-            id: 'cs-p5-04',
+          'cs-p6-suspended': {
+            id: 'cs-p6-suspended',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
             is_active: true,
@@ -1345,7 +1582,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-04',
+        userId: 'cs-p6-suspended',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1370,18 +1607,18 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak valid atau tidak aktif');
     });
 
-    // 5. is_active: false -> 403
-    it('P5-Test-05: rejects CS when is_active is false with 403 Forbidden', async () => {
+    // 6e. is_active: false -> 403 Forbidden
+    it('P6-Test-06e: rejects CS when is_active is false with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-05': {
-            id: 'cs-p5-05',
+          'cs-p6-inactive-bool': {
+            id: 'cs-p6-inactive-bool',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
             is_active: false,
             status: 'ACTIVE',
             can_create_orders: true,
-            name: 'Inactive CS User',
+            name: 'Inactive Bool CS',
           },
         },
       });
@@ -1391,7 +1628,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-05',
+        userId: 'cs-p6-inactive-bool',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1416,12 +1653,12 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak aktif (is_active bukan true)');
     });
 
-    // 6. Membership role does not match CS/OPERATOR -> 403
-    it('P5-Test-06: rejects CS when membership role in DB does not match allowed CS/OPERATOR role with 403 Forbidden', async () => {
+    // 6f. Membership role does not match CS/OPERATOR -> 403 Forbidden
+    it('P6-Test-06f: rejects CS when membership role in DB does not match allowed CS/OPERATOR role with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-06': {
-            id: 'cs-p5-06',
+          'cs-p6-disallowed-role': {
+            id: 'cs-p6-disallowed-role',
             tenant_id: TEST_TENANT_ID,
             role: 'VIEWER', // Disallowed role in DB
             is_active: true,
@@ -1437,7 +1674,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-06',
+        userId: 'cs-p6-disallowed-role',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1462,8 +1699,8 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak diizinkan untuk operasional CS/POS');
     });
 
-    // 7. DB membership belongs to another tenant -> 403
-    it('P5-Test-07: rejects CS when DB membership record belongs to another tenant with 403 Forbidden', async () => {
+    // 6g. DB membership belongs to another tenant -> 403 Forbidden
+    it('P6-Test-06g: rejects CS when DB membership record belongs to another tenant with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantData: {
           id: TEST_TENANT_ID,
@@ -1475,8 +1712,8 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
           },
         },
         tenantUsers: {
-          'cs-p5-07': {
-            id: 'cs-p5-07',
+          'cs-p6-cross-tenant': {
+            id: 'cs-p6-cross-tenant',
             tenant_id: ALIEN_TENANT_ID, // belongs to Alien Tenant in DB
             role: 'CS',
             is_active: true,
@@ -1492,7 +1729,7 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-07',
+        userId: 'cs-p6-cross-tenant',
         permissions: ['pos', 'orders'],
         canCreateOrders: true,
       });
@@ -1517,65 +1754,12 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       expect(data.error).toContain('tidak terdaftar sebagai anggota tenant target');
     });
 
-    // 8. Valid active CS membership with DB order permission -> 200
-    it('P5-Test-08: allows valid active CS membership with DB order permission with 200 OK using authoritative DB identity', async () => {
+    // 6h. Valid membership but token explicitly denies order creation -> 403 Forbidden
+    it('P6-Test-06h: rejects valid active membership when token explicitly denies order creation (canCreateOrders: false) with 403 Forbidden', async () => {
       const mockDb = createMockSupabase({
         tenantUsers: {
-          'cs-p5-08': {
-            id: 'cs-p5-08',
-            tenant_id: TEST_TENANT_ID,
-            role: 'CS',
-            is_active: true,
-            status: 'ACTIVE',
-            can_create_orders: true,
-            name: 'Authoritative DB CS Name',
-          },
-        },
-      });
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      // Token carries forged client name 'Attacker Claimed Name', DB has 'Authoritative DB CS Name'
-      const csToken = mintTestToken({
-        tenantSlug: TEST_TENANT_SLUG,
-        tenantId: TEST_TENANT_ID,
-        role: 'CS',
-        userId: 'cs-p5-08',
-        name: 'Attacker Claimed Name',
-        permissions: ['pos'],
-        canCreateOrders: true,
-      });
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          cookie: `bt_merchant_token=${csToken}`,
-        },
-        body: JSON.stringify({
-          tenantSlug: TEST_TENANT_SLUG,
-          customerPhone: '6281234567890',
-          rawAmount: '80000',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-      expect(res.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.amount).toBe(80000);
-      const captured = mockDb._getCapturedOrderPayload();
-      expect(captured.metadata.created_by_cs_id).toBe('cs-p5-08');
-      // DB name takes precedence over session claims
-      expect(captured.metadata.created_by_cs_name).toBe('Authoritative DB CS Name');
-      expect(captured.metadata.created_by_cs_name).not.toBe('Attacker Claimed Name');
-    });
-
-    // 9. Valid membership but token explicitly denies order creation -> 403
-    it('P5-Test-09: rejects valid active membership when token explicitly denies order creation (canCreateOrders: false) with 403 Forbidden', async () => {
-      const mockDb = createMockSupabase({
-        tenantUsers: {
-          'cs-p5-09': {
-            id: 'cs-p5-09',
+          'cs-p6-token-denied': {
+            id: 'cs-p6-token-denied',
             tenant_id: TEST_TENANT_ID,
             role: 'CS',
             is_active: true,
@@ -1587,14 +1771,13 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Su
       });
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
-      // Token explicitly denies order creation
       const csToken = mintTestToken({
         tenantSlug: TEST_TENANT_SLUG,
         tenantId: TEST_TENANT_ID,
         role: 'CS',
-        userId: 'cs-p5-09',
+        userId: 'cs-p6-token-denied',
         name: 'Valid DB CS',
-        canCreateOrders: false,
+        canCreateOrders: false, // Token explicitly denies
       });
 
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {

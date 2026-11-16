@@ -239,10 +239,10 @@ export function parseStrictRupiahAmount(rawAmount: any): { valid: boolean; amoun
 }
 
 /**
- * INBOX-POS-01 / Patch 5: Dedicated Server Gateway for Custom POS Order Generation
- * Resolves SEC-01 & SEC-03 & CTO Security Remediation Orders (SEC-P5-01, SEC-P5-02, SEC-P5-03, P5-01, P5-02):
- * 1. P5-01: Strict Authoritative Active Membership Check (is_active === true fail-closed, status === 'ACTIVE').
- * 2. P5-02: Membership Role Integrity (Allowed CS/OPERATOR DB roles, explicit DB order perms, authoritative DB identity metadata).
+ * INBOX-POS-01 / Patch 6: Dedicated Server Gateway for Custom POS Order Generation
+ * Resolves SEC-01 & SEC-03 & CTO Security Remediation Orders (SEC-P5-01, SEC-P5-02, SEC-P5-03, P5-01, P5-02, Patch 6):
+ * 1. P5-01 / Patch 6: Authoritative active membership check based on verified schema (is_active === true fail-closed; status nullable/non-authoritative unless non-active).
+ * 2. P5-02 / Patch 6: Membership Role Integrity & Zero Implicit Bypass (Allowed CS/OPERATOR DB roles, explicit DB order permissions with zero OWNER_LEAD/FULL_DASHBOARD bypass, authoritative DB identity metadata).
  * 3. SEC-P5-01: Server-Enforced Machine Principal Authorization (No self-asserted header authority).
  * 4. SEC-P5-03: Strict Integer Rupiah Validation (Safe-Integer enforcement, MAX_MANUAL_BANK_AMOUNT cap, BI/ASPI limits).
  */
@@ -500,12 +500,11 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Explicit order-creation permission on that same membership record
+        // Explicit, authoritative order-creation permission required on the same membership record.
+        // Zero implicit role/access-level bypasses (OWNER_LEAD and FULL_DASHBOARD require explicit order permission).
         const allowedPerms = ['pos', 'orders', 'create_order', 'create_orders', 'orders:create', 'pos:create', 'pos_orders', 'all', '*'];
         const dbPerms = dbUser.permissions || dbUser.metadata?.permissions;
         const hasDbOrderPerm =
-          dbUser.role === 'OWNER_LEAD' ||
-          dbUser.access_level === 'FULL_DASHBOARD' ||
           dbUser.can_create_orders === true ||
           dbUser.metadata?.can_create_orders === true ||
           (Array.isArray(dbPerms) && dbPerms.some((p: string) => allowedPerms.includes(String(p).toLowerCase().trim())));
