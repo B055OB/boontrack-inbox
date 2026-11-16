@@ -34,8 +34,12 @@ const MOCK_ROLE_EMPTY_ID = '66666666-6666-6666-6666-666666666666';
 const MOCK_ROLE_MANAGER_ID = '77777777-7777-7777-7777-777777777777';
 
 let mockTenantUsers: any[] = [];
+let recordedSelectColumns: string[] = [];
+let simulateRosterQueryError: any = null;
 
 function resetMockDb() {
+  recordedSelectColumns = [];
+  simulateRosterQueryError = null;
   mockTenantUsers = [
     {
       id: MOCK_OWNER_ID,
@@ -102,7 +106,8 @@ const mockSupabase = {
     }
 
     return {
-      select: (_cols: string) => {
+      select: (cols: string) => {
+        recordedSelectColumns.push(cols);
         let filters: Array<(row: any) => boolean> = [];
         let singleRow = false;
 
@@ -137,6 +142,10 @@ const mockSupabase = {
             return { data: matches[0] || null, error: null };
           },
           then: (resolve: any) => {
+            if (simulateRosterQueryError) {
+              resolve({ data: null, error: simulateRosterQueryError });
+              return;
+            }
             const matches = mockTenantUsers.filter((r) => filters.every((f) => f(r)));
             resolve({ data: matches, error: null });
           },
@@ -773,5 +782,187 @@ describe('GET /api/inbox/team-members Gate 1 Security Containment', () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     expect(body.errorCode).toBe('TENANT_MISMATCH');
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. CTO Review Findings Remediation Tests (Findings 1, 2, 3)
+  // -------------------------------------------------------------------------
+  it('23. Finding 1: eliminates non-active combinations (is_active: true, status: suspended) and (is_active: false, status: active), keeping only (is_active: true, status: active)', async () => {
+    const SUSPENDED_ACTIVE_ID = '88888888-8888-8888-8888-888888888888';
+    const INACTIVE_STATUS_ACTIVE_ID = '99999999-9999-9999-9999-999999999998';
+    const ACTIVE_VALID_ID = '99999999-9999-9999-9999-999999999999';
+
+    mockTenantUsers.push(
+      // Combination 1: is_active: true, status: 'suspended' (MUST BE ELIMINATED)
+      {
+        id: SUSPENDED_ACTIVE_ID,
+        tenant_id: MOCK_TENANT_ID_A,
+        tenant_slug: MOCK_TENANT_SLUG_A,
+        name: 'Suspended But True Flag',
+        phone: '081288888888',
+        email: 'suspended.flag@example.com',
+        role: 'CS',
+        access_level: 'LIVE_CHAT_ONLY',
+        status: 'suspended',
+        is_active: true,
+        created_at: '2026-01-08T00:00:00Z',
+      },
+      // Combination 2: is_active: false, status: 'active' (MUST BE ELIMINATED)
+      {
+        id: INACTIVE_STATUS_ACTIVE_ID,
+        tenant_id: MOCK_TENANT_ID_A,
+        tenant_slug: MOCK_TENANT_SLUG_A,
+        name: 'Active Status But Inactive Flag',
+        phone: '081299999998',
+        email: 'inactive.flag@example.com',
+        role: 'CS',
+        access_level: 'LIVE_CHAT_ONLY',
+        status: 'active',
+        is_active: false,
+        created_at: '2026-01-09T00:00:00Z',
+      },
+      // Combination 3: is_active: true, status: 'active' (MUST BE INCLUDED)
+      {
+        id: ACTIVE_VALID_ID,
+        tenant_id: MOCK_TENANT_ID_A,
+        tenant_slug: MOCK_TENANT_SLUG_A,
+        name: 'Fully Active Member',
+        phone: '081299999999',
+        email: 'active.valid@example.com',
+        role: 'CS',
+        access_level: 'LIVE_CHAT_ONLY',
+        status: 'active',
+        is_active: true,
+        created_at: '2026-01-10T00:00:00Z',
+      }
+    );
+
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_OWNER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const ids = body.teamMembers.map((m: any) => m.id);
+
+    // Combination 1 eliminated
+    expect(ids).not.toContain(SUSPENDED_ACTIVE_ID);
+    // Combination 2 eliminated
+    expect(ids).not.toContain(INACTIVE_STATUS_ACTIVE_ID);
+    // Combination 3 included
+    expect(ids).toContain(ACTIVE_VALID_ID);
+
+    // Every single member in the response must have BOTH is_active: true AND status: 'active'
+    for (const member of body.teamMembers) {
+      expect(member.is_active).toBe(true);
+      expect(String(member.status).toLowerCase().trim()).toBe('active');
+    }
+  });
+
+  it('24. Finding 2: returns explicit HTTP 500 when roster query encounters database error without leaking raw DB details', async () => {
+    simulateRosterQueryError = {
+      message: 'PG::ConnectionBad: connection refused at postgresql://postgres:secretpassword@db.supabase.co:5432/postgres',
+      code: '57P01',
+      details: 'connection reset by peer',
+    };
+
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_OWNER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(500);
+
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.teamMembers).toEqual([]);
+    expect(body.count).toBe(0);
+    expect(body.errorCode).toBe('ROSTER_QUERY_FAILED');
+    expect(body.error).toBe('Terjadi kesalahan sistem saat mengambil data anggota tim.');
+
+    // Ensure raw DB details are never leaked
+    expect(JSON.stringify(body)).not.toContain('secretpassword');
+    expect(JSON.stringify(body)).not.toContain('postgresql://');
+    expect(JSON.stringify(body)).not.toContain('57P01');
+    expect(JSON.stringify(body)).not.toContain('connection reset by peer');
+
+    // Ensure non-cacheable security headers are preserved
+    expect(res.headers.get('Cache-Control')).toBe(
+      'no-store, no-cache, must-revalidate, proxy-revalidate, private'
+    );
+    expect(res.headers.get('Pragma')).toBe('no-cache');
+    expect(res.headers.get('Expires')).toBe('0');
+  });
+
+  it('25. Finding 3: strengthens projection verification, enforcing exact column allowlist and catching wildcard select("*")', async () => {
+    const token = signMerchantSessionToken({
+      tenantSlug: MOCK_TENANT_SLUG_A,
+      tenantId: MOCK_TENANT_ID_A,
+      role: 'OWNER',
+      userId: MOCK_OWNER_ID,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/inbox/team-members?tenant=store-alpha', {
+      method: 'GET',
+      headers: { 'x-merchant-token': token },
+    });
+
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    // Verify recorded projection arguments passed to mockSupabase.select()
+    expect(recordedSelectColumns.length).toBeGreaterThanOrEqual(2); // 1 for caller check, 1 for roster query
+
+    // Caller membership projection
+    const callerQueryCols = recordedSelectColumns[0].split(',').map((c) => c.trim());
+    expect(callerQueryCols).toEqual(['id', 'tenant_id', 'tenant_slug', 'role', 'status', 'is_active']);
+
+    // Roster query projection
+    const rosterQueryCols = recordedSelectColumns[1].split(',').map((c) => c.trim());
+    const expectedAllowlist = [
+      'id',
+      'tenant_id',
+      'tenant_slug',
+      'name',
+      'phone',
+      'email',
+      'role',
+      'access_level',
+      'status',
+      'is_active',
+      'created_at',
+    ];
+    expect(rosterQueryCols.sort()).toEqual(expectedAllowlist.sort());
+
+    // Strict Anti-Wildcard & Disallowed Column Assertion:
+    // Any occurrence of '*' or forbidden columns (e.g. pin, password, password_hash) MUST fail.
+    const forbiddenColumns = ['*', 'pin', 'password', 'password_hash', 'token', 'secret'];
+    for (const cols of recordedSelectColumns) {
+      const colList = cols.split(',').map((c) => c.trim().toLowerCase());
+      for (const forbidden of forbiddenColumns) {
+        expect(colList).not.toContain(forbidden);
+        expect(cols).not.toContain(forbidden);
+      }
+    }
   });
 });

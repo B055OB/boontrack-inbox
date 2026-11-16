@@ -189,20 +189,34 @@ export async function GET(req: NextRequest) {
     const isOwner = callerRole === 'OWNER';
 
     // 7. Query Team Members with Explicit Column Allowlist (Zero .select('*'))
-    const { data: members, error: queryErr } = await supabase
+    // Finding 1: Consistent Active Roster Filtering (require BOTH is_active === true AND status === 'active')
+    const { data: rawMembers, error: queryErr } = await supabase
       .from('tenant_users')
       .select('id, tenant_id, tenant_slug, name, phone, email, role, access_level, status, is_active, created_at')
       .eq('tenant_id', sessionTenantId)
       .eq('is_active', true)
+      .eq('status', 'active')
       .order('created_at', { ascending: true });
 
+    // Finding 2: Explicit Database Query Failure (Return HTTP 500 with generic safe error)
     if (queryErr) {
-      console.warn('[API team-members] Query warning:', queryErr.message);
+      console.warn('[API team-members] Database query error on roster lookup');
       return NextResponse.json(
-        { success: true, teamMembers: [], count: 0 },
-        { status: 200, headers: SENSITIVE_HEADERS }
+        {
+          success: false,
+          error: 'Terjadi kesalahan sistem saat mengambil data anggota tim.',
+          errorCode: 'ROSTER_QUERY_FAILED',
+          teamMembers: [],
+          count: 0,
+        },
+        { status: 500, headers: SENSITIVE_HEADERS }
       );
     }
+
+    // Defensive consistent active filtering on returned records
+    const members = (rawMembers || []).filter(
+      (m: any) => m && m.is_active === true && String(m.status).toLowerCase().trim() === 'active'
+    );
 
     // 8. Role-Based PII Masking: Only OWNER receives unmasked phone/email
     const sanitizedMembers = (members || []).map((m: any) => ({
