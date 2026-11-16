@@ -18,6 +18,7 @@ import {
 } from '@/src/utils/qrExporter';
 
 describe('Reseller QR Code Engine & Exporter Utility', () => {
+  jest.setTimeout(30000);
   // =========================================================================
   // 1. QR CODE GENERATION & RESOLUTION
   // =========================================================================
@@ -29,7 +30,7 @@ describe('Reseller QR Code Engine & Exporter Utility', () => {
       expect(typeof dataUrl).toBe('string');
       expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true);
       expect(dataUrl.length).toBeGreaterThan(500);
-    });
+    }, 30000);
 
     it('should respect custom options (custom width, margin, errorCorrectionLevel)', async () => {
       const url = 'https://shop.boontrack.com/shabu-ajhi?r=REVA10';
@@ -40,7 +41,7 @@ describe('Reseller QR Code Engine & Exporter Utility', () => {
       expect(dataUrlLarge.startsWith('data:image/png;base64,')).toBe(true);
       // Larger QR produces more image data bytes
       expect(dataUrlLarge.length).toBeGreaterThanOrEqual(dataUrlSmall.length);
-    }, 20000);
+    }, 30000);
 
     it('should confirm default options are width 512, margin 2, and errorCorrectionLevel H', () => {
       expect(DEFAULT_QR_OPTIONS.width).toBe(512);

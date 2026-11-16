@@ -25,11 +25,11 @@ import { processConsultationLeadFunnel, isClinicConsultationTenant } from '@/lib
 function getEngineSupabase() {
   const existing = getSupabaseAdmin() || getSupabase();
   if (existing) return existing;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    'placeholder-anon-key';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('[ConversationEngine] Missing Supabase configuration');
+  }
   return createClient(supabaseUrl, supabaseKey);
 }
 

@@ -111,13 +111,13 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   // 2. Coba ambil dari Supabase Storage (hanya jika bucket eksplisit terisolasi di staging)
-  const supabaseBaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co').replace(/\/+$/, '');
+  const supabaseBaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
   const configuredSbBucket = (process.env.SUPABASE_STORAGE_BUCKET || '').trim();
   const sbBucket = isStaging
     ? (configuredSbBucket && configuredSbBucket !== 'store-assets' ? configuredSbBucket : '')
     : (configuredSbBucket || 'store-assets');
 
-  if (sbBucket) {
+  if (sbBucket && supabaseBaseUrl) {
     const supabasePaths = [
       `${supabaseBaseUrl}/storage/v1/object/public/${sbBucket}/${joinedKey}`,
     ];

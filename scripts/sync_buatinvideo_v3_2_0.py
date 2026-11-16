@@ -8,7 +8,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 load_dotenv('c:/boontrack-inbox/.env.local')
-url = os.getenv('NEXT_PUBLIC_SUPABASE_URL', 'https://mpluzajlzpregmjwpjqr.supabase.co')
+url = os.getenv('NEXT_PUBLIC_SUPABASE_URL')
 key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 if not key:
     raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY environment variable is required")

@@ -7,7 +7,7 @@ load_dotenv('C:/boontrack-core/.env')
 load_dotenv('.env.local')
 load_dotenv('.env')
 
-SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "https://mpluzajlzpregmjwpjqr.supabase.co")
+SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 HEADERS = {

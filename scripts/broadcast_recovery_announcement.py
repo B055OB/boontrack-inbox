@@ -36,7 +36,7 @@ for p in ['c:/boontrack-inbox/.env.local', 'c:/boontrack-inbox/.env', 'c:/boontr
 TELEGRAM_BOT_TOKEN = env_vars.get('TELEGRAM_BOT_TOKEN')
 RESEND_API_KEY = env_vars.get('RESEND_API_KEY')
 EMAIL_FROM = env_vars.get('EMAIL_FROM') or env_vars.get('RESEND_FROM') or 'Boon Pilot <pilot@boontrack.com>'
-SUPABASE_URL = env_vars.get('NEXT_PUBLIC_SUPABASE_URL') or env_vars.get('SUPABASE_URL') or 'https://mpluzajlzpregmjwpjqr.supabase.co'
+SUPABASE_URL = env_vars.get('NEXT_PUBLIC_SUPABASE_URL') or env_vars.get('SUPABASE_URL') 
 SUPABASE_SERVICE_KEY = env_vars.get('SUPABASE_SERVICE_ROLE_KEY')
 
 if not TELEGRAM_BOT_TOKEN:
