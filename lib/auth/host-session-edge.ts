@@ -16,6 +16,13 @@
  */
 
 import type { NextRequest } from 'next/server';
+import {
+  isJtiRevokedDistributed,
+  revokeHostSessionDistributed,
+  resetDistributedRevocationStore,
+  clearLocalJtiCache,
+  isJtiRevokedLocalSync,
+} from './jti-revocation-store';
 
 export type AuthProduct = 'studio' | 'creator';
 
@@ -46,9 +53,9 @@ export const MAX_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60; // 30 days maximum 
 const edgeRevokedJtiCache = new Map<string, number>();
 
 /**
- * Records a session JTI as revoked for Edge Runtime verifier
+ * Synchronously records a session JTI in local Edge memory
  */
-export function revokeHostSessionEdge(jti: string, expSeconds: number, product?: AuthProduct) {
+export function revokeHostSessionEdgeSync(jti: string, expSeconds: number, product?: AuthProduct) {
   if (product) {
     edgeRevokedJtiCache.set(`${product}:${jti}`, expSeconds);
   } else {
@@ -57,19 +64,36 @@ export function revokeHostSessionEdge(jti: string, expSeconds: number, product?:
 }
 
 /**
- * Resets Edge revoked JTI cache (used for test teardown)
+ * Authoritatively records a session JTI as revoked across Edge isolates and shared store
  */
-export function resetRevokedJtiCacheEdge() {
-  edgeRevokedJtiCache.clear();
+export async function revokeHostSessionEdge(jti: string, expSeconds: number, product?: AuthProduct): Promise<void> {
+  revokeHostSessionEdgeSync(jti, expSeconds, product);
+  await revokeHostSessionDistributed({
+    jti,
+    expSeconds,
+    product: product || 'studio',
+  });
 }
 
 /**
- * Checks if a session JTI is revoked in Edge Runtime
+ * Resets Edge revoked JTI cache (used for test teardown / fresh isolate simulation)
+ */
+export function resetRevokedJtiCacheEdge() {
+  edgeRevokedJtiCache.clear();
+  clearLocalJtiCache();
+}
+
+/**
+ * Checks if a session JTI is revoked in Edge Runtime (Fast local memory check)
  */
 export function isJtiRevokedEdge(jti: string, product: AuthProduct): boolean {
   if (!jti) return false;
   const revocationKey = `${product}:${jti}`;
-  return edgeRevokedJtiCache.has(revocationKey) || edgeRevokedJtiCache.has(jti);
+  return (
+    edgeRevokedJtiCache.has(revocationKey) ||
+    edgeRevokedJtiCache.has(jti) ||
+    isJtiRevokedLocalSync(jti, product)
+  );
 }
 
 /**
@@ -421,10 +445,27 @@ export async function verifyHostSessionTokenEdge(
 
   const payload = claimsResult.payload;
 
-  // 5. JTI Revocation Verification (Edge Runtime)
+  // 5. Distributed JTI Revocation Verification (Edge Runtime)
+  // Check fast local cache first
   if (isJtiRevokedEdge(payload.jti, product)) {
+    return { valid: false, error: 'TOKEN_REVOKED' };
+  }
+
+  // Authoritatively query distributed revocation store across Edge isolates
+  const distributedCheck = await isJtiRevokedDistributed(payload.jti, product, payload.exp);
+  if (distributedCheck.error) {
+    return { valid: false, error: distributedCheck.error };
+  }
+  if (distributedCheck.revoked) {
     return { valid: false, error: 'TOKEN_REVOKED' };
   }
 
   return { valid: true, payload };
 }
+
+export {
+  isJtiRevokedDistributed,
+  revokeHostSessionDistributed,
+  resetDistributedRevocationStore,
+  clearLocalJtiCache,
+};

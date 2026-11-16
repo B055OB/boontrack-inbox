@@ -62,8 +62,16 @@ export async function POST(req: NextRequest) {
     if (token) {
       const verification = await verifyHostSessionToken(token, product);
       if (verification.valid && verification.payload) {
-        // Product-scoped revocation
-        await revokeHostSession(verification.payload.jti, verification.payload.exp, product);
+        // Product-scoped and tenant-scoped distributed revocation
+        await revokeHostSession(
+          verification.payload.jti,
+          verification.payload.exp,
+          product,
+          {
+            tenantId: verification.payload.tid,
+            userId: verification.payload.sub,
+          }
+        );
       }
     }
 
