@@ -1,6 +1,11 @@
 import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
 import { getSupabaseAdmin, getSupabase } from './supabaseClient';
 import { isValidUuid } from './uuid-guard';
+import {
+  CatalogSanitizationError,
+  sanitizePublicText,
+  validateLexicalPublicUrl,
+} from './public-catalog-sanitizer';
 
 /**
  * Pure route/product eligibility guard for the OnlineBoost Section 10 takeover.
@@ -1738,6 +1743,706 @@ export function isDomOrReactFiber(val: any): boolean {
   } catch {}
 
   return false;
+}
+
+export const CURRENCY_EXPONENT_CONTRACT: Readonly<Record<string, number>> = Object.freeze({
+  IDR: 0, // Indonesian Rupiah (zero decimal currency)
+  USD: 2, // US Dollar (cents)
+  EUR: 2, // Euro (cents)
+  SGD: 2, // Singapore Dollar (cents)
+  MYR: 2, // Malaysian Ringgit (sen)
+  GBP: 2, // British Pound (pence)
+  JPY: 0, // Japanese Yen (zero decimal currency)
+  AUD: 2, // Australian Dollar (cents)
+  CAD: 2, // Canadian Dollar (cents)
+  CHF: 2, // Swiss Franc (rappen)
+});
+
+/**
+ * R21-F06: Exact Gate 3 Design Freeze MinorPrice Schema + Object.create(null) Factory
+ * (Strictly { amount_minor, currency } with NO extra 'exponent' property on MinorPrice).
+ */
+export interface MinorPrice {
+  readonly amount_minor: string; // Digit-only canonical BigInt string
+  readonly currency: string;     // ISO-4217 uppercase 3-letter code
+}
+
+const CANONICAL_DECIMAL_STRING_REGEX = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+// Restored Design Freeze (line 354) & Baseline (line 1783) digit-only regex (see UD-01)
+const MINOR_DIGITS_ONLY_REGEX = /^\d+$/;
+const MAX_MINOR_PRICE_BIGINT = BigInt('1000000000000');
+const METADATA_FEATURE_FLAG_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+// UD-08 Gate: Preserves baseline 1..64 length pending CTO ratification of UD-08
+const PRODUCT_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+
+const MINOR_PRICE_FIELDS = ['price_minor', 'minor_price', 'amount_minor'] as const;
+const MAJOR_PRICE_FIELDS = ['price_major', 'price', 'amount'] as const;
+const ALL_PRICE_FIELDS = [
+  'price_minor',
+  'minor_price',
+  'amount_minor',
+  'price_major',
+  'price',
+  'amount',
+] as const;
+
+function hasOwn(obj: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function createFrozenMinorPrice(amountMinor: string, currency: string): MinorPrice {
+  const obj: Record<string, unknown> = Object.create(null);
+  obj.amount_minor = amountMinor;
+  obj.currency = currency;
+  return Object.freeze(obj) as unknown as MinorPrice;
+}
+
+export function normalizeAndValidateCurrency(
+  rawCurrency: unknown
+): { readonly currency: string; readonly exponent: number } {
+  if (typeof rawCurrency !== 'string') {
+    throw new CatalogSanitizationError(
+      'INVALID_CURRENCY_TYPE',
+      `Currency must be a string; type '${typeof rawCurrency}' received`
+    );
+  }
+
+  const normalized = rawCurrency.trim().toUpperCase();
+  if (!Object.prototype.hasOwnProperty.call(CURRENCY_EXPONENT_CONTRACT, normalized)) {
+    throw new CatalogSanitizationError(
+      'UNSUPPORTED_CURRENCY',
+      `Currency '${rawCurrency}' is not supported by CURRENCY_EXPONENT_CONTRACT`
+    );
+  }
+
+  return {
+    currency: normalized,
+    exponent: CURRENCY_EXPONENT_CONTRACT[normalized],
+  };
+}
+
+export function validateShallowPlainDescriptorObject(raw: unknown): void {
+  if (raw === null || raw === undefined) return;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new CatalogSanitizationError('INVALID_INPUT_TYPE', 'Price payload must be a plain object');
+  }
+
+  const proto = Object.getPrototypeOf(raw);
+  if (proto !== null && proto !== Object.prototype) {
+    throw new CatalogSanitizationError(
+      'FORBIDDEN_OBJECT_PROTOTYPE',
+      'Price payload must have null or Object.prototype'
+    );
+  }
+
+  const symbols = Object.getOwnPropertySymbols(raw);
+  if (symbols.length > 0) {
+    throw new CatalogSanitizationError('SYMBOL_KEY_PROHIBITED', 'Symbol property keys are prohibited');
+  }
+
+  const keys = Reflect.ownKeys(raw);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (typeof key === 'symbol') {
+      throw new CatalogSanitizationError('SYMBOL_KEY_PROHIBITED', 'Symbol property keys are prohibited');
+    }
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      throw new CatalogSanitizationError(
+        'POLLUTION_KEY_PROHIBITED',
+        `Prototype pollution key '${String(key)}' is prohibited`
+      );
+    }
+    const desc = Object.getOwnPropertyDescriptor(raw, key);
+    if (!desc) {
+      throw new CatalogSanitizationError('DESCRIPTOR_MISSING', 'Property descriptor missing');
+    }
+    if (desc.get || desc.set) {
+      throw new CatalogSanitizationError(
+        'ACCESSOR_PROHIBITED',
+        'Accessor properties (getters/setters) are prohibited in price payload'
+      );
+    }
+    if (!desc.enumerable) {
+      throw new CatalogSanitizationError(
+        'NON_ENUMERABLE_PROPERTY_PROHIBITED',
+        'Non-enumerable properties are prohibited in price payload'
+      );
+    }
+  }
+}
+
+export function parseMinorPrice(rawMinor: unknown, rawCurrency: unknown = 'IDR'): MinorPrice {
+  const { currency } = normalizeAndValidateCurrency(rawCurrency);
+
+  if (typeof rawMinor === 'number') {
+    throw new CatalogSanitizationError(
+      'NUMBER_PRICE_PROHIBITED',
+      'Minor price amount must be provided as a canonical digit string; JavaScript numbers are prohibited'
+    );
+  }
+
+  if (typeof rawMinor !== 'string') {
+    throw new CatalogSanitizationError(
+      'INVALID_PRICE_TYPE',
+      'Minor price must be a string containing digits only'
+    );
+  }
+
+  const trimmed = rawMinor.trim();
+  if (!MINOR_DIGITS_ONLY_REGEX.test(trimmed)) {
+    throw new CatalogSanitizationError(
+      'INVALID_PRICE_FORMAT',
+      `Amount minor must contain digits only, received '${rawMinor}'`
+    );
+  }
+
+  const minorBigInt = BigInt(trimmed);
+  if (minorBigInt < BigInt(0) || minorBigInt > MAX_MINOR_PRICE_BIGINT) {
+    throw new CatalogSanitizationError(
+      'PRICE_OUT_OF_BOUNDS',
+      'Minor price amount exceeds allowable bounds [0, 1000000000000]'
+    );
+  }
+
+  return createFrozenMinorPrice(minorBigInt.toString(), currency);
+}
+
+export function parseMajorPrice(rawMajor: unknown, rawCurrency: unknown = 'IDR'): MinorPrice {
+  const { currency, exponent } = normalizeAndValidateCurrency(rawCurrency);
+
+  if (typeof rawMajor === 'number') {
+    throw new CatalogSanitizationError(
+      'NUMBER_PRICE_PROHIBITED',
+      'Price in major units must be provided as a canonical decimal string; JavaScript numbers are prohibited'
+    );
+  }
+
+  if (typeof rawMajor !== 'string') {
+    throw new CatalogSanitizationError(
+      'INVALID_PRICE_TYPE',
+      'Major price must be a canonical decimal string'
+    );
+  }
+
+  const majorStr = rawMajor.trim();
+  if (!CANONICAL_DECIMAL_STRING_REGEX.test(majorStr)) {
+    throw new CatalogSanitizationError(
+      'INVALID_PRICE_FORMAT',
+      'Major price format must be a canonical non-negative decimal string'
+    );
+  }
+
+  const parts = majorStr.split('.');
+  const intPart = parts[0];
+  const decPart = parts[1] ?? '';
+
+  if (decPart.length > exponent) {
+    throw new CatalogSanitizationError(
+      'INVALID_CURRENCY_PRECISION',
+      `Price precision (${decPart.length} decimals) exceeds exponent ${exponent} for currency ${currency}`
+    );
+  }
+
+  const paddedDec = decPart.padEnd(exponent, '0');
+  const combinedDigits = `${intPart}${paddedDec}`.replace(/^0+(?!$)/, '') || '0';
+  const minorBigInt = BigInt(combinedDigits);
+
+  if (minorBigInt < BigInt(0) || minorBigInt > MAX_MINOR_PRICE_BIGINT) {
+    throw new CatalogSanitizationError(
+      'PRICE_OUT_OF_BOUNDS',
+      'Computed minor amount exceeds allowable bounds [0, 1000000000000]'
+    );
+  }
+
+  return createFrozenMinorPrice(minorBigInt.toString(), currency);
+}
+
+/**
+ * R21-F06: Strict Validation Ordering:
+ *   1. Descriptor/prototype integrity on top-level payload (and nested `price` object if present)
+ *   2. Currency validation FIRST (before nested key inspection or field count checks)
+ *   3. Multiple supplied price fields check SECOND (`AMBIGUOUS_PRICE_CONTRACT`)
+ *   4. Zero-field fallback OR single-field / nested-price schema validation THIRD
+ */
+export function parsePublicPriceContract(
+  raw: unknown,
+  defaultCurrency: string = 'IDR'
+): MinorPrice {
+  validateShallowPlainDescriptorObject(raw);
+
+  const isObj = raw !== null && raw !== undefined && typeof raw === 'object';
+  if (!isObj) {
+    const baseCurr = normalizeAndValidateCurrency(defaultCurrency);
+    return createFrozenMinorPrice('0', baseCurr.currency);
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const hasTopCurrency = hasOwn(obj, 'currency');
+
+  // Step 1: Descriptor-only safety check on nested `price` object (NO key schema rejection yet)
+  const hasPriceKey = hasOwn(obj, 'price');
+  const priceVal = hasPriceKey ? obj['price'] : undefined;
+  const isNestedPriceObj =
+    priceVal !== null &&
+    priceVal !== undefined &&
+    typeof priceVal === 'object' &&
+    !Array.isArray(priceVal);
+
+  let hasNestedCurrency = false;
+  let nestedCurrencyVal: unknown = undefined;
+  if (isNestedPriceObj) {
+    validateShallowPlainDescriptorObject(priceVal);
+    const nestedObj = priceVal as Record<string, unknown>;
+    if (hasOwn(nestedObj, 'currency')) {
+      hasNestedCurrency = true;
+      nestedCurrencyVal = nestedObj['currency'];
+    }
+  }
+
+  // Step 2 (Currency FIRST): validate currency before field-count or nested schema checks
+  let resolvedCurr: { readonly currency: string; readonly exponent: number };
+  if (hasTopCurrency && hasNestedCurrency) {
+    const topCurr = normalizeAndValidateCurrency(obj['currency']);
+    const nestedCurr = normalizeAndValidateCurrency(nestedCurrencyVal);
+    if (topCurr.currency !== nestedCurr.currency) {
+      throw new CatalogSanitizationError(
+        'AMBIGUOUS_PRICE_CONTRACT',
+        `Conflicting currencies specified: top-level '${topCurr.currency}' vs nested price '${nestedCurr.currency}'`
+      );
+    }
+    resolvedCurr = topCurr;
+  } else if (hasTopCurrency) {
+    resolvedCurr = normalizeAndValidateCurrency(obj['currency']);
+  } else if (hasNestedCurrency) {
+    resolvedCurr = normalizeAndValidateCurrency(nestedCurrencyVal);
+  } else {
+    resolvedCurr = normalizeAndValidateCurrency(defaultCurrency);
+  }
+
+  // Step 3 (Ambiguity SECOND): detect ALL supplied price candidate fields before nested schema check
+  const suppliedFields: string[] = [];
+  for (let i = 0; i < ALL_PRICE_FIELDS.length; i++) {
+    const field = ALL_PRICE_FIELDS[i];
+    if (hasOwn(obj, field)) {
+      suppliedFields.push(field);
+    }
+  }
+
+  if (suppliedFields.length > 1) {
+    throw new CatalogSanitizationError(
+      'AMBIGUOUS_PRICE_CONTRACT',
+      `Multiple price fields supplied (${suppliedFields.join(', ')}); expected at most one price field`
+    );
+  }
+
+  // Step 4: Zero-price fallback ONLY when zero price fields exist on the payload
+  if (suppliedFields.length === 0) {
+    return createFrozenMinorPrice('0', resolvedCurr.currency);
+  }
+
+  const activeField = suppliedFields[0];
+  const rawFieldValue = obj[activeField];
+
+  if (typeof rawFieldValue === 'number') {
+    throw new CatalogSanitizationError(
+      'NUMBER_PRICE_PROHIBITED',
+      `JavaScript number in field '${activeField}' is prohibited; supply canonical string`
+    );
+  }
+
+  if ((MINOR_PRICE_FIELDS as readonly string[]).includes(activeField)) {
+    return parseMinorPrice(rawFieldValue, resolvedCurr.currency);
+  }
+
+  // Step 5: Nested MinorPrice object schema validation (runs strictly AFTER currency & ambiguity checks)
+  if (activeField === 'price' && isNestedPriceObj) {
+    const nestedObj = rawFieldValue as Record<string, unknown>;
+    const nestedKeys = Object.keys(nestedObj);
+    for (let i = 0; i < nestedKeys.length; i++) {
+      if (nestedKeys[i] !== 'amount_minor' && nestedKeys[i] !== 'currency') {
+        throw new CatalogSanitizationError(
+          'INVALID_PRICE_TYPE',
+          `Unsupported key '${nestedKeys[i]}' inside nested price object`
+        );
+      }
+    }
+    if (!hasOwn(nestedObj, 'amount_minor')) {
+      throw new CatalogSanitizationError(
+        'INVALID_PRICE_TYPE',
+        'Nested price object must define canonical string field amount_minor'
+      );
+    }
+    return parseMinorPrice(nestedObj['amount_minor'], resolvedCurr.currency);
+  }
+
+  if ((MAJOR_PRICE_FIELDS as readonly string[]).includes(activeField)) {
+    return parseMajorPrice(rawFieldValue, resolvedCurr.currency);
+  }
+
+  throw new CatalogSanitizationError(
+    'INVALID_PRICE_TYPE',
+    `Unsupported price field '${activeField}'`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Closed 5-Stage Public Catalog Transformation Pipeline
+// ---------------------------------------------------------------------------
+
+export interface PublicMediaAsset {
+  readonly type: 'IMAGE' | 'VIDEO';
+  readonly url: string;
+  readonly alt?: string;
+}
+
+export interface PublicCatalogMetadata {
+  readonly feature_flags?: readonly string[];
+  readonly external_reference?: string;
+}
+
+export interface PublicProductDto {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly price: MinorPrice;
+  readonly media: readonly PublicMediaAsset[];
+  readonly metadata?: PublicCatalogMetadata;
+}
+
+export function validateAndBoundGraph(
+  node: unknown,
+  depth: number,
+  visitedNodes: WeakSet<object>,
+  activeAncestors: WeakSet<object>,
+  counter: { count: number }
+): void {
+  if (node === null || node === undefined) return;
+  if (typeof node !== 'object') return;
+
+  if (activeAncestors.has(node)) {
+    throw new CatalogSanitizationError(
+      'CIRCULAR_REFERENCE_DETECTED',
+      'Product payload contains cyclic graph'
+    );
+  }
+
+  if (visitedNodes.has(node)) {
+    throw new CatalogSanitizationError(
+      'DAG_ALIASING_PROHIBITED',
+      'Shared object reference (DAG aliasing) is prohibited in catalog payloads'
+    );
+  }
+
+  visitedNodes.add(node);
+  activeAncestors.add(node);
+  counter.count++;
+
+  if (counter.count > 500) {
+    throw new CatalogSanitizationError(
+      'GRAPH_NODE_LIMIT_EXCEEDED',
+      'Payload graph exceeds maximum node limit of 500'
+    );
+  }
+
+  // Restored Design Freeze Stage 2 & Baseline limit: max depth <= 5
+  if (depth > 5) {
+    throw new CatalogSanitizationError(
+      'MAX_DEPTH_EXCEEDED',
+      'Product payload exceeds maximum traversal depth of 5'
+    );
+  }
+
+  const proto = Object.getPrototypeOf(node);
+  if (Array.isArray(node)) {
+    if (proto !== Array.prototype) {
+      throw new CatalogSanitizationError(
+        'FORBIDDEN_ARRAY_PROTOTYPE',
+        'Array prototype must equal Array.prototype'
+      );
+    }
+  } else {
+    if (proto !== null && proto !== Object.prototype) {
+      throw new CatalogSanitizationError(
+        'FORBIDDEN_OBJECT_PROTOTYPE',
+        'Object prototype must equal Object.prototype or null'
+      );
+    }
+  }
+
+  const keys = Reflect.ownKeys(node);
+
+  if (Array.isArray(node)) {
+    const len = node.length;
+    if (len > 100) {
+      throw new CatalogSanitizationError(
+        'ARRAY_LENGTH_EXCEEDED',
+        'Array exceeds maximum limit of 100 elements'
+      );
+    }
+    if (keys.length !== len + 1) {
+      throw new CatalogSanitizationError(
+        'SPARSE_ARRAY_PROHIBITED',
+        'Sparse arrays and custom array properties are prohibited'
+      );
+    }
+    for (let i = 0; i < len; i++) {
+      const indexStr = String(i);
+      const desc = Object.getOwnPropertyDescriptor(node, indexStr);
+      if (!desc || desc.get || desc.set || !desc.enumerable) {
+        throw new CatalogSanitizationError(
+          'INVALID_ARRAY_ELEMENT_DESCRIPTOR',
+          `Array index ${i} must be a simple enumerable data property`
+        );
+      }
+      validateAndBoundGraph(node[i], depth + 1, visitedNodes, activeAncestors, counter);
+    }
+  } else {
+    if (keys.length > 50) {
+      throw new CatalogSanitizationError(
+        'MAX_KEYS_EXCEEDED',
+        'Product payload exceeds maximum key count of 50'
+      );
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (typeof key === 'symbol') {
+        throw new CatalogSanitizationError(
+          'SYMBOL_KEY_PROHIBITED',
+          'Symbol property keys are prohibited'
+        );
+      }
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        throw new CatalogSanitizationError(
+          'POLLUTION_KEY_PROHIBITED',
+          `Prototype property '${key}' is prohibited`
+        );
+      }
+      const desc = Object.getOwnPropertyDescriptor(node, key);
+      if (!desc || desc.get || desc.set || !desc.enumerable) {
+        throw new CatalogSanitizationError(
+          'INVALID_PROPERTY_DESCRIPTOR',
+          `Property '${key}' must be a simple enumerable data property`
+        );
+      }
+      validateAndBoundGraph(
+        (node as Record<string, unknown>)[key],
+        depth + 1,
+        visitedNodes,
+        activeAncestors,
+        counter
+      );
+    }
+  }
+
+  activeAncestors.delete(node);
+}
+
+export function deepFreeze<T>(obj: T, seen = new WeakSet<object>()): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (seen.has(obj as object)) {
+    return obj;
+  }
+  seen.add(obj as object);
+
+  const keys = Reflect.ownKeys(obj as object);
+  for (let i = 0; i < keys.length; i++) {
+    const desc = Object.getOwnPropertyDescriptor(obj, keys[i]);
+    if (desc && desc.value && typeof desc.value === 'object') {
+      deepFreeze(desc.value, seen);
+    }
+  }
+  return Object.freeze(obj);
+}
+
+export function transformPublicProductDto(
+  raw: unknown,
+  defaultCurrency: string = 'IDR'
+): PublicProductDto {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new CatalogSanitizationError(
+      'INVALID_PRODUCT_PAYLOAD',
+      'Product must be a non-null plain object'
+    );
+  }
+
+  validateAndBoundGraph(raw, 0, new WeakSet(), new WeakSet(), { count: 0 });
+
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj['id'] !== 'string') {
+    throw new CatalogSanitizationError('INVALID_PRODUCT_ID_TYPE', 'Product ID must be a string');
+  }
+  if (!PRODUCT_ID_REGEX.test(obj['id'])) {
+    throw new CatalogSanitizationError(
+      'INVALID_PRODUCT_ID_FORMAT',
+      'Product ID must match ^[a-zA-Z0-9_-]{1,64}$'
+    );
+  }
+  const rawId = obj['id'];
+
+  const rawTitle = hasOwn(obj, 'title') ? obj['title'] : obj['name'];
+  const titleStr = sanitizePublicText(rawTitle, { allowNullish: false, maxLength: 255 }, 'title');
+  if (!titleStr) {
+    throw new CatalogSanitizationError(
+      'REQUIRED_TEXT_MISSING',
+      "Field 'title' must not be empty after sanitization"
+    );
+  }
+
+  // R21-F07: Omitted or null description defaults to ''
+  const descStr: string =
+    !hasOwn(obj, 'description') || obj['description'] === undefined || obj['description'] === null
+      ? ''
+      : sanitizePublicText(obj['description'], { allowNullish: false, maxLength: 4000 }, 'description');
+
+  // Stage 4: Deterministic Price Parsing
+  const priceObj: MinorPrice = parsePublicPriceContract(obj, defaultCurrency);
+
+  // Media validation & fail-closed HTTPS lexical verification
+  const mediaList: PublicMediaAsset[] = [];
+  if (hasOwn(obj, 'media') && obj['media'] !== undefined) {
+    if (!Array.isArray(obj['media'])) {
+      throw new CatalogSanitizationError('INVALID_MEDIA_TYPE', 'Product media must be an array');
+    }
+    const rawMedia = obj['media'];
+    for (let i = 0; i < rawMedia.length; i++) {
+      const item = rawMedia[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new CatalogSanitizationError(
+          'INVALID_MEDIA_TYPE',
+          `Media item at index ${i} must be a plain object`
+        );
+      }
+      const mediaRec = item as Record<string, unknown>;
+      const rawType = mediaRec['type'];
+      const itemType: 'IMAGE' | 'VIDEO' =
+        rawType === undefined || rawType === 'IMAGE'
+          ? 'IMAGE'
+          : rawType === 'VIDEO'
+            ? 'VIDEO'
+            : (() => {
+                throw new CatalogSanitizationError(
+                  'INVALID_MEDIA_TYPE',
+                  `Unsupported media type at index ${i}`
+                );
+              })();
+
+      const safeUrl = validateLexicalPublicUrl(mediaRec['url'] as string);
+      const assetObj: Record<string, unknown> = Object.create(null);
+      assetObj.type = itemType;
+      assetObj.url = safeUrl;
+      if (hasOwn(mediaRec, 'alt') && mediaRec['alt'] !== undefined && mediaRec['alt'] !== null) {
+        const cleanAlt = sanitizePublicText(
+          mediaRec['alt'],
+          { allowNullish: false, maxLength: 255 },
+          'media.alt'
+        );
+        if (cleanAlt) {
+          assetObj.alt = cleanAlt;
+        }
+      }
+      mediaList.push(Object.freeze(assetObj) as unknown as PublicMediaAsset);
+    }
+  }
+
+  // R21-F07 & R22-F07: Fail-closed metadata allowlisting with null-prototype reconstruction
+  let metadataObj: PublicCatalogMetadata | undefined = undefined;
+  if (hasOwn(obj, 'metadata') && obj['metadata'] !== undefined && obj['metadata'] !== null) {
+    if (typeof obj['metadata'] !== 'object' || Array.isArray(obj['metadata'])) {
+      throw new CatalogSanitizationError(
+        'INVALID_METADATA_TYPE',
+        'Product metadata must be a plain object'
+      );
+    }
+    const rawMeta = obj['metadata'] as Record<string, unknown>;
+    const cleanMeta: Record<string, unknown> = Object.create(null);
+
+    if (
+      hasOwn(rawMeta, 'feature_flags') &&
+      rawMeta['feature_flags'] !== undefined &&
+      rawMeta['feature_flags'] !== null
+    ) {
+      if (!Array.isArray(rawMeta['feature_flags'])) {
+        throw new CatalogSanitizationError(
+          'INVALID_METADATA_FIELD',
+          'metadata.feature_flags must be an array of strings'
+        );
+      }
+      const rawFlags = rawMeta['feature_flags'];
+      if (rawFlags.length > 20) {
+        throw new CatalogSanitizationError(
+          'METADATA_LIMIT_EXCEEDED',
+          `metadata.feature_flags exceeds maximum of 20 items (received ${rawFlags.length})`
+        );
+      }
+      const safeFlags: string[] = [];
+      for (let i = 0; i < rawFlags.length; i++) {
+        const flagVal = rawFlags[i];
+        if (typeof flagVal !== 'string') {
+          throw new CatalogSanitizationError(
+            'INVALID_TEXT_TYPE',
+            `metadata.feature_flags[${i}] must be a string; type '${typeof flagVal}' received`
+          );
+        }
+        const cleanFlag = sanitizePublicText(
+          flagVal,
+          { allowNullish: false, maxLength: 64 },
+          `metadata.feature_flags[${i}]`
+        );
+        if (!METADATA_FEATURE_FLAG_REGEX.test(cleanFlag)) {
+          throw new CatalogSanitizationError(
+            'INVALID_METADATA_FIELD',
+            `metadata.feature_flags[${i}] must match ^[a-zA-Z0-9_-]{1,64}$ after sanitization`
+          );
+        }
+        safeFlags.push(cleanFlag);
+      }
+      cleanMeta.feature_flags = Object.freeze(safeFlags);
+    }
+
+    if (
+      hasOwn(rawMeta, 'external_reference') &&
+      rawMeta['external_reference'] !== undefined &&
+      rawMeta['external_reference'] !== null
+    ) {
+      if (typeof rawMeta['external_reference'] !== 'string') {
+        throw new CatalogSanitizationError(
+          'INVALID_TEXT_TYPE',
+          `Field 'metadata.external_reference' must be a string; type '${typeof rawMeta['external_reference']}' received`
+        );
+      }
+      const cleanRef = sanitizePublicText(
+        rawMeta['external_reference'],
+        { allowNullish: false, maxLength: 128 },
+        'metadata.external_reference'
+      );
+      // R22-F07: Fail closed if external_reference becomes empty after sanitization
+      if (!cleanRef) {
+        throw new CatalogSanitizationError(
+          'INVALID_METADATA_FIELD',
+          "Field 'metadata.external_reference' cannot be empty after sanitization"
+        );
+      }
+      cleanMeta.external_reference = cleanRef;
+    }
+
+    metadataObj = Object.freeze(cleanMeta) as unknown as PublicCatalogMetadata;
+  }
+
+  // Stage 3: Null-prototype allowlist DTO container + Stage 5 deep freeze
+  const dtoObj: Record<string, unknown> = Object.create(null);
+  dtoObj.id = rawId;
+  dtoObj.title = titleStr;
+  dtoObj.description = descStr;
+  dtoObj.price = priceObj;
+  dtoObj.media = Object.freeze(mediaList);
+  if (metadataObj) {
+    dtoObj.metadata = metadataObj;
+  }
+
+  return deepFreeze(dtoObj) as unknown as PublicProductDto;
 }
 
 /**
