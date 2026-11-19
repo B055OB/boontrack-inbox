@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
-import { calculateDistanceKm, calculateRoadDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
+import {
+  calculateDistanceKm,
+  calculateRoadDistanceKm,
+  MAX_INSTANT_RADIUS_KM,
+  resolveEffectiveInstantRadius,
+  isExplicitBandungInput,
+} from '@/app/api/v1/shipping/rates/instant/route';
 import { resolveAreaCoordinates, geocodeDestinationAddress } from '@/app/api/v1/shipping/locations/search/route';
 import { calculateShabuAjhiRate, parseCoordinatesFromInput } from '@/lib/delivery/shabuAjhiRates';
-import { CateringItem } from '@/lib/shipping/deliveryCalculator';
+import {
+  CateringItem,
+  countCateringPackages,
+  LARGE_ORDER_WARNING_MESSAGE,
+} from '@/lib/shipping/deliveryCalculator';
 
 export interface RateOption {
   id: string;
   courier_name: string;
   service: string;
-  price: number;
+  price: number | null;
+  price_label?: string;
   etd: string;
   type: 'instant' | 'regular' | 'cargo';
   badge?: string;
@@ -17,6 +28,7 @@ export interface RateOption {
   max_days: number;
   is_fnb_safe: boolean;
   warning?: string;
+  requires_manual_coordination?: boolean;
 }
 
 const BITESHIP_API_URL = 'https://api.biteship.com/v1/rates/couriers';
@@ -287,43 +299,84 @@ export async function POST(req: NextRequest) {
         : null;
 
     let tenantLincah: any = null;
+    let biteshipCfg: any = null;
     let metaShipping: any = null;
     let tenantMeta: any = null;
 
     if (slug) {
-      try {
-        const supabase = getSupabaseAdmin();
-        if (supabase) {
-          const [settingsRes, tenantRes] = await Promise.all([
-            supabase
-              .from('tenant_settings')
-              .select('biteship_config')
-              .eq('tenant_slug', slug)
-              .maybeSingle(),
-            supabase
-              .from('tenants')
-              .select('metadata')
-              .eq('slug', slug)
-              .maybeSingle(),
-          ]);
+      const supabase = getSupabaseAdmin();
+      if (!supabase) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'SERVICE_UNAVAILABLE',
+            coverage: false,
+            instant_eligible: false,
+            rates: [],
+            message: 'Database admin client is unavailable.',
+          },
+          { status: 503 }
+        );
+      }
 
-          const biteshipCfg = settingsRes.data?.biteship_config;
-          const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
-          const meta = tenantRes.data?.metadata || {};
-          tenantMeta = meta;
-          metaShipping = meta.shipping_config;
-          // Lincah credentials reside authoritatively in server-side tenant_settings.biteship_config.lincah (Item E)
-          tenantLincah = biteshipCfg?.lincah || metaShipping?.lincah || meta.lincah_config || meta.shipping_settings || null;
+      const [settingsRes, tenantRes] = await Promise.all([
+        supabase
+          .from('tenant_settings')
+          .select('biteship_config')
+          .eq('tenant_slug', slug)
+          .maybeSingle(),
+        supabase
+          .from('tenants')
+          .select('id, slug, metadata')
+          .eq('slug', slug)
+          .maybeSingle(),
+      ]);
 
-          if (biteshipCfg) {
-            isShippingActive = biteshipCfg.is_enabled ?? true;
-            if (Array.isArray(biteshipCfg.couriers)) {
-              enabledCouriers = biteshipCfg.couriers.filter((c: any) => c.enabled);
-            }
-          }
+      if (settingsRes?.error || tenantRes?.error) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'SERVICE_UNAVAILABLE',
+            coverage: false,
+            instant_eligible: false,
+            rates: [],
+            message: settingsRes?.error?.message || tenantRes?.error?.message || 'Gagal membaca konfigurasi toko.',
+          },
+          { status: 503 }
+        );
+      }
 
-          // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> basic_shipping -> warehouse_address)
-          const originObj = biteshipCfg?.origin || shippingOrigin || metaShipping?.origin || meta.shipping_settings || meta.basic_shipping || {};
+      if (!tenantRes?.data) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'TENANT_NOT_FOUND',
+            coverage: false,
+            instant_eligible: false,
+            rates: [],
+            message: 'Toko tidak ditemukan.',
+          },
+          { status: 404 }
+        );
+      }
+
+      biteshipCfg = settingsRes.data?.biteship_config || null;
+      const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
+      const meta = tenantRes.data?.metadata || {};
+      tenantMeta = meta;
+      metaShipping = meta.shipping_config;
+      // Lincah credentials reside authoritatively in server-side tenant_settings.biteship_config.lincah (Item E)
+      tenantLincah = biteshipCfg?.lincah || metaShipping?.lincah || meta.lincah_config || meta.shipping_settings || null;
+
+      if (biteshipCfg) {
+        isShippingActive = biteshipCfg.is_enabled ?? true;
+        if (Array.isArray(biteshipCfg.couriers)) {
+          enabledCouriers = biteshipCfg.couriers.filter((c: any) => c.enabled);
+        }
+      }
+
+      // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> basic_shipping -> warehouse_address)
+      const originObj = biteshipCfg?.origin || shippingOrigin || metaShipping?.origin || meta.shipping_settings || meta.basic_shipping || {};
 
           originCity =
             originCity ||
@@ -391,14 +444,24 @@ export async function POST(req: NextRequest) {
             originLon = Number(fnbSettings.longitude);
           }
 
+          const metaOriginFallback = meta?.outlet_coordinates || metaShipping?.origin || {};
+          if ((originLat == null || isNaN(originLat)) && metaOriginFallback.latitude !== undefined && metaOriginFallback.latitude !== null && metaOriginFallback.latitude !== '') {
+            originLat = Number(metaOriginFallback.latitude);
+          }
+          if ((originLon == null || isNaN(originLon)) && metaOriginFallback.longitude !== undefined && metaOriginFallback.longitude !== null && metaOriginFallback.longitude !== '') {
+            originLon = Number(metaOriginFallback.longitude);
+          }
+          if ((originLat == null || isNaN(originLat)) && metaShipping?.origin_latitude !== undefined && metaShipping?.origin_latitude !== null && metaShipping?.origin_latitude !== '') {
+            originLat = Number(metaShipping.origin_latitude);
+          }
+          if ((originLon == null || isNaN(originLon)) && metaShipping?.origin_longitude !== undefined && metaShipping?.origin_longitude !== null && metaShipping?.origin_longitude !== '') {
+            originLon = Number(metaShipping.origin_longitude);
+          }
+
           if (!originPostalCode && typeof meta.warehouse_address === 'string') {
             const postalMatch = meta.warehouse_address.match(/\b\d{5}\b/);
             if (postalMatch) originPostalCode = postalMatch[0];
           }
-        }
-      } catch (err) {
-        console.warn('[Rates API] Tenant settings fallback:', err);
-      }
     }
 
     if (!isShippingActive) {
@@ -409,28 +472,81 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Default origin ke Bandung jika belum pernah diisi oleh toko
-    const effectiveOriginCity = originCity || 'Kota Bandung';
-    const effectiveOriginPostal = Number(originPostalCode) || 40286;
+    const effectiveOriginCity = originCity;
+    const effectiveOriginPostal = Number(originPostalCode) || 0;
     const effectiveDestPostal = Number(destinationPostalCode) || 0;
 
-    // Selesaikan titik koordinat origin toko
+    // Selesaikan titik koordinat origin toko HANYA dari konfigurasi / input eksplisit (NO silent Bandung fallback)
     if (originLat == null || isNaN(originLat) || originLon == null || isNaN(originLon)) {
-      const originResolved = resolveAreaCoordinates(originCity || 'Kota Bandung', originDistrict || 'Buahbatu', String(effectiveOriginPostal));
-      originLat = originResolved.latitude;
-      originLon = originResolved.longitude;
-    }
-
-    // Selesaikan titik koordinat tujuan pembeli
-    if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
-      if (destinationAddress || destinationCity || destinationDistrict || destinationPostalCode) {
-        const destResolved = await geocodeDestinationAddress(destinationAddress, destinationCity, destinationDistrict, destinationPostalCode);
-        destLat = destResolved.latitude;
-        destLon = destResolved.longitude;
+      if (originCity || originDistrict || originPostalCode) {
+        const originResolved = resolveAreaCoordinates(originCity, originDistrict, originPostalCode);
+        const isSyntheticBandungFallback =
+          originResolved.latitude === -6.9175 &&
+          originResolved.longitude === 107.6191 &&
+          !isExplicitBandungInput(originCity, originDistrict, originPostalCode, originAddress);
+        if (!isSyntheticBandungFallback) {
+          originLat = originResolved.latitude;
+          originLon = originResolved.longitude;
+        }
       }
     }
-    const finalDestLat = destLat ?? -6.9175;
-    const finalDestLon = destLon ?? 107.6191;
+
+    if (originLat == null || isNaN(originLat) || originLon == null || isNaN(originLon)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'ORIGIN_NOT_CONFIGURED',
+          coverage: false,
+          instant_eligible: false,
+          rates: [],
+          message: 'Titik koordinat atau lokasi dapur/gudang toko belum dikonfigurasi.',
+        },
+        { status: 422 }
+      );
+    }
+
+    // Selesaikan titik koordinat tujuan pembeli (NO silent Bandung fallback)
+    if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
+      if (destinationAddress || destinationCity || destinationDistrict || destinationPostalCode) {
+        const destResolved = await geocodeDestinationAddress(
+          destinationAddress,
+          destinationCity,
+          destinationDistrict,
+          destinationPostalCode
+        );
+        const isSyntheticBandungFallback =
+          destResolved.latitude === -6.9175 &&
+          destResolved.longitude === 107.6191 &&
+          !isExplicitBandungInput(
+            destinationCity,
+            destinationDistrict,
+            destinationPostalCode,
+            destinationAddress
+          );
+        if (!isSyntheticBandungFallback) {
+          destLat = destResolved.latitude;
+          destLon = destResolved.longitude;
+        }
+      }
+    }
+
+    if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error_code: 'DESTINATION_COORDINATES_REQUIRED',
+          error:
+            'Parameter koordinat tujuan (destination_latitude, destination_longitude) atau alamat tujuan yang valid wajib disertakan.',
+          coverage: false,
+          instant_eligible: false,
+          rates: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    const finalDestLat = destLat;
+    const finalDestLon = destLon;
 
     // Hitung jarak Haversine (KM) dari toko ke pembeli & Road Distance dengan kurvatur 1.30x
     const straightDistanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
@@ -444,27 +560,21 @@ export async function POST(req: NextRequest) {
       cleanOriginCity.includes(cleanDestCity) || cleanDestCity.includes(cleanOriginCity)
     );
 
-    const originPrefix = String(effectiveOriginPostal).slice(0, 2);
+    const originPrefix = effectiveOriginPostal > 0 ? String(effectiveOriginPostal).slice(0, 2) : '';
     const destPrefix = String(destinationPostalCode).slice(0, 2);
-    const isSamePostalRegion = destPrefix.length >= 2 && originPrefix === destPrefix;
+    const isSamePostalRegion = originPrefix.length >= 2 && destPrefix.length >= 2 && originPrefix === destPrefix;
 
-    // Batas radius maksimal kurir instan: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined (defensive 40 KM)
-    const rawRadius =
-      metaShipping?.fnb_settings?.max_radius_km ??
-      metaShipping?.max_radius_km ??
-      metaShipping?.internal_courier?.max_radius_km ??
-      metaShipping?.lalamove_internal?.max_radius_km;
-
-    let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
-    const effectiveMaxInstantRadius =
-      !isNaN(parsedRadius) && isFinite(parsedRadius) && parsedRadius > 0
-        ? parsedRadius
-        : 40;
+    const effectiveMaxInstantRadius = resolveEffectiveInstantRadius(
+      biteshipCfg,
+      metaShipping,
+      tenantMeta,
+      isFnb
+    );
 
     const isInstantEligible =
       distanceKm > 0
         ? distanceKm <= effectiveMaxInstantRadius
-        : isSameCity || isSamePostalRegion;
+        : Boolean(isSameCity || isSamePostalRegion);
 
     let availableRates: RateOption[] = [];
     let externalRatesLoaded = false;
@@ -479,6 +589,39 @@ export async function POST(req: NextRequest) {
     );
 
     if (isCateringTenant) {
+      if (distanceKm > effectiveMaxInstantRadius) {
+        return NextResponse.json({
+          success: true,
+          coverage: false,
+          rates: [],
+          fnb_safe: false,
+          fnb_warning: `Alamat tujuan berada di luar radius pengiriman armada katering (jarak: ${distanceKm} km, batas maksimal: ${effectiveMaxInstantRadius} km). Silakan hubungi CS untuk koordinasi manual.`,
+          is_fnb: true,
+          distance_km: distanceKm,
+          max_radius_km: effectiveMaxInstantRadius,
+          instant_eligible: false,
+          out_of_range: true,
+          origin: {
+            address: originAddress,
+            city: effectiveOriginCity,
+            district: originDistrict,
+            postal_code: effectiveOriginPostal > 0 ? String(effectiveOriginPostal) : '',
+            subdistrict_id: originSubdistrictId,
+            latitude: originLat,
+            longitude: originLon,
+          },
+          destination: {
+            city: destinationCity,
+            district: destinationDistrict,
+            postal_code: destinationPostalCode,
+            area_id: destinationAreaId,
+            latitude: finalDestLat,
+            longitude: finalDestLon,
+          },
+          weight_grams: weightInGrams,
+        });
+      }
+
       const cateringItems: CateringItem[] = Array.isArray(body.items)
         ? body.items.map((it: any) => ({
             name: it.productTitle || it.title || it.name || '',
@@ -493,45 +636,114 @@ export async function POST(req: NextRequest) {
           }))
         : [];
 
+      const hasInternalDriver = metaShipping?.internal_courier?.is_enabled !== false;
       const cateringResult = calculateShabuAjhiRate(distanceKm, {
-        hasInternalDriver: true,
+        hasInternalDriver,
         items: cateringItems.length > 0 ? cateringItems : undefined,
       });
 
+      if (cateringResult.outOfRange || !cateringResult.isDeliverable) {
+        return NextResponse.json({
+          success: true,
+          coverage: false,
+          rates: [],
+          fnb_safe: false,
+          fnb_warning:
+            cateringResult.notes ||
+            `Alamat tujuan berada di luar jangkauan pengantaran armada katering (jarak: ${distanceKm} km, batas maksimal: ${effectiveMaxInstantRadius} km).`,
+          is_fnb: true,
+          distance_km: distanceKm,
+          max_radius_km: effectiveMaxInstantRadius,
+          instant_eligible: false,
+          out_of_range: true,
+          origin: {
+            address: originAddress,
+            city: effectiveOriginCity,
+            district: originDistrict,
+            postal_code: effectiveOriginPostal > 0 ? String(effectiveOriginPostal) : '',
+            subdistrict_id: originSubdistrictId,
+            latitude: originLat,
+            longitude: originLon,
+          },
+          destination: {
+            city: destinationCity,
+            district: destinationDistrict,
+            postal_code: destinationPostalCode,
+            area_id: destinationAreaId,
+            latitude: finalDestLat,
+            longitude: finalDestLon,
+          },
+          weight_grams: weightInGrams,
+        });
+      }
+
+      const packageCount = countCateringPackages(cateringItems);
+      const requiresManualCoordination = Boolean(
+        (cateringResult.fleetType === 'custom' && cateringResult.multiplier === 0) ||
+          packageCount >= 5
+      );
       const isAlacarteOnly = !cateringResult.requires_pickup;
-      const officialCourierName = isAlacarteOnly
-        ? (metaShipping?.internal_courier?.label_oneway || 'Kurir Instan Toko (Pengantaran 1 Arah)')
-        : (metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)');
+      const officialCourierName = requiresManualCoordination
+        ? 'Armada Khusus Katering (Konfirmasi CS / Manual)'
+        : isAlacarteOnly
+          ? (metaShipping?.internal_courier?.label_oneway || 'Kurir Instan Toko (Pengantaran 1 Arah)')
+          : (metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)');
 
       const cateringRateOption: RateOption = {
-        id: isAlacarteOnly ? 'alacarte_armada_internal' : 'catering_armada_internal',
+        id: requiresManualCoordination
+          ? 'catering_armada_manual'
+          : isAlacarteOnly
+            ? 'alacarte_armada_internal'
+            : 'catering_armada_internal',
         courier_name: officialCourierName,
-        service: cateringResult.fleetDescription || (isAlacarteOnly ? 'Pengantaran Menu Makanan (Tanpa Pinjam Alat)' : 'Antar & Jemput Alat Masak Kotor H+1'),
-        price: cateringResult.totalFee,
-        etd: isAlacarteOnly ? 'Hari Ini (1 - 2 Jam Diantar Langsung)' : 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
+        service: requiresManualCoordination
+          ? 'Armada Khusus — Konfirmasi CS / Manual (Pesanan >= 5 Paket)'
+          : cateringResult.fleetDescription || (isAlacarteOnly ? 'Pengantaran Menu Makanan (Tanpa Pinjam Alat)' : 'Antar & Jemput Alat Masak Kotor H+1'),
+        price: requiresManualCoordination ? null : cateringResult.totalFee,
+        ...(requiresManualCoordination ? { price_label: 'Konfirmasi CS / Manual' } : {}),
+        etd: requiresManualCoordination
+          ? 'Jadwal & Tarif Dikonfirmasi CS'
+          : isAlacarteOnly
+            ? 'Hari Ini (1 - 2 Jam Diantar Langsung)'
+            : 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
         type: 'instant',
-        badge: cateringResult.totalFee === 0 ? 'Gratis Ongkir' : (isAlacarteOnly ? 'Kurir 1 Arah' : (cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP')),
+        badge: requiresManualCoordination
+          ? 'Konfirmasi CS / Manual'
+          : cateringResult.totalFee === 0
+            ? 'Gratis Ongkir'
+            : isAlacarteOnly
+              ? 'Kurir 1 Arah'
+              : cateringResult.surchargeFee > 0
+                ? 'Surcharge Jarak Ekstrem'
+                : 'Armada Toko PP',
         provider: 'platform',
         max_days: 0.1,
         is_fnb_safe: true,
-        warning: cateringResult.notes,
+        warning: requiresManualCoordination
+          ? LARGE_ORDER_WARNING_MESSAGE
+          : cateringResult.notes,
+        requires_manual_coordination: requiresManualCoordination,
         requires_pickup: cateringResult.requires_pickup,
       } as any;
 
-      // Shabu Ajhi / Katering 100% menggunakan armada internal (Zero External Courier API)
+      // Katering F&B menggunakan armada internal (Zero External Courier API)
       return NextResponse.json({
         success: true,
+        coverage: true,
         rates: [cateringRateOption],
         fnb_safe: true,
+        ...(requiresManualCoordination ? { fnb_warning: LARGE_ORDER_WARNING_MESSAGE } : {}),
         is_fnb: true,
         distance_km: distanceKm,
         max_radius_km: effectiveMaxInstantRadius,
         instant_eligible: true,
+        out_of_range: false,
+        requires_manual_coordination: requiresManualCoordination,
         origin: {
           address: originAddress,
           city: effectiveOriginCity,
           district: originDistrict,
-          postal_code: String(effectiveOriginPostal),
+          postal_code: effectiveOriginPostal > 0 ? String(effectiveOriginPostal) : '',
           subdistrict_id: originSubdistrictId,
           latitude: originLat,
           longitude: originLon,
@@ -558,7 +770,7 @@ export async function POST(req: NextRequest) {
           : 'jne,sicepat,jnt,anteraja';
 
         const biteshipPayload: any = {
-          origin_postal_code: effectiveOriginPostal,
+          ...(effectiveOriginPostal > 0 ? { origin_postal_code: effectiveOriginPostal } : {}),
           couriers: couriersToQuery,
           items: [
             {
@@ -659,12 +871,12 @@ export async function POST(req: NextRequest) {
             weight: weightInGrams,
             packagePrice: 50000,
             origin: {
-              code: originSubdistrictId || (effectiveOriginCity.toLowerCase().includes('gresik') ? '35.25.15' : '32.73.06'),
-              longitude: originLon || 107.6757,
-              latitude: originLat || -6.9538,
+              ...(originSubdistrictId ? { code: originSubdistrictId } : {}),
+              longitude: originLon,
+              latitude: originLat,
             },
             destination: {
-              code: destinationDistrictCode || (destinationCity.toLowerCase().includes('jakarta') ? '31.71.01' : '32.73.01'),
+              ...(destinationDistrictCode ? { code: destinationDistrictCode } : {}),
               longitude: finalDestLon,
               latitude: finalDestLat,
             },
@@ -903,7 +1115,7 @@ export async function POST(req: NextRequest) {
         address: originAddress,
         city: effectiveOriginCity,
         district: originDistrict,
-        postal_code: String(effectiveOriginPostal),
+        postal_code: effectiveOriginPostal > 0 ? String(effectiveOriginPostal) : '',
         subdistrict_id: originSubdistrictId,
         latitude: originLat,
         longitude: originLon,

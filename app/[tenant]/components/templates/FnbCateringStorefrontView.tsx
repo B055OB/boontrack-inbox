@@ -47,7 +47,6 @@ import {
   countCateringPackages,
   isCateringPackage,
   LARGE_ORDER_WARNING_MESSAGE,
-  SHABU_AJHI_HANDOVER_PHONE,
   parseCoordinatesFromInput,
 } from '@/lib/shipping/deliveryCalculator';
 import {
@@ -123,8 +122,8 @@ export function checkIsBbqOnly(item: {
   const rawTags = Array.isArray(item.tags)
     ? item.tags
     : typeof item.tags === 'string'
-    ? (item.tags as string).split(',').map((t) => t.trim())
-    : [];
+      ? (item.tags as string).split(',').map((t) => t.trim())
+      : [];
   const normalizedTags = rawTags.map((t: string) => String(t).toLowerCase().trim());
 
   if (normalizedTags.includes('bbq-only') || normalizedTags.includes('bbq_only')) {
@@ -161,6 +160,12 @@ export function checkIsBbqOnly(item: {
   return false;
 }
 
+function normalizeIndonesianWaNumber(raw: unknown): string {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('0') ? `62${digits.slice(1)}` : digits;
+}
+
 /**
  * Helper: Pure function to construct WhatsApp booking URL and message payload.
  */
@@ -182,6 +187,12 @@ export function buildCateringWhatsAppUrl(params: {
   destinationLatitude?: number | null;
   destinationLongitude?: number | null;
   mapsUrl?: string;
+  deliveryFee?: number | null;
+  distanceKm?: number | null;
+  courierLabel?: string | null;
+  deliveryNote?: string | null;
+  isOutOfRange?: boolean;
+  requiresManualCoordination?: boolean;
 }): { message: string; waUrl: string; cleanWa: string } {
   const hasEquipment = params.hasEquipment ?? true;
   const itemsSummary = params.cartItems
@@ -200,8 +211,8 @@ export function buildCateringWhatsAppUrl(params: {
     (params.pickupWindow === 'NEXT_DAY_MORNING'
       ? 'Besok Pagi (H+1)'
       : params.pickupWindow === 'SAME_DAY'
-      ? 'Hari yang Sama (Setelah Acara)'
-      : '');
+        ? 'Hari yang Sama (Setelah Acara)'
+        : '');
   const resolvedPickupDateText = params.formattedPickupDate || params.pickupDate || '';
   const pickupScheduleLine = hasEquipment && resolvedPickupLabel
     ? `• Penjemputan Alat: ${resolvedPickupLabel}${resolvedPickupDateText ? ` (${resolvedPickupDateText})` : ''}\n`
@@ -213,6 +224,49 @@ export function buildCateringWhatsAppUrl(params: {
       ? `https://www.google.com/maps?q=${params.destinationLatitude},${params.destinationLongitude}`
       : '');
   const mapsLine = mapsLink ? `• 📍 Titik Lokasi (Google Maps): ${mapsLink}\n` : '';
+
+  const distanceSuffix =
+    typeof params.distanceKm === 'number' && Number.isFinite(params.distanceKm) && params.distanceKm > 0
+      ? ` (~${params.distanceKm} km)`
+      : '';
+  const courierSuffix = params.courierLabel ? ` [${params.courierLabel}]` : '';
+
+  const isLargeOrderItems = countCateringPackages(params.cartItems as any) >= 5;
+  const isManualCoordination = Boolean(
+    params.requiresManualCoordination ||
+    (isLargeOrderItems &&
+      (params.deliveryFee === 0 || params.deliveryFee === null || params.deliveryFee === undefined))
+  );
+
+  let pricingBlock = '';
+  if (
+    !isManualCoordination &&
+    typeof params.deliveryFee === 'number' &&
+    Number.isFinite(params.deliveryFee) &&
+    params.deliveryFee >= 0
+  ) {
+    const grandTotal = params.totalPrice + params.deliveryFee;
+    const ongkirText =
+      params.deliveryFee === 0
+        ? 'GRATIS (Rp 0)'
+        : `Rp ${params.deliveryFee.toLocaleString('id-ID')}`;
+    pricingBlock =
+      `💰 *Rincian Estimasi Biaya:*\n` +
+      `• Subtotal Menu: Rp ${params.totalPrice.toLocaleString('id-ID')}\n` +
+      `• Ongkos Kirim / Transport${distanceSuffix}${courierSuffix}: ${ongkirText}\n` +
+      `• *Grand Total (Estimasi): Rp ${grandTotal.toLocaleString('id-ID')}*\n`;
+  } else {
+    const ongkirFallbackText = params.isOutOfRange
+      ? `Di luar radius maksimal${distanceSuffix} (Konfirmasi ongkir CS)`
+      : isManualCoordination
+        ? params.deliveryNote || 'Konfirmasi CS (Pesanan Besar >= 5 Paket)'
+        : params.deliveryNote || 'Menunggu koordinat / konfirmasi ongkir CS';
+    pricingBlock =
+      `💰 *Rincian Estimasi Biaya:*\n` +
+      `• Subtotal Menu: Rp ${params.totalPrice.toLocaleString('id-ID')}\n` +
+      `• Ongkos Kirim / Transport${distanceSuffix}: ${ongkirFallbackText}\n` +
+      `• *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')} (Belum termasuk ongkir — konfirmasi CS)*\n`;
+  }
 
   const equipmentGuaranteeText = hasEquipment
     ? `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\nPeralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n`
@@ -227,11 +281,11 @@ export function buildCateringWhatsAppUrl(params: {
     mapsLine + `\n` +
     `🍲 *Rincian Pesanan:*\n` +
     `${itemsSummary}\n\n` +
-    `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
+    pricingBlock +
     equipmentGuaranteeText +
     `Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
 
-  const cleanWa = params.waNumber.replace(/\D/g, '') || '6285861091103';
+  const cleanWa = normalizeIndonesianWaNumber(params.waNumber);
   const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(message)}`;
 
   return { message, waUrl, cleanWa };
@@ -250,9 +304,15 @@ export function buildLiveCookingWhatsAppUrl(params: {
   destinationLatitude?: number | null;
   destinationLongitude?: number | null;
   mapsUrl?: string;
+  deliveryFee?: number | null;
+  distanceKm?: number | null;
+  courierLabel?: string | null;
+  deliveryNote?: string | null;
+  isOutOfRange?: boolean;
+  requiresManualCoordination?: boolean;
 }): { waUrl: string; message: string; targetPhone: string } {
-  const targetPhone = (params.waNumber || '6289617799878').replace(/\D/g, '') || '6289617799878';
-  const storeName = params.storeName || 'Shabu Ajhi';
+  const targetPhone = normalizeIndonesianWaNumber(params.waNumber);
+  const storeName = params.storeName || 'Layanan Katering';
   const dateStr = params.formattedDeliveryDate || params.deliveryDate || 'Segera';
   const slotStr = params.selectedTimeSlot || 'Fleksibel / Sesuai Jadwal';
   const address = params.locationAddress?.trim() || 'Alamat detail dikonfirmasi di chat';
@@ -286,8 +346,47 @@ export function buildLiveCookingWhatsAppUrl(params: {
       : '');
   const mapsLine = mapsLink ? `📍 *Titik Lokasi (Google Maps):* ${mapsLink}\n\n` : '';
 
+  const distanceSuffix =
+    typeof params.distanceKm === 'number' && Number.isFinite(params.distanceKm) && params.distanceKm > 0
+      ? ` (~${params.distanceKm} km)`
+      : '';
+  const courierSuffix = params.courierLabel ? ` [${params.courierLabel}]` : '';
+
+  const isManualCoordination = Boolean(
+    params.requiresManualCoordination ||
+    params.deliveryFee === 0 ||
+    params.deliveryFee === null ||
+    params.deliveryFee === undefined
+  );
+
+  let pricingSection = '';
+  if (params.totalPrice && params.totalPrice > 0) {
+    if (
+      !isManualCoordination &&
+      typeof params.deliveryFee === 'number' &&
+      Number.isFinite(params.deliveryFee) &&
+      params.deliveryFee > 0
+    ) {
+      const grandTotal = params.totalPrice + params.deliveryFee;
+      pricingSection =
+        `💰 *Rincian Estimasi Biaya:*\n` +
+        `• Subtotal Menu: Rp ${params.totalPrice.toLocaleString('id-ID')}\n` +
+        `• Biaya Transportasi / Ongkir${distanceSuffix}${courierSuffix}: Rp ${params.deliveryFee.toLocaleString('id-ID')}\n` +
+        `• *Grand Total (Estimasi): Rp ${grandTotal.toLocaleString('id-ID')}*\n\n`;
+    } else {
+      const ongkirFallbackText = params.isOutOfRange
+        ? `Di luar radius standar${distanceSuffix} (Konfirmasi biaya armada CS)`
+        : params.deliveryNote || 'Konfirmasi CS (Pesanan Besar >= 5 Paket)';
+      pricingSection =
+        `💰 *Rincian Estimasi Biaya:*\n` +
+        `• Subtotal Menu: Rp ${params.totalPrice.toLocaleString('id-ID')}\n` +
+        `• Ongkir${distanceSuffix}: ${ongkirFallbackText}\n` +
+        `• *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')} (Belum termasuk ongkir — konfirmasi CS)*\n\n`;
+    }
+  }
+
   const message =
-    `Halo ${storeName}, saya ingin berkonsultasi pemesanan catering partai besar (5+ paket / ~50+ porsi) untuk layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi:\n\n` +
+    `Halo ${storeName}, saya ingin berkonsultasi pemesanan catering partai besar (5+ paket / ~50+ porsi) untuk layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional ${storeName}:\n\n` +
     `📦 *Jumlah Paket:* ${params.totalPackages || '>= 5'} paket (~50+ porsi)\n` +
     `📅 *Perkiraan Tanggal:* ${dateStr}\n` +
     `⏰ *Slot Jam:* ${slotStr}\n` +
@@ -295,11 +394,210 @@ export function buildLiveCookingWhatsAppUrl(params: {
     mapsLine +
     `🍲 *Rincian Paket:*\n` +
     `${itemsSummary}\n\n` +
-    (params.totalPrice ? `💰 *Estimasi Total Menu:* Rp ${params.totalPrice.toLocaleString('id-ID')}\n\n` : '') +
+    pricingSection +
     `Mohon info ketersediaan tim chef & jadwal live cooking untuk acara kami. Terima kasih!`;
 
   const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`;
   return { waUrl, message, targetPhone };
+}
+
+export interface DeliveryQuoteState {
+  fee: number | null;
+  distanceKm: number | null;
+  courierName: string | null;
+  isOutOfRange: boolean;
+  requiresManualCoordination?: boolean;
+  maxRadiusKm: number | null;
+  note: string | null;
+}
+
+export function resolveCateringStickySummary(params: {
+  totalPrice: number;
+  isLargePartyOrder: boolean;
+  isLoadingDeliveryQuote: boolean;
+  deliveryQuote: DeliveryQuoteState;
+}): {
+  ongkirTone: 'loading' | 'manual' | 'resolved' | 'out_of_range' | 'pending';
+  ongkirLabel: string;
+  totalLabel: string;
+} {
+  const { totalPrice, isLargePartyOrder, isLoadingDeliveryQuote, deliveryQuote } = params;
+  const requiresManual = Boolean(isLargePartyOrder || deliveryQuote.requiresManualCoordination);
+
+  let ongkirTone: 'loading' | 'manual' | 'resolved' | 'out_of_range' | 'pending' = 'pending';
+  let ongkirLabel = `Ongkir: ${deliveryQuote.note || 'Pilih lokasi untuk cek ongkir'}`;
+
+  if (isLoadingDeliveryQuote) {
+    ongkirTone = 'loading';
+    ongkirLabel = 'Menghitung ongkir...';
+  } else if (requiresManual) {
+    ongkirTone = 'manual';
+    ongkirLabel = deliveryQuote.isOutOfRange
+      ? `Ongkir: Di luar radius${deliveryQuote.distanceKm ? ` (${deliveryQuote.distanceKm} km)` : ''} — Konfirmasi CS (Pesanan Besar >= 5 Paket)`
+      : `Ongkir: Konfirmasi CS (Pesanan Besar >= 5 Paket)${deliveryQuote.distanceKm ? ` (${deliveryQuote.distanceKm} km)` : ''}`;
+  } else if (deliveryQuote.fee !== null) {
+    ongkirTone = 'resolved';
+    ongkirLabel = `Ongkir${deliveryQuote.distanceKm ? ` (${deliveryQuote.distanceKm} km)` : ''}: ${deliveryQuote.fee === 0
+        ? 'GRATIS (Rp 0)'
+        : `Rp ${deliveryQuote.fee.toLocaleString('id-ID')}`
+      }`;
+  } else if (deliveryQuote.isOutOfRange) {
+    ongkirTone = 'out_of_range';
+    ongkirLabel = `Ongkir: Di luar radius${deliveryQuote.distanceKm ? ` (${deliveryQuote.distanceKm} km)` : ''} — konfirmasi CS`;
+  }
+
+  const totalLabel =
+    !requiresManual && deliveryQuote.fee !== null
+      ? `Grand Total: Rp ${(totalPrice + deliveryQuote.fee).toLocaleString('id-ID')}`
+      : requiresManual
+        ? `Estimasi Total: Rp ${totalPrice.toLocaleString('id-ID')} (Belum termasuk ongkir — konfirmasi CS)`
+        : `Total Menu: Rp ${totalPrice.toLocaleString('id-ID')}`;
+
+  return { ongkirTone, ongkirLabel, totalLabel };
+}
+
+export async function requestCateringDeliveryQuote(
+  params: {
+    slug: string;
+    destinationAddress?: string;
+    destinationCity?: string;
+    destinationDistrict?: string;
+    destinationPostalCode?: string;
+    destinationLatitude?: number | null;
+    destinationLongitude?: number | null;
+    mapsUrl?: string;
+    items: Array<{
+      id: string;
+      name: string;
+      price: number;
+      qty: number;
+      isAddon?: boolean;
+      requires_equipment?: boolean;
+      category?: string;
+      soupVariant?: string;
+      selectedSoups?: Record<string, number>;
+    }>;
+  },
+  fetchFn: typeof fetch = fetch
+): Promise<DeliveryQuoteState> {
+  const hasCoords =
+    typeof params.destinationLatitude === 'number' &&
+    typeof params.destinationLongitude === 'number' &&
+    Number.isFinite(params.destinationLatitude) &&
+    Number.isFinite(params.destinationLongitude);
+  const isLargePartyItems = countCateringPackages(params.items as any) >= 5;
+
+  try {
+    const res = await fetchFn('/api/v1/shipping/rates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: params.slug,
+        is_fnb: true,
+        destination_address: params.destinationAddress?.trim() || undefined,
+        destination_city: params.destinationCity?.trim() || undefined,
+        destination_district: params.destinationDistrict?.trim() || undefined,
+        destination_postal_code: params.destinationPostalCode?.trim() || undefined,
+        ...(hasCoords
+          ? {
+            destination_latitude: params.destinationLatitude,
+            destination_longitude: params.destinationLongitude,
+          }
+          : {}),
+        ...(params.mapsUrl?.trim() ? { maps_url: params.mapsUrl.trim() } : {}),
+        items: params.items.map((it) => ({
+          id: it.id,
+          name: it.name,
+          title: it.name,
+          price: it.price,
+          quantity: it.qty,
+          isAddon: Boolean(it.isAddon),
+          is_addon: Boolean(it.isAddon),
+          requires_equipment: it.requires_equipment,
+          category: it.category,
+          soupVariant: it.soupVariant,
+          selectedSoups: it.selectedSoups,
+        })),
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) {
+      return {
+        fee: null,
+        distanceKm: typeof data?.distance_km === 'number' ? data.distance_km : null,
+        courierName: null,
+        isOutOfRange: false,
+        requiresManualCoordination: isLargePartyItems,
+        maxRadiusKm: typeof data?.max_radius_km === 'number' ? data.max_radius_km : null,
+        note: isLargePartyItems
+          ? 'Konfirmasi CS (Pesanan Besar >= 5 Paket)'
+          : data?.message || 'Ongkir dikonfirmasi admin via WhatsApp',
+      };
+    }
+
+    if (
+      data?.out_of_range ||
+      data?.instant_eligible === false ||
+      !Array.isArray(data?.rates) ||
+      data.rates.length === 0
+    ) {
+      return {
+        fee: null,
+        distanceKm: typeof data?.distance_km === 'number' ? data.distance_km : null,
+        courierName: null,
+        isOutOfRange: Boolean(data?.out_of_range || data?.instant_eligible === false),
+        requiresManualCoordination: Boolean(data?.requires_manual_coordination || isLargePartyItems),
+        maxRadiusKm: typeof data?.max_radius_km === 'number' ? data.max_radius_km : null,
+        note:
+          data?.fnb_warning ||
+          data?.message ||
+          'Di luar jangkauan standar — konfirmasi ongkir CS',
+      };
+    }
+
+    const preferredRate = data.rates.find((r: any) => r.type === 'instant') || data.rates[0];
+    const hasManualFlag = Boolean(
+      data?.requires_manual_coordination || preferredRate?.requires_manual_coordination
+    );
+    const hasNullPrice = preferredRate?.price === null || preferredRate?.price === undefined;
+    const rawPrice = Number(preferredRate?.price);
+    const isZeroLargeParty = isLargePartyItems && (!Number.isFinite(rawPrice) || rawPrice === 0);
+
+    if (hasManualFlag || hasNullPrice || isZeroLargeParty || !Number.isFinite(rawPrice)) {
+      return {
+        fee: null,
+        distanceKm: typeof data?.distance_km === 'number' ? data.distance_km : null,
+        courierName: preferredRate?.courier_name || preferredRate?.service || null,
+        isOutOfRange: false,
+        requiresManualCoordination: true,
+        maxRadiusKm: typeof data?.max_radius_km === 'number' ? data.max_radius_km : null,
+        note: 'Konfirmasi CS (Pesanan Besar >= 5 Paket)',
+      };
+    }
+
+    return {
+      fee: rawPrice,
+      distanceKm: typeof data?.distance_km === 'number' ? data.distance_km : null,
+      courierName: preferredRate?.courier_name || preferredRate?.service || null,
+      isOutOfRange: false,
+      requiresManualCoordination: false,
+      maxRadiusKm: typeof data?.max_radius_km === 'number' ? data.max_radius_km : null,
+      note: preferredRate?.warning || null,
+    };
+  } catch (_) {
+    return {
+      fee: null,
+      distanceKm: null,
+      courierName: null,
+      isOutOfRange: false,
+      requiresManualCoordination: isLargePartyItems,
+      maxRadiusKm: null,
+      note: isLargePartyItems
+        ? 'Konfirmasi CS (Pesanan Besar >= 5 Paket)'
+        : 'Ongkir akan dikonfirmasi admin via WhatsApp',
+    };
+  }
 }
 
 export default function FnbCateringStorefrontView({
@@ -570,18 +868,29 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     }
   };
 
-  // Logo URL with fallback
+  // Logo URL from tenant metadata (no hardcoded tenant asset fallback)
   const storeLogo =
     meta?.logo_url ||
     meta?.store_logo_url ||
     tenant?.logo_url ||
-    '/tenants/shabu-ajhi/logo.png';
+    '';
 
   const waNumber =
+    meta?.whatsapp_number ||
     meta?.whatsapp ||
+    meta?.official_waba_number ||
     meta?.phone ||
+    tenant?.whatsapp_number ||
     tenant?.whatsapp ||
-    '6285861091103';
+    tenant?.phone ||
+    '';
+
+  const largePartyWaNumber =
+    fnbCatering?.handover_whatsapp ||
+    fnbCatering?.large_order_whatsapp ||
+    meta?.shipping_config?.handover_phone ||
+    meta?.fnb_settings?.handover_whatsapp ||
+    waNumber;
 
   // Available soup variants
   const soupOptions: string[] = fnbCatering?.soup_variants || [
@@ -832,6 +1141,206 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
 
   const isLargePartyOrder = totalCateringPackages >= 5;
 
+  // ── REAL-TIME DELIVERY QUOTE VIA /api/v1/shipping/rates ──
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuoteState>({
+    fee: null,
+    distanceKm: null,
+    courierName: null,
+    isOutOfRange: false,
+    requiresManualCoordination: false,
+    maxRadiusKm: null,
+    note: null,
+  });
+  const [isLoadingDeliveryQuote, setIsLoadingDeliveryQuote] = useState<boolean>(false);
+  const lastDeliveryQuoteKeyRef = React.useRef<string>('');
+  const lastDeliveryQuoteValueRef = React.useRef<DeliveryQuoteState | null>(null);
+
+  const buildDeliveryQuoteKey = React.useCallback(() => {
+    const itemsSig = Object.values(cart)
+      .map((c) => `${c.id}:${c.qty}:${c.requires_equipment ?? ''}`)
+      .sort()
+      .join('|');
+    return JSON.stringify({
+      slug: effectiveSlug,
+      lat: destinationLatitude,
+      lng: destinationLongitude,
+      city: destinationCity,
+      district: destinationDistrict,
+      postal: destinationPostalCode,
+      details: locationDetails.trim(),
+      maps: sharelockInput.trim(),
+      items: itemsSig,
+    });
+  }, [
+    cart,
+    effectiveSlug,
+    destinationLatitude,
+    destinationLongitude,
+    destinationCity,
+    destinationDistrict,
+    destinationPostalCode,
+    locationDetails,
+    sharelockInput,
+  ]);
+
+  const fetchDeliveryQuote = React.useCallback(async (): Promise<DeliveryQuoteState> => {
+    const cartList = Object.values(cart);
+    if (cartList.length === 0) {
+      const emptyState: DeliveryQuoteState = {
+        fee: null,
+        distanceKm: null,
+        courierName: null,
+        isOutOfRange: false,
+        requiresManualCoordination: false,
+        maxRadiusKm: null,
+        note: null,
+      };
+      setDeliveryQuote(emptyState);
+      lastDeliveryQuoteValueRef.current = emptyState;
+      return emptyState;
+    }
+
+    const hasCoords =
+      typeof destinationLatitude === 'number' &&
+      typeof destinationLongitude === 'number' &&
+      Number.isFinite(destinationLatitude) &&
+      Number.isFinite(destinationLongitude);
+    const hasLocationInfo =
+      hasCoords ||
+      Boolean(
+        destinationCity.trim() ||
+        destinationDistrict.trim() ||
+        destinationPostalCode.trim() ||
+        sharelockInput.trim() ||
+        locationDetails.trim()
+      );
+
+    if (!hasLocationInfo) {
+      const noLocState: DeliveryQuoteState = {
+        fee: null,
+        distanceKm: null,
+        courierName: null,
+        isOutOfRange: false,
+        requiresManualCoordination: isLargePartyOrder,
+        maxRadiusKm: null,
+        note: isLargePartyOrder
+          ? 'Konfirmasi CS (Pesanan Besar >= 5 Paket)'
+          : 'Pilih lokasi / isi alamat untuk cek ongkir',
+      };
+      setDeliveryQuote(noLocState);
+      lastDeliveryQuoteValueRef.current = noLocState;
+      return noLocState;
+    }
+
+    const quoteKey = buildDeliveryQuoteKey();
+    setIsLoadingDeliveryQuote(true);
+    try {
+      const resolvedState = await requestCateringDeliveryQuote({
+        slug: effectiveSlug,
+        destinationAddress: locationDetails,
+        destinationCity,
+        destinationDistrict,
+        destinationPostalCode,
+        destinationLatitude,
+        destinationLongitude,
+        mapsUrl: sharelockInput,
+        items: cartList.map((it) => ({
+          id: it.id,
+          name: it.name,
+          price: it.price,
+          qty: it.qty,
+          isAddon: Boolean(it.isAddon),
+          requires_equipment: it.requires_equipment,
+          category: it.category,
+          soupVariant: it.soupVariant,
+          selectedSoups: it.selectedSoups,
+        })),
+      });
+
+      lastDeliveryQuoteKeyRef.current = quoteKey;
+      lastDeliveryQuoteValueRef.current = resolvedState;
+      setDeliveryQuote(resolvedState);
+      return resolvedState;
+    } finally {
+      setIsLoadingDeliveryQuote(false);
+    }
+  }, [
+    cart,
+    effectiveSlug,
+    destinationLatitude,
+    destinationLongitude,
+    destinationCity,
+    destinationDistrict,
+    destinationPostalCode,
+    locationDetails,
+    sharelockInput,
+    buildDeliveryQuoteKey,
+  ]);
+
+  useEffect(() => {
+    if (totalItems === 0) {
+      lastDeliveryQuoteKeyRef.current = '';
+      lastDeliveryQuoteValueRef.current = null;
+      setDeliveryQuote({
+        fee: null,
+        distanceKm: null,
+        courierName: null,
+        isOutOfRange: false,
+        requiresManualCoordination: false,
+        maxRadiusKm: null,
+        note: null,
+      });
+      return;
+    }
+
+    const hasCoords =
+      typeof destinationLatitude === 'number' &&
+      typeof destinationLongitude === 'number' &&
+      Number.isFinite(destinationLatitude) &&
+      Number.isFinite(destinationLongitude);
+    const hasLocationInfo =
+      hasCoords ||
+      Boolean(
+        destinationCity.trim() ||
+        destinationDistrict.trim() ||
+        destinationPostalCode.trim() ||
+        sharelockInput.trim() ||
+        locationDetails.trim()
+      );
+
+    if (!hasLocationInfo) {
+      setDeliveryQuote({
+        fee: null,
+        distanceKm: null,
+        courierName: null,
+        isOutOfRange: false,
+        requiresManualCoordination: isLargePartyOrder,
+        maxRadiusKm: null,
+        note: isLargePartyOrder
+          ? 'Konfirmasi CS (Pesanan Besar >= 5 Paket)'
+          : 'Pilih lokasi / isi alamat untuk cek ongkir',
+      });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetchDeliveryQuote();
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [
+    totalItems,
+    isLargePartyOrder,
+    destinationLatitude,
+    destinationLongitude,
+    destinationCity,
+    destinationDistrict,
+    destinationPostalCode,
+    sharelockInput,
+    locationDetails,
+    fetchDeliveryQuote,
+  ]);
+
   // Format date helper (e.g. "Senin, 20 Oktober 2026")
   const formattedDeliveryDate = useMemo(() => {
     if (!deliveryDate) return 'Hari Ini';
@@ -869,9 +1378,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
   }, [pickupDate]);
 
   // ── 5. WHATSAPP CONVERSATIONAL FLOW BUILDER ──
-  const handleCheckoutViaWhatsApp = () => {
+  const handleCheckoutViaWhatsApp = async () => {
     if (totalItems === 0) {
-      alert('Silakan pilih minimal 1 paket atau menu Shabu Ajhi terlebih dahulu.');
+      alert('Silakan pilih minimal 1 paket atau menu terlebih dahulu.');
       return;
     }
 
@@ -880,7 +1389,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
-        // Large order handoff routing (>= 5 packages -> Live Cooking & Event Catering)
+    // Large order handoff routing (>= 5 packages -> Live Cooking & Event Catering)
     const mapsUrl = (destinationLatitude && destinationLongitude)
       ? `https://www.google.com/maps?q=${destinationLatitude},${destinationLongitude}`
       : (sharelockInput.trim().startsWith('http') ? sharelockInput.trim() : '');
@@ -890,10 +1399,30 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       selectedLocationObj ? `Kec. ${selectedLocationObj.district}, ${selectedLocationObj.city}` : '',
     ].filter(Boolean).join(' - ') || locationType;
 
+    const currentQuoteKey = buildDeliveryQuoteKey();
+    let activeQuote: DeliveryQuoteState = deliveryQuote;
+    if (lastDeliveryQuoteKeyRef.current !== currentQuoteKey) {
+      activeQuote = await fetchDeliveryQuote();
+    } else if (lastDeliveryQuoteValueRef.current) {
+      activeQuote = lastDeliveryQuoteValueRef.current;
+    }
+
+    const targetRawWa = isLargePartyOrder ? largePartyWaNumber : waNumber;
+    const cleanTargetWa = normalizeIndonesianWaNumber(targetRawWa);
+    if (!cleanTargetWa) {
+      alert('Nomor WhatsApp toko belum dikonfigurasi. Silakan hubungi admin atau gunakan metode Bayar QRIS.');
+      return;
+    }
+
+    const requiresManualCoord = Boolean(
+      isLargePartyOrder || activeQuote.requiresManualCoordination
+    );
+    const resolvedDeliveryFee = requiresManualCoord ? null : activeQuote.fee;
+
     if (isLargePartyOrder) {
       const { waUrl } = buildLiveCookingWhatsAppUrl({
         storeName: effectiveName,
-        waNumber: '6289617799878',
+        waNumber: cleanTargetWa,
         deliveryDate,
         formattedDeliveryDate,
         selectedTimeSlot,
@@ -904,6 +1433,12 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
         destinationLatitude,
         destinationLongitude,
         mapsUrl,
+        deliveryFee: resolvedDeliveryFee,
+        distanceKm: activeQuote.distanceKm,
+        courierLabel: activeQuote.courierName,
+        deliveryNote: activeQuote.note || 'Konfirmasi CS (Pesanan Besar >= 5 Paket)',
+        isOutOfRange: activeQuote.isOutOfRange,
+        requiresManualCoordination: requiresManualCoord,
       });
 
       if (typeof window !== 'undefined') {
@@ -916,7 +1451,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
 
     const { waUrl } = buildCateringWhatsAppUrl({
       storeName: effectiveName,
-      waNumber,
+      waNumber: cleanTargetWa,
       deliveryDate,
       formattedDeliveryDate,
       selectedTimeSlot,
@@ -932,6 +1467,12 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       destinationLatitude,
       destinationLongitude,
       mapsUrl,
+      deliveryFee: resolvedDeliveryFee,
+      distanceKm: activeQuote.distanceKm,
+      courierLabel: activeQuote.courierName,
+      deliveryNote: activeQuote.note,
+      isOutOfRange: activeQuote.isOutOfRange,
+      requiresManualCoordination: requiresManualCoord,
     });
 
     if (typeof window !== 'undefined') {
@@ -1046,17 +1587,20 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           <div className="flex items-center justify-between gap-4">
             {/* Logo Resmi & Identitas */}
             <div className="flex items-center gap-3 min-w-0">
-              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-white border-2 border-amber-200/80 shadow-md shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={storeLogo}
-                  alt={effectiveName}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Fallback to initial if image fails
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
+              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-white border-2 border-amber-200/80 shadow-md shrink-0 flex items-center justify-center">
+                {storeLogo ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={storeLogo}
+                    alt={effectiveName}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <UtensilsCrossed className="w-6 h-6 text-rose-600" />
+                )}
               </div>
 
               <div className="min-w-0 space-y-0.5">
@@ -1205,11 +1749,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 <button
                   type="button"
                   onClick={() => setLocationType('Rumah Tinggal')}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                    locationType === 'Rumah Tinggal'
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${locationType === 'Rumah Tinggal'
                       ? 'bg-rose-600 text-white font-semibold shadow-sm'
                       : 'bg-slate-50 border border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   <Home className="w-3.5 h-3.5" />
                   <span>Rumah</span>
@@ -1217,11 +1760,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 <button
                   type="button"
                   onClick={() => setLocationType('Villa / Glamping')}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                    locationType === 'Villa / Glamping'
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${locationType === 'Villa / Glamping'
                       ? 'bg-rose-600 text-white font-semibold shadow-sm'
                       : 'bg-slate-50 border border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   <Building2 className="w-3.5 h-3.5" />
                   <span>Villa / Glamping</span>
@@ -1475,13 +2017,12 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                         setSelectedTimeSlot(slot.slot_name);
                         setPickupWindow(resolveDefaultPickupWindow(slot.slot_name));
                       }}
-                      className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                        isFull
+                      className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${isFull
                           ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed text-slate-400'
                           : isSelected
-                          ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
-                          : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-800'
-                      }`}
+                            ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                            : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-800'
+                        }`}
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center justify-between">
@@ -1536,11 +2077,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <label
                 data-testid="pickup-window-same-day"
-                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
-                  pickupWindow === 'SAME_DAY'
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${pickupWindow === 'SAME_DAY'
                     ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
                     : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2.5">
                   <input
@@ -1563,11 +2103,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
 
               <label
                 data-testid="pickup-window-next-day"
-                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
-                  pickupWindow === 'NEXT_DAY_MORNING'
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${pickupWindow === 'NEXT_DAY_MORNING'
                     ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
                     : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2.5">
                   <input
@@ -1612,11 +2151,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Hemat')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeTabKey === 'Paket Alat Hemat'
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${activeTabKey === 'Paket Alat Hemat'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               <Users className="w-3.5 h-3.5" />
               <span>Paket Alat Hemat (10 Pax)</span>
@@ -1624,11 +2162,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Premium')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeTabKey === 'Paket Alat Premium'
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${activeTabKey === 'Paket Alat Premium'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Paket Alat Premium (2–4 Pax)</span>
@@ -1636,11 +2173,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Occasion')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeTabKey === 'Paket Occasion'
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${activeTabKey === 'Paket Occasion'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               <Gift className="w-3.5 h-3.5" />
               <span>Paket Occasion</span>
@@ -1648,11 +2184,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Tanpa Alat')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeTabKey === 'Paket Tanpa Alat'
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${activeTabKey === 'Paket Tanpa Alat'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               <Flame className="w-3.5 h-3.5" />
               <span>Paket Tanpa Alat</span>
@@ -1768,11 +2303,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                         type="button"
                         onClick={() => handleAddProduct(item)}
                         disabled={!isSoupAllocComplete}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                          isSoupAllocComplete
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 ${isSoupAllocComplete
                             ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
                             : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-200'
-                        }`}
+                          }`}
                         title={
                           !isSoupAllocComplete
                             ? `Pilih ${quota} slot kuah terlebih dahulu`
@@ -1818,90 +2352,90 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       {/* ── 4. SEKSI ADD-ONS CEPAT (HORIZONTAL SCROLL) ── */}
       {addonsList.length > 0 && (
         <section className="max-w-5xl mx-auto px-4 pt-12">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
-              Langkah 3 &bull; Menu Tambahan
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
+                Langkah 3 &bull; Menu Tambahan
+              </span>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2 mt-0.5">
+                <Plus className="w-4 h-4 text-rose-600" />
+                <span>Add-ons Pelengkap &amp; Ekstra Porsi</span>
+              </h2>
+            </div>
+            <span className="text-xs text-slate-500 hidden sm:inline font-mono">
+              Geser ke kanan untuk opsi lainnya &rarr;
             </span>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2 mt-0.5">
-              <Plus className="w-4 h-4 text-rose-600" />
-              <span>Add-ons Pelengkap &amp; Ekstra Porsi</span>
-            </h2>
           </div>
-          <span className="text-xs text-slate-500 hidden sm:inline font-mono">
-            Geser ke kanan untuk opsi lainnya &rarr;
-          </span>
-        </div>
 
-        <div className="flex items-stretch gap-3 overflow-x-auto pb-4 scrollbar-thin">
-          {addonsList.map((addon: any) => {
-            const aId = String(addon.id);
-            const inCart = cart[aId];
-            const currentQty = inCart?.qty || 0;
+          <div className="flex items-stretch gap-3 overflow-x-auto pb-4 scrollbar-thin">
+            {addonsList.map((addon: any) => {
+              const aId = String(addon.id);
+              const inCart = cart[aId];
+              const currentQty = inCart?.qty || 0;
 
-            return (
-              <div
-                key={aId}
-                className="w-56 sm:w-64 rounded-2xl bg-white border border-amber-200/70 p-3.5 shrink-0 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-amber-300 transition"
-              >
-                <div>
-                  <div className="relative rounded-xl overflow-hidden aspect-video bg-amber-50/50 mb-2.5 border border-amber-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={addon.image}
-                      alt={addon.name}
-                      className="w-full h-full object-cover"
-                    />
+              return (
+                <div
+                  key={aId}
+                  className="w-56 sm:w-64 rounded-2xl bg-white border border-amber-200/70 p-3.5 shrink-0 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-amber-300 transition"
+                >
+                  <div>
+                    <div className="relative rounded-xl overflow-hidden aspect-video bg-amber-50/50 mb-2.5 border border-amber-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={addon.image}
+                        alt={addon.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
+                      {addon.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                      {addon.unit}
+                    </p>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
-                    {addon.name}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                    {addon.unit}
-                  </p>
-                </div>
 
-                <div className="mt-3 pt-2.5 border-t border-amber-100 flex items-center justify-between gap-2">
-                  <span className="text-xs font-black text-rose-600">
-                    Rp {Number(addon.price).toLocaleString('id-ID')}
-                  </span>
+                  <div className="mt-3 pt-2.5 border-t border-amber-100 flex items-center justify-between gap-2">
+                    <span className="text-xs font-black text-rose-600">
+                      Rp {Number(addon.price).toLocaleString('id-ID')}
+                    </span>
 
-                  {currentQty === 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => handleAddAddon(addon)}
-                      className="py-1 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Tambah</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecreaseProduct(aId)}
-                        className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center cursor-pointer"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="font-mono text-xs font-bold text-slate-900">
-                        {currentQty}
-                      </span>
+                    {currentQty === 0 ? (
                       <button
                         type="button"
                         onClick={() => handleAddAddon(addon)}
-                        className="w-6 h-6 rounded-md bg-rose-600 text-white flex items-center justify-center cursor-pointer"
+                        className="py-1 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
+                        <span>Tambah</span>
                       </button>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDecreaseProduct(aId)}
+                          className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-mono text-xs font-bold text-slate-900">
+                          {currentQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddAddon(addon)}
+                          className="w-6 h-6 rounded-md bg-rose-600 text-white flex items-center justify-center cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* ── 5. STICKY BOTTOM CHECKOUT BAR (WHATSAPP CONVERSATIONAL FLOW) ── */}
@@ -1915,79 +2449,100 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             </div>
           )}
           <div className="p-3 sm:p-4">
-          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            {/* Ringkasan Pesanan */}
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
-                <UtensilsCrossed className="w-5 h-5 text-rose-600" />
+            <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+              {/* Ringkasan Pesanan */}
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                  <UtensilsCrossed className="w-5 h-5 text-rose-600" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">
+                      {totalItems} Menu Terpilih
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-mono font-medium">
+                      &bull; {selectedTimeSlot ? selectedTimeSlot.split('(')[0].trim() : 'Pilih Slot Jam'}
+                    </span>
+                  </div>
+                  {(() => {
+                    const stickySummary = resolveCateringStickySummary({
+                      totalPrice,
+                      isLargePartyOrder,
+                      isLoadingDeliveryQuote,
+                      deliveryQuote,
+                    });
+                    const ongkirClass =
+                      stickySummary.ongkirTone === 'resolved'
+                        ? 'text-emerald-700'
+                        : stickySummary.ongkirTone === 'manual' || stickySummary.ongkirTone === 'out_of_range'
+                          ? 'text-amber-700'
+                          : 'text-slate-500';
+                    return (
+                      <>
+                        <div className="text-[11px] text-slate-600 font-semibold flex flex-wrap items-center gap-x-2">
+                          <span>Subtotal: Rp {totalPrice.toLocaleString('id-ID')}</span>
+                          <span aria-hidden="true">&bull;</span>
+                          <span className={ongkirClass}>{stickySummary.ongkirLabel}</span>
+                        </div>
+                        <div className="text-sm sm:text-base font-black text-rose-600">
+                          {stickySummary.totalLabel}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-slate-900">
-                    {totalItems} Menu Terpilih
+
+              {/* Tombol CTA WhatsApp Kasir & Direct QRIS */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleDirectQrisCheckout}
+                  disabled={!selectedTimeSlot || isLargePartyOrder}
+                  className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 ${isLargePartyOrder
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                      : selectedTimeSlot
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20 cursor-pointer shadow-xs active:scale-95'
+                        : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
+                    }`}
+                  title={
+                    isLargePartyOrder
+                      ? 'Pesanan di atas 4 paket memerlukan koordinasi armada manual'
+                      : 'Buka Faktur Pembayaran QRIS Dinamis'
+                  }
+                >
+                  <QrCode className="w-4 h-4 text-emerald-400" />
+                  <span>Bayar QRIS</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCheckoutViaWhatsApp}
+                  disabled={!selectedTimeSlot}
+                  className={`flex-1 sm:flex-initial py-3 px-4 sm:px-6 rounded-2xl text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${selectedTimeSlot
+                      ? isLargePartyOrder
+                        ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
+                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
+                      : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    }`}
+                  title={
+                    isLargePartyOrder
+                      ? 'Konsultasi Tim Live Cooking via WhatsApp'
+                      : 'Pesan Langsung via WhatsApp Kasir'
+                  }
+                >
+                  <MessageSquare className="w-4 h-4 fill-white" />
+                  <span>
+                    {!selectedTimeSlot
+                      ? 'Pilih Slot Jam Dahulu'
+                      : isLargePartyOrder
+                        ? 'Konsultasi Tim Live Cooking via WhatsApp'
+                        : 'WhatsApp Kasir / CS'}
                   </span>
-                  <span className="text-[10px] text-emerald-700 font-mono font-medium">
-                    &bull; {selectedTimeSlot ? selectedTimeSlot.split('(')[0].trim() : 'Pilih Slot Jam'}
-                  </span>
-                </div>
-                <div className="text-sm sm:text-base font-black text-rose-600">
-                  Total: Rp {totalPrice.toLocaleString('id-ID')}
-                </div>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
-
-            {/* Tombol CTA WhatsApp Kasir & Direct QRIS */}
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={handleDirectQrisCheckout}
-                disabled={!selectedTimeSlot || isLargePartyOrder}
-                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 ${
-                  isLargePartyOrder
-                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
-                    : selectedTimeSlot
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20 cursor-pointer shadow-xs active:scale-95'
-                    : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
-                }`}
-                title={
-                  isLargePartyOrder
-                    ? 'Pesanan di atas 4 paket memerlukan koordinasi armada manual'
-                    : 'Buka Faktur Pembayaran QRIS Dinamis'
-                }
-              >
-                <QrCode className="w-4 h-4 text-emerald-400" />
-                <span>Bayar QRIS</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCheckoutViaWhatsApp}
-                disabled={!selectedTimeSlot}
-                className={`flex-1 sm:flex-initial py-3 px-4 sm:px-6 rounded-2xl text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
-                  selectedTimeSlot
-                    ? isLargePartyOrder
-                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
-                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
-                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                }`}
-                title={
-                  isLargePartyOrder
-                    ? 'Konsultasi Tim Live Cooking via WhatsApp (+62 896-1779-9878)'
-                    : 'Pesan Langsung via WhatsApp Kasir'
-                }
-              >
-                <MessageSquare className="w-4 h-4 fill-white" />
-                <span>
-                  {!selectedTimeSlot
-                    ? 'Pilih Slot Jam Dahulu'
-                    : isLargePartyOrder
-                    ? 'Konsultasi Tim Live Cooking via WhatsApp'
-                    : 'WhatsApp Kasir / CS'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
           </div>
         </div>
       )}

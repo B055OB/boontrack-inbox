@@ -16,7 +16,6 @@ import {
   MessageSquare,
   Info,
 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabaseClient';
 
 export interface TenantDriver {
   id: string;
@@ -28,12 +27,173 @@ export interface TenantDriver {
   created_at: string;
 }
 
+export interface LoadedFnbShippingState {
+  isCatering: boolean;
+  kitchenAddress: string;
+  latitude: string;
+  longitude: string;
+  maxRadiusKm: number;
+  kitchenHours: string;
+  instantProvider: string;
+}
+
+export async function fetchFnbShippingConfig(
+  tenantSlug: string,
+  fetchFn: typeof fetch = fetch
+): Promise<LoadedFnbShippingState> {
+  const res = await fetchFn(
+    `/api/v1/shipping/config?tenant=${encodeURIComponent(tenantSlug)}`,
+    {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    }
+  );
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    throw new Error(
+      data?.message || data?.error || `HTTP ${res.status} saat memuat konfigurasi.`
+    );
+  }
+
+  const storeCtx = data.store_context || {};
+  const courierCfg = data.courier_config || {};
+  const fnb = courierCfg.fnb_settings || storeCtx.fnb_settings || null;
+  const origin = courierCfg.origin || {};
+
+  const isCatering = Boolean(
+    storeCtx.fnb_catering === true ||
+    storeCtx.logistics?.primary === 'internal_fleet' ||
+    String(storeCtx.business_category || '').toUpperCase().includes('FOOD') ||
+    fnb?.fnb_catering === true ||
+    fnb?.is_fnb_store === true
+  );
+
+  const defaultRadius = isCatering ? 40 : 30;
+  const apiEffectiveRadius = Number(storeCtx.effective_max_radius_km);
+  const fnbRadius = Number(fnb?.max_radius_km);
+  const resolvedRadius =
+    Number.isFinite(apiEffectiveRadius) && apiEffectiveRadius >= 1 && apiEffectiveRadius <= 60
+      ? apiEffectiveRadius
+      : Number.isFinite(fnbRadius) && fnbRadius >= 1 && fnbRadius <= 60
+        ? fnbRadius
+        : defaultRadius;
+
+  const resolvedAddress =
+    (typeof fnb?.kitchen_address === 'string' && fnb.kitchen_address.trim()) ||
+    (typeof origin?.address === 'string' && origin.address.trim()) ||
+    (typeof storeCtx.kitchen_address === 'string' && storeCtx.kitchen_address.trim()) ||
+    '';
+
+  const rawLat = fnb?.latitude ?? origin?.latitude;
+  const rawLng = fnb?.longitude ?? origin?.longitude;
+
+  return {
+    isCatering,
+    kitchenAddress: resolvedAddress,
+    latitude: rawLat !== undefined && rawLat !== null && rawLat !== '' ? String(rawLat) : '',
+    longitude: rawLng !== undefined && rawLng !== null && rawLng !== '' ? String(rawLng) : '',
+    maxRadiusKm: resolvedRadius,
+    kitchenHours: fnb?.kitchen_hours || '08:00 - 20:00 WIB',
+    instantProvider: isCatering
+      ? 'INTERNAL_LALAMOVE'
+      : fnb?.instant_provider || 'INTERNAL_LALAMOVE',
+  };
+}
+
+export async function saveFnbShippingConfig(
+  params: {
+    tenantSlug: string;
+    isFnbCatering: boolean;
+    kitchenAddress: string;
+    latitude?: number;
+    longitude?: number;
+    maxRadiusKm: number;
+    kitchenHours: string;
+    instantProvider: string;
+  },
+  fetchFn: typeof fetch = fetch
+): Promise<{
+  kitchenAddress: string;
+  latitude?: string;
+  longitude?: string;
+  maxRadiusKm?: number;
+}> {
+  const cleanAddress = params.kitchenAddress.trim();
+  const fnbSettings: Record<string, any> = {
+    is_fnb_store: true,
+    fnb_catering: params.isFnbCatering,
+    kitchen_address: cleanAddress,
+    max_radius_km: params.maxRadiusKm,
+    kitchen_hours: params.kitchenHours.trim() || '08:00 - 20:00 WIB',
+    instant_provider: params.instantProvider,
+    logistics_tier: {
+      primary: 'internal_fleet',
+      fallback: 'lalamove',
+    },
+    ...(params.latitude !== undefined && params.longitude !== undefined
+      ? { latitude: params.latitude, longitude: params.longitude }
+      : {}),
+  };
+
+  const res = await fetchFn('/api/v1/shipping/config', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tenant_slug: params.tenantSlug,
+      fnb_settings: fnbSettings,
+      origin: {
+        ...(cleanAddress ? { address: cleanAddress } : {}),
+        ...(params.latitude !== undefined && params.longitude !== undefined
+          ? { latitude: params.latitude, longitude: params.longitude }
+          : {}),
+      },
+      routing_rules: {
+        instant: 'biteship',
+        fallback_courier: 'lalamove',
+        regular: 'lincah',
+      },
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+  }
+
+  const savedFnb = data?.courier_config?.fnb_settings;
+  const savedOrigin = data?.courier_config?.origin;
+  const effectiveRadius = Number(data?.store_context?.effective_max_radius_km);
+
+  return {
+    kitchenAddress: savedFnb?.kitchen_address || savedOrigin?.address || cleanAddress,
+    latitude:
+      savedFnb?.latitude !== undefined && savedFnb?.latitude !== null
+        ? String(savedFnb.latitude)
+        : savedOrigin?.latitude !== undefined && savedOrigin?.latitude !== null
+          ? String(savedOrigin.latitude)
+          : undefined,
+    longitude:
+      savedFnb?.longitude !== undefined && savedFnb?.longitude !== null
+        ? String(savedFnb.longitude)
+        : savedOrigin?.longitude !== undefined && savedOrigin?.longitude !== null
+          ? String(savedOrigin.longitude)
+          : undefined,
+    maxRadiusKm:
+      Number.isFinite(effectiveRadius) && effectiveRadius >= 1 && effectiveRadius <= 60
+        ? effectiveRadius
+        : undefined,
+  };
+}
+
 export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }) {
   // Kitchen coordinates states
   const [kitchenAddress, setKitchenAddress] = useState<string>('');
   const [latitude, setLatitude] = useState<string>('');
   const [longitude, setLongitude] = useState<string>('');
-  const [maxRadiusKm, setMaxRadiusKm] = useState<number>(30);
+  const [maxRadiusKm, setMaxRadiusKm] = useState<number>(40);
   const [kitchenHours, setKitchenHours] = useState<string>('08:00 - 20:00 WIB');
   const [instantProvider, setInstantProvider] = useState<string>('INTERNAL_LALAMOVE');
   const [isFnbCatering, setIsFnbCatering] = useState<boolean>(true);
@@ -72,75 +232,34 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
     }
   }, [tenantSlug]);
 
-  // 2. Load real settings from Supabase on mount
+  // 2. Load settings via authenticated server-side config gateway (zero browser anon DB access)
   useEffect(() => {
+    let cancelled = false;
+
     async function loadFnbSettings() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const supabase = getSupabase();
-        if (!supabase) throw new Error('Supabase client not initialized');
+        const loaded = await fetchFnbShippingConfig(tenantSlug);
+        if (cancelled) return;
 
-        // Check tenant metadata for catering flag
-        const { data: tenant } = await supabase
-          .from('tenants')
-          .select('id, metadata, business_category')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        const isCatering = Boolean(
-          tenant?.metadata?.fnb_catering === true ||
-          tenantSlug === 'shabu-ajhi' ||
-          tenant?.metadata?.logistics?.primary === 'internal_fleet' ||
-          String(tenant?.business_category || '').toUpperCase().includes('FOOD')
-        );
-        setIsFnbCatering(isCatering);
-
-        // Load from tenant_settings.biteship_config.fnb_settings
-        const { data: settings } = await supabase
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', tenantSlug)
-          .maybeSingle();
-
-        if (settings?.biteship_config?.fnb_settings) {
-          const fnb = settings.biteship_config.fnb_settings;
-          setKitchenAddress(fnb.kitchen_address || '');
-          setLatitude(fnb.latitude != null ? String(fnb.latitude) : '');
-          setLongitude(fnb.longitude != null ? String(fnb.longitude) : '');
-          setMaxRadiusKm(fnb.max_radius_km || 30);
-          setKitchenHours(fnb.kitchen_hours || '08:00 - 20:00 WIB');
-          setInstantProvider(
-            isCatering
-              ? 'INTERNAL_LALAMOVE'
-              : fnb.instant_provider || 'INTERNAL_LALAMOVE'
-          );
-        } else {
-          // Fallback: try tenants.metadata.shipping_config.fnb_settings
-          const fnb = tenant?.metadata?.shipping_config?.fnb_settings;
-          if (fnb) {
-            setKitchenAddress(fnb.kitchen_address || '');
-            setLatitude(fnb.latitude != null ? String(fnb.latitude) : '');
-            setLongitude(fnb.longitude != null ? String(fnb.longitude) : '');
-            setMaxRadiusKm(fnb.max_radius_km || 30);
-            setKitchenHours(fnb.kitchen_hours || '08:00 - 20:00 WIB');
-            setInstantProvider(
-              isCatering
-                ? 'INTERNAL_LALAMOVE'
-                : fnb.instant_provider || 'INTERNAL_LALAMOVE'
-            );
-          }
-
-          // Check origin address from biteship_config.origin
-          if (settings?.biteship_config?.origin?.address && !kitchenAddress) {
-            setKitchenAddress(settings.biteship_config.origin.address);
-          }
-        }
-      } catch (err) {
+        setIsFnbCatering(loaded.isCatering);
+        setKitchenAddress(loaded.kitchenAddress);
+        setLatitude(loaded.latitude);
+        setLongitude(loaded.longitude);
+        setMaxRadiusKm(loaded.maxRadiusKm);
+        setKitchenHours(loaded.kitchenHours);
+        setInstantProvider(loaded.instantProvider);
+      } catch (err: any) {
+        if (cancelled) return;
         console.warn('[FnbInstantCourier] Load failed:', err);
-        setLoadError('Gagal memuat konfigurasi. Menggunakan nilai default.');
+        setLoadError(
+          `Gagal memuat konfigurasi: ${err?.message || 'Terjadi kesalahan jaringan'}.`
+        );
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -148,109 +267,78 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
       loadFnbSettings();
       fetchDrivers();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [tenantSlug, fetchDrivers]);
 
-  // 3. Handle save kitchen coordinates
+  // 3. Handle save kitchen coordinates via authenticated server-side config gateway
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setSavedFeedback(null);
 
-    const fnbSettings = {
-      is_fnb_store: true,
-      fnb_catering: isFnbCatering,
-      kitchen_address: kitchenAddress,
-      latitude: parseFloat(latitude) || null,
-      longitude: parseFloat(longitude) || null,
-      max_radius_km: maxRadiusKm,
-      kitchen_hours: kitchenHours,
-      instant_provider: instantProvider,
-      logistics_tier: {
-        primary: 'internal_fleet',
-        fallback: 'lalamove',
-      },
-      updated_at: new Date().toISOString(),
-    };
+    const parsedRadius = Number(maxRadiusKm);
+    if (!Number.isFinite(parsedRadius) || parsedRadius < 1 || parsedRadius > 60) {
+      setSavedFeedback('❌ Gagal menyimpan: Batas radius maksimal harus 1–60 km.');
+      return;
+    }
+
+    const latStr = latitude.trim();
+    const lngStr = longitude.trim();
+    const hasLat = latStr.length > 0;
+    const hasLng = lngStr.length > 0;
+
+    if (hasLat !== hasLng) {
+      setSavedFeedback('❌ Gagal menyimpan: Koordinat latitude dan longitude harus diisi lengkap.');
+      return;
+    }
+
+    let parsedLat: number | undefined;
+    let parsedLng: number | undefined;
+    if (hasLat && hasLng) {
+      parsedLat = Number(latStr);
+      parsedLng = Number(lngStr);
+      if (
+        !Number.isFinite(parsedLat) ||
+        !Number.isFinite(parsedLng) ||
+        parsedLat < -90 ||
+        parsedLat > 90 ||
+        parsedLng < -180 ||
+        parsedLng > 180
+      ) {
+        setSavedFeedback('❌ Gagal menyimpan: Koordinat latitude (-90..90) atau longitude (-180..180) tidak valid.');
+        return;
+      }
+    }
+
+    setIsSaving(true);
 
     try {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error('Supabase client not initialized');
+      const saved = await saveFnbShippingConfig({
+        tenantSlug,
+        isFnbCatering,
+        kitchenAddress,
+        latitude: parsedLat,
+        longitude: parsedLng,
+        maxRadiusKm: parsedRadius,
+        kitchenHours,
+        instantProvider,
+      });
 
-      // Load current biteship_config to deep-merge
-      const { data: current } = await supabase
-        .from('tenant_settings')
-        .select('biteship_config')
-        .eq('tenant_slug', tenantSlug)
-        .maybeSingle();
-
-      const existingConfig = current?.biteship_config || {};
-
-      const updatedConfig = {
-        ...existingConfig,
-        fnb_settings: fnbSettings,
-        routing_rules: {
-          instant: 'biteship',
-          fallback_courier: 'lalamove',
-          regular: 'lincah',
-        },
-        updated_at: new Date().toISOString(),
-      };
-
-      // Also update origin lat/lon so shipping rates API can use them
-      if (existingConfig.origin && fnbSettings.latitude && fnbSettings.longitude) {
-        updatedConfig.origin = {
-          ...existingConfig.origin,
-          latitude: fnbSettings.latitude,
-          longitude: fnbSettings.longitude,
-        };
-      }
-
-      const { error: settingsErr } = await supabase
-        .from('tenant_settings')
-        .upsert(
-          { tenant_slug: tenantSlug, biteship_config: updatedConfig, updated_at: new Date().toISOString() },
-          { onConflict: 'tenant_slug' }
-        );
-
-      if (settingsErr) throw settingsErr;
-
-      // Also update tenants.metadata
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('metadata')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-
-      if (tenantRow) {
-        const existingMeta = tenantRow.metadata || {};
-        const updatedMeta = {
-          ...existingMeta,
-          fnb_catering: true,
-          shipping_config: {
-            ...(existingMeta.shipping_config || {}),
-            fnb_settings: fnbSettings,
-            routing_rules: { instant: 'biteship', regular: 'lincah' },
-          },
-          logistics: {
-            primary: 'internal_fleet',
-            fallback_provider: 'biteship',
-            allowed_couriers: ['lalamove'],
-            max_internal_trip_per_slot: 4,
-          },
-        };
-        await supabase
-          .from('tenants')
-          .update({ metadata: updatedMeta })
-          .eq('slug', tenantSlug);
-      }
+      if (saved.kitchenAddress) setKitchenAddress(saved.kitchenAddress);
+      if (saved.latitude !== undefined) setLatitude(saved.latitude);
+      if (saved.longitude !== undefined) setLongitude(saved.longitude);
+      if (saved.maxRadiusKm !== undefined) setMaxRadiusKm(saved.maxRadiusKm);
 
       setSavedFeedback('✅ Konfigurasi Pengantaran & Titik Dapur berhasil disimpan!');
-    } catch (err) {
+    } catch (err: any) {
       console.error('[FnbInstantCourier] Save failed:', err);
-      setSavedFeedback('❌ Gagal menyimpan. Cek koneksi dan coba lagi.');
+      setSavedFeedback(
+        `❌ Gagal menyimpan: ${err?.message || 'Cek koneksi atau izin akun dan coba lagi.'}`
+      );
     } finally {
       setIsSaving(false);
-      setTimeout(() => setSavedFeedback(null), 4000);
     }
   };
 
@@ -409,7 +497,7 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
             </label>
             <input
               type="number"
-              step="0.0001"
+              step="any"
               value={latitude}
               onChange={(e) => setLatitude(e.target.value)}
               placeholder="Contoh: -7.1171"
@@ -424,7 +512,7 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
             </label>
             <input
               type="number"
-              step="0.0001"
+              step="any"
               value={longitude}
               onChange={(e) => setLongitude(e.target.value)}
               placeholder="Contoh: 112.5936"
@@ -489,8 +577,15 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 gap-3">
           {savedFeedback ? (
-            <span className={`text-xs font-bold flex items-center gap-1 ${savedFeedback.startsWith('✅') ? 'text-emerald-600' : 'text-rose-600'}`}>
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <span
+              role={savedFeedback.startsWith('✅') ? 'status' : 'alert'}
+              className={`text-xs font-bold flex items-center gap-1 ${savedFeedback.startsWith('✅') ? 'text-emerald-600' : 'text-rose-600'}`}
+            >
+              {savedFeedback.startsWith('✅') ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              )}
               {savedFeedback}
             </span>
           ) : (
@@ -561,11 +656,10 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
         {/* FEEDBACK NOTIFICATION */}
         {driverFeedback && (
           <div
-            className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-              driverFeedback.type === 'success'
+            className={`p-3 rounded-xl text-xs flex items-center gap-2 ${driverFeedback.type === 'success'
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
                 : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-300'
-            }`}
+              }`}
           >
             {driverFeedback.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -668,11 +762,10 @@ export default function FnbInstantCourier({ tenantSlug }: { tenantSlug: string }
                           type="button"
                           onClick={() => handleToggleDriverStatus(d.id, d.status)}
                           disabled={updatingDriverId === d.id}
-                          className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-lg border transition cursor-pointer active:scale-95 ${
-                            d.status === 'standby'
+                          className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-lg border transition cursor-pointer active:scale-95 ${d.status === 'standby'
                               ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
                               : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50'
-                          }`}
+                            }`}
                           title="Klik untuk mengubah status driver"
                         >
                           {updatingDriverId === d.id ? (

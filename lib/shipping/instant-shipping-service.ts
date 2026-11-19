@@ -12,6 +12,10 @@
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { resolveAreaCoordinates } from '@/app/api/v1/shipping/locations/search/route';
+import {
+  resolveEffectiveInstantRadius,
+  isExplicitBandungInput,
+} from '@/app/api/v1/shipping/rates/instant/route';
 import { metaWabaAdapter } from '@/services/waba';
 import { resolveTenantWabaCredential } from '@/lib/whatsapp/credential-resolver';
 import { sendEvolutionTextMessage } from '@/lib/whatsapp/evolution-webhook-handler';
@@ -64,26 +68,31 @@ export function calculateHaversineDistanceKm(
  */
 export function computeInstantCourierRates(
   distanceKm: number,
-  shippingConfig?: any
+  shippingConfig?: any,
+  biteshipConfig?: any,
+  tenantMeta?: any
 ): {
   isEligible: boolean;
   rates: InstantCourierRate[];
   maxRadiusKm: number;
 } {
-  // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
-  const rawRadius =
-    shippingConfig?.fnb_settings?.max_radius_km ??
-    shippingConfig?.max_radius_km ??
-    shippingConfig?.internal_courier?.max_radius_km ??
-    shippingConfig?.lalamove_internal?.max_radius_km;
+  // Generic fallback 30 KM when no shipping/merchant config is supplied;
+  // otherwise use unified radius policy (40 KM F&B default / 1–60 KM synchronized override).
+  const hasAnyConfig =
+    (shippingConfig !== undefined && shippingConfig !== null) ||
+    (biteshipConfig !== undefined && biteshipConfig !== null) ||
+    (tenantMeta !== undefined && tenantMeta !== null);
 
-  let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
-  if (isNaN(parsedRadius) || !isFinite(parsedRadius) || parsedRadius <= 0) {
-    parsedRadius = 40;
-  }
-
-  // Fallback 30 KM strictly when shippingConfig is omitted or null (legacy generic 2-wheeler fallback)
-  const maxRadiusKm = (shippingConfig === undefined || shippingConfig === null) ? 30 : parsedRadius;
+  const maxRadiusKm = !hasAnyConfig
+    ? 30
+    : resolveEffectiveInstantRadius(
+        biteshipConfig,
+        shippingConfig,
+        tenantMeta,
+        shippingConfig !== undefined && shippingConfig !== null && tenantMeta === undefined
+          ? true
+          : undefined
+      );
 
   if (distanceKm > maxRadiusKm) {
     return {
@@ -203,83 +212,115 @@ export function computeInstantCourierRates(
  * Extracts merchant outlet coordinates dynamically from tenants.metadata.
  * Zero hardcoded coordinates or slugs.
  */
-export function extractOutletCoordinates(metadata: any, tenantName?: string): TenantOutletCoordinates | null {
-  if (!metadata || typeof metadata !== 'object') return null;
+function pickCoordFromObject(
+  source: any,
+  defaultName: string
+): TenantOutletCoordinates | null {
+  if (!source || typeof source !== 'object') return null;
+  const rawLat = source.latitude ?? source.lat ?? source.origin_latitude;
+  const rawLon = source.longitude ?? source.lon ?? source.lng ?? source.origin_longitude;
+  if (rawLat === '' || rawLat === null || rawLat === undefined || rawLon === '' || rawLon === null || rawLon === undefined) {
+    return null;
+  }
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Number.isNaN(lat) || Number.isNaN(lon)) {
+    return null;
+  }
+  if (lat === 0 && lon === 0) return null;
+  return {
+    latitude: lat,
+    longitude: lon,
+    name: source.name || source.outlet_name || source.sender_name || defaultName,
+    address: source.kitchen_address || source.address || source.origin_address || '',
+    city: source.city || source.origin_city || '',
+  };
+}
 
-  // 1. Direct outlet_coordinates field
-  const oc = metadata.outlet_coordinates;
-  if (oc && typeof oc === 'object') {
-    const lat = Number(oc.latitude ?? oc.lat);
-    const lon = Number(oc.longitude ?? oc.lon ?? oc.lng);
-    if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
-      return {
-        latitude: lat,
-        longitude: lon,
-        name: oc.name || oc.outlet_name || tenantName || 'Dapur / Outlet Toko',
-        address: oc.address || '',
-        city: oc.city || '',
-      };
-    }
+export function extractOutletCoordinates(
+  metadata: any,
+  tenantName?: string,
+  biteshipConfig?: any
+): TenantOutletCoordinates | null {
+  const safeMeta = metadata && typeof metadata === 'object' ? metadata : {};
+  const safeBiteship = biteshipConfig && typeof biteshipConfig === 'object' ? biteshipConfig : {};
+  if (Object.keys(safeMeta).length === 0 && Object.keys(safeBiteship).length === 0) {
+    return null;
   }
 
-  // 2. shipping_config.fnb_settings
-  const fnbCfg = metadata.shipping_config?.fnb_settings || metadata.fnb_settings;
-  if (fnbCfg && typeof fnbCfg === 'object') {
-    const lat = Number(fnbCfg.latitude ?? fnbCfg.lat);
-    const lon = Number(fnbCfg.longitude ?? fnbCfg.lon ?? fnbCfg.lng);
-    if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
-      return {
-        latitude: lat,
-        longitude: lon,
-        name: fnbCfg.outlet_name || tenantName || 'Dapur / Outlet Toko',
-        address: fnbCfg.kitchen_address || fnbCfg.address || '',
-        city: fnbCfg.city || '',
-      };
-    }
+  const defaultKitchenName = tenantName || 'Dapur / Outlet Toko';
+  const defaultWarehouseName = tenantName || 'Gudang / Outlet Toko';
+
+  const candidates: Array<TenantOutletCoordinates | null> = [
+    pickCoordFromObject(safeBiteship.fnb_settings, defaultKitchenName),
+    pickCoordFromObject(safeBiteship.origin, defaultWarehouseName),
+    pickCoordFromObject(safeMeta.outlet_coordinates, defaultKitchenName),
+    pickCoordFromObject(safeMeta.shipping_config?.fnb_settings || safeMeta.fnb_settings, defaultKitchenName),
+    pickCoordFromObject(safeMeta.shipping_config?.origin || safeMeta.shipping_origin, defaultWarehouseName),
+    safeMeta.shipping_config?.origin_latitude !== undefined &&
+    safeMeta.shipping_config?.origin_longitude !== undefined
+      ? pickCoordFromObject(
+          {
+            latitude: safeMeta.shipping_config.origin_latitude,
+            longitude: safeMeta.shipping_config.origin_longitude,
+            address: safeMeta.shipping_config.origin_address,
+            city: safeMeta.shipping_config.origin_city,
+          },
+          defaultWarehouseName
+        )
+      : null,
+  ];
+
+  for (const cand of candidates) {
+    if (cand) return cand;
   }
 
-  // 3. shipping_config.origin
-  const origin = metadata.shipping_config?.origin || metadata.shipping_origin;
-  if (origin && typeof origin === 'object') {
-    const lat = Number(origin.latitude ?? origin.lat);
-    const lon = Number(origin.longitude ?? origin.lon ?? origin.lng);
-    if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
-      return {
-        latitude: lat,
-        longitude: lon,
-        name: origin.sender_name || tenantName || 'Gudang / Outlet Toko',
-        address: origin.address || '',
-        city: origin.city || '',
-      };
-    }
-  }
-
-  // 4. Fallback resolve from address/city using resolveAreaCoordinates
+  // Fallback resolve from explicit tenant city/district/postal_code using resolveAreaCoordinates (NO silent Bandung fallback)
   const cityName =
-    metadata.basic_shipping?.origin_city ||
-    metadata.shipping_config?.origin_city ||
-    metadata.origin_city ||
-    (typeof metadata.warehouse_address === 'object' ? metadata.warehouse_address?.city : null) ||
+    safeBiteship.origin?.city ||
+    safeBiteship.origin?.origin_city ||
+    safeMeta.basic_shipping?.origin_city ||
+    safeMeta.shipping_config?.origin_city ||
+    safeMeta.origin_city ||
+    (typeof safeMeta.warehouse_address === 'object' ? safeMeta.warehouse_address?.city : null) ||
     '';
   const districtName =
-    metadata.basic_shipping?.origin_district ||
-    metadata.shipping_config?.origin_subdistrict ||
-    metadata.origin_district ||
+    safeBiteship.origin?.district ||
+    safeBiteship.origin?.origin_district ||
+    safeMeta.basic_shipping?.origin_district ||
+    safeMeta.shipping_config?.origin_subdistrict ||
+    safeMeta.shipping_config?.origin_district ||
+    safeMeta.origin_district ||
     '';
   const postalCode =
-    metadata.shipping_config?.origin_postal_code ||
-    metadata.origin_postal_code ||
+    safeBiteship.origin?.postal_code ||
+    safeBiteship.origin?.origin_postal_code ||
+    safeMeta.shipping_config?.origin_postal_code ||
+    safeMeta.origin_postal_code ||
     '';
   const addrText =
-    metadata.basic_shipping?.origin_address ||
-    metadata.shipping_config?.origin_address ||
-    (typeof metadata.warehouse_address === 'string' ? metadata.warehouse_address : metadata.warehouse_address?.address) ||
+    safeBiteship.fnb_settings?.kitchen_address ||
+    safeBiteship.origin?.address ||
+    safeMeta.basic_shipping?.origin_address ||
+    safeMeta.shipping_config?.origin_address ||
+    (typeof safeMeta.warehouse_address === 'string'
+      ? safeMeta.warehouse_address
+      : safeMeta.warehouse_address?.address) ||
     '';
 
   if (cityName || districtName || postalCode) {
     try {
-      const resolved = resolveAreaCoordinates(cityName || 'Bandung', districtName, postalCode);
-      if (resolved && !isNaN(resolved.latitude) && !isNaN(resolved.longitude)) {
+      const resolved = resolveAreaCoordinates(cityName, districtName, postalCode);
+      const isSyntheticBandungFallback =
+        resolved?.latitude === -6.9175 &&
+        resolved?.longitude === 107.6191 &&
+        !isExplicitBandungInput(cityName, districtName, postalCode, addrText);
+      if (
+        resolved &&
+        !isSyntheticBandungFallback &&
+        !isNaN(resolved.latitude) &&
+        !isNaN(resolved.longitude)
+      ) {
         return {
           latitude: resolved.latitude,
           longitude: resolved.longitude,
@@ -467,15 +508,20 @@ export async function sendInstantShippingRecommendation(params: {
   const { tenantId, tenantSlug, customerPhone, customerName, locationData, conversationId, messageId } = params;
 
   try {
-    // 1. Fetch tenant data dynamically from Supabase
+    // 1. Fetch tenant data dynamically from Supabase (strictly isolated, no cross-tenant fallback)
     let tQuery: any = supabase
       .from('tenants')
       .select('id, slug, name, metadata');
 
-    if (tenantId && tenantId.includes('-') && tenantId.length > 30) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (tenantId && uuidRegex.test(tenantId)) {
       tQuery = tQuery.eq('id', tenantId);
     } else {
-      tQuery = tQuery.or(`id.eq.${tenantId},slug.eq.${tenantId || tenantSlug}`);
+      const lookupSlug = (tenantSlug || tenantId || '').trim();
+      if (!lookupSlug) {
+        return { success: false, error: 'Missing tenant identifier' };
+      }
+      tQuery = tQuery.eq('slug', lookupSlug);
     }
 
     const { data: tenant, error: tenantErr } = await tQuery.maybeSingle();
@@ -486,6 +532,14 @@ export async function sendInstantShippingRecommendation(params: {
     }
 
     const tenantMeta = tenant.metadata || {};
+
+    // Also fetch server-side tenant_settings.biteship_config scoped strictly to tenant.slug
+    const { data: settingsRow } = await supabase
+      .from('tenant_settings')
+      .select('biteship_config')
+      .eq('tenant_slug', tenant.slug)
+      .maybeSingle();
+    const biteshipCfg = settingsRow?.biteship_config || null;
 
     // 2. Validate tenant category: FOOD, PHYSICAL, etc.
     if (!isInstantCourierTenantCategory(tenantMeta)) {
@@ -500,8 +554,8 @@ export async function sendInstantShippingRecommendation(params: {
       return { success: false, error: 'No active ordering session' };
     }
 
-    // 4. Extract merchant outlet coordinates
-    const outlet = extractOutletCoordinates(tenantMeta, tenant.name);
+    // 4. Extract merchant outlet coordinates from the unified biteship_config + metadata source
+    const outlet = extractOutletCoordinates(tenantMeta, tenant.name, biteshipCfg);
     if (!outlet) {
       console.warn(`[InstantCourier] Merchant '${tenant.slug}' has no configured outlet coordinates or origin address.`);
       return { success: false, error: 'No outlet coordinates configured' };
@@ -515,8 +569,13 @@ export async function sendInstantShippingRecommendation(params: {
       locationData.longitude
     );
 
-    // 6. Compute Instant Courier Rates
-    const rateResult = computeInstantCourierRates(distanceKm, tenantMeta.shipping_config);
+    // 6. Compute Instant Courier Rates aligned with unified radius policy
+    const rateResult = computeInstantCourierRates(
+      distanceKm,
+      tenantMeta.shipping_config,
+      biteshipCfg,
+      tenantMeta
+    );
 
     // 7. Format WhatsApp recommendation message
     const replyText = formatInstantCourierRecommendationReply({

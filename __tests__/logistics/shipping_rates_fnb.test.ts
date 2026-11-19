@@ -191,6 +191,9 @@ describe('Logistics & Shipping Rates Engine', () => {
       const req = new NextRequest('http://localhost:3000/api/v1/shipping/rates', {
         method: 'POST',
         body: JSON.stringify({
+          origin_latitude: -6.9538,
+          origin_longitude: 107.6757,
+          origin_postal_code: '40286',
           destination_city: 'Pekanbaru',
           destination_district: 'Marpoyan Damai',
           destination_postal_code: '28125',
@@ -219,6 +222,9 @@ describe('Logistics & Shipping Rates Engine', () => {
       const req = new NextRequest('http://localhost:3000/api/v1/shipping/rates', {
         method: 'POST',
         body: JSON.stringify({
+          origin_latitude: -6.9538,
+          origin_longitude: 107.6757,
+          origin_postal_code: '40286',
           destination_city: 'Kota Bandung',
           destination_district: 'Coblong',
           destination_postal_code: '40132',
