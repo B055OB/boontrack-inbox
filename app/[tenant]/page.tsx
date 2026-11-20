@@ -8,6 +8,7 @@ import {
   executeStorefrontRuntimePipeline,
   resolveStorefrontSections,
   resolveStorefrontCopy,
+  resolveStorefrontMode,
 } from "@/lib/resolvers/tenant-runtime-resolver";
 import { TenantRuntimeProvider } from "@/lib/context/tenant-runtime-context";
 import { trackInitiateCheckout } from "@/lib/tracking";
@@ -628,7 +629,9 @@ export default function TenantStorefrontPage() {
 
     case "DROP_V1":
     case "SHOP_V1": {
-      if (templateResult.subVariant === "personal") {
+      const mode = resolveStorefrontMode(tenantMetadata || tenant?.metadata);
+
+      if (mode === "personal_profile" || (templateResult.subVariant as string) === "personal") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
             <PersonalAuthorityTemplate
@@ -650,7 +653,7 @@ export default function TenantStorefrontPage() {
         );
       }
 
-      if (templateResult.subVariant === "microsite") {
+      if (mode === "microsite" || templateResult.subVariant === "microsite") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
             <MicrositeBioTemplate
@@ -672,7 +675,7 @@ export default function TenantStorefrontPage() {
         );
       }
 
-      if (templateResult.subVariant === "storefront") {
+      if (mode === "catalog" || (templateResult.subVariant as string) === "storefront") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
             <StorefrontTemplate
@@ -695,7 +698,7 @@ export default function TenantStorefrontPage() {
         <ControlledProvisioningError
           templateCode={templateResult.templateCode}
           tenantSlug={tenantSlug}
-          errorMessage={`Sub-varian template '${templateResult.subVariant}' tidak didukung atau korup.`}
+          errorMessage={`Mode storefront '${mode}' tidak didukung atau korup.`}
         />
       );
     }

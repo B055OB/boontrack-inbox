@@ -103,12 +103,9 @@ export default function ThemeTab({
           .maybeSingle();
         const meta = tenantRow?.metadata || {};
         const isProdVisible =
+          meta.sections?.catalog?.is_active ??
           meta.show_products ??
           meta.display_catalog ??
-          meta.theme?.show_products ??
-          meta.theme_config?.show_products ??
-          meta.microsite?.show_products ??
-          meta.microsite_show_products ??
           true;
         if (showProducts === undefined) {
           setShowProductsState(Boolean(isProdVisible));
@@ -201,7 +198,6 @@ export default function ThemeTab({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             visual_theme: theme.id,
-            show_products: showProductsState,
           }),
         });
       } catch (apiErr) {
@@ -253,25 +249,12 @@ export default function ThemeTab({
 
       const updatedMeta = {
         ...currentMeta,
-        show_products: newVal,
-        display_catalog: newVal,
-        microsite_show_products: newVal,
-        theme: {
-          ...(currentMeta.theme || {}),
-          show_products: newVal,
-        },
-        theme_config: {
-          ...(currentMeta.theme_config || {}),
-          show_products: newVal,
-        },
-        microsite: {
-          ...(currentMeta.microsite || {}),
-          show_products: newVal,
-        },
         sections: {
           ...(currentMeta.sections || {}),
-          catalog: { is_active: newVal },
-          products: { is_active: newVal },
+          catalog: {
+            ...((currentMeta.sections?.catalog && typeof currentMeta.sections.catalog === 'object') ? currentMeta.sections.catalog : {}),
+            is_active: newVal,
+          },
         },
       };
 
@@ -285,14 +268,12 @@ export default function ThemeTab({
           .eq('slug', tenantSlug);
       }
 
-      // Always trigger theme API to ensure Next.js ISR cache revalidation is called on server
+      // Trigger theme API revalidate
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            show_products: newVal,
-            display_catalog: newVal,
             visual_theme: selectedTheme,
           }),
         });

@@ -37,6 +37,7 @@ import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLink
 import AiSessionQuotaMeter from '@/app/[tenant]/dashboard/components/AiSessionQuotaMeter';
 import { isValidPaidStatus, extractOrderAmount } from '@/lib/finance-engine';
 import { formatCurrency } from '@/lib/i18n';
+import { resolveStorefrontMode } from '@/lib/resolvers/tenant-runtime-resolver';
 
 
 interface DashboardOverviewTabProps {
@@ -143,14 +144,11 @@ export default function DashboardOverviewTab({
 
         if (isMounted) {
           const meta = tenantRes.data?.metadata || {};
-          const t =
-            meta.selected_template ||
-            meta.storefront_template ||
-            meta.template ||
-            meta.theme?.template ||
-            'default';
-          if (t === 'microsite' || t === 'personal') {
-            setActiveTemplate(t);
+          const mode = resolveStorefrontMode(meta);
+          if (mode === 'microsite') {
+            setActiveTemplate('microsite');
+          } else if (mode === 'personal_profile') {
+            setActiveTemplate('personal');
           } else {
             setActiveTemplate('default');
           }
@@ -195,14 +193,21 @@ export default function DashboardOverviewTab({
     };
   }, [tenantSlug, products, storeQrisUrl, waStatus, connectedPhone, transactions]);
 
-  // Handle template selection
+  // Handle template selection (WP3 Stage B: Single Canonical Writer to metadata.storefront_mode)
   const handleSelectTemplate = async (templateKey: 'default' | 'microsite' | 'personal') => {
     if (isUpdatingTemplate || activeTemplate === templateKey) return;
     setIsUpdatingTemplate(true);
     setActiveTemplate(templateKey);
 
+    const canonicalModeMap: Record<'default' | 'microsite' | 'personal', 'catalog' | 'microsite' | 'personal_profile'> = {
+      default: 'catalog',
+      microsite: 'microsite',
+      personal: 'personal_profile',
+    };
+    const targetMode = canonicalModeMap[templateKey];
+
     try {
-      // 1. Direct update to Supabase tenants.metadata
+      // 1. Direct update to Supabase tenants.metadata (Strictly metadata.storefront_mode)
       const supabase = getSupabase();
       const { data: tenantRow } = await supabase
         .from('tenants')
@@ -213,13 +218,7 @@ export default function DashboardOverviewTab({
       if (tenantRow?.id) {
         const updatedMeta = {
           ...(tenantRow.metadata || {}),
-          selected_template: templateKey,
-          storefront_template: templateKey,
-          template: templateKey,
-          theme: {
-            ...(tenantRow.metadata?.theme || {}),
-            template: templateKey,
-          },
+          storefront_mode: targetMode,
         };
         await supabase
           .from('tenants')
@@ -227,13 +226,12 @@ export default function DashboardOverviewTab({
           .eq('id', tenantRow.id);
       }
 
-      // 2. Sync via settings API route
+      // 2. Sync via settings API route (strictly storefront_mode)
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          template: templateKey,
-          theme: { template: templateKey },
+          storefront_mode: targetMode,
         }),
       });
 

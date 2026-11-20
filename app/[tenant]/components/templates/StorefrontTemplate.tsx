@@ -282,10 +282,6 @@ export function StorefrontTemplate({
   const isCatalogDisabled =
     meta?.show_products === false ||
     meta?.display_catalog === false ||
-    meta?.theme?.show_products === false ||
-    meta?.theme_config?.show_products === false ||
-    meta?.microsite?.show_products === false ||
-    meta?.microsite_show_products === false ||
     sections.catalog?.is_active === false ||
     sections.products?.is_active === false;
 

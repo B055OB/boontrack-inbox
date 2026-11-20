@@ -255,33 +255,13 @@ export default function MicrositeTab({
       const currentMeta = currentTenant?.metadata || {};
       const updatedMeta = {
         ...currentMeta,
-        storefront_template: activeTemplate,
         bio: bioText,
-        featured_product_ids: featuredProductIds,
-        show_products: showProducts,
-        display_catalog: showProducts,
-        microsite_show_products: showProducts,
-        microsite_featured_product_ids: featuredProductIds,
-        microsite_product_mode: productMode,
-        theme: {
-          ...(currentMeta.theme || {}),
-          show_products: showProducts,
-        },
-        theme_config: {
-          ...(currentMeta.theme_config || {}),
-          show_products: showProducts,
-        },
         microsite: {
           ...(currentMeta.microsite || {}),
           buttons,
           show_products: showProducts,
           featured_product_ids: featuredProductIds,
           product_mode: productMode,
-        },
-        sections: {
-          ...(currentMeta.sections || {}),
-          catalog: { is_active: showProducts },
-          products: { is_active: showProducts },
         },
       };
 
@@ -292,19 +272,13 @@ export default function MicrositeTab({
 
       if (dbErr) throw dbErr;
 
-      // Also sync via settings API route
+      // Also sync via settings API route (strictly microsite settings)
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            template: activeTemplate,
             bio: bioText,
-            show_products: showProducts,
-            display_catalog: showProducts,
-            microsite_show_products: showProducts,
-            microsite_featured_product_ids: featuredProductIds,
-            microsite_product_mode: productMode,
             microsite: {
               buttons,
               show_products: showProducts,

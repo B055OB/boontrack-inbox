@@ -501,8 +501,13 @@ export default function MicrositeBioTemplate({
     };
   }, [tenant, tenantMetadata, tenantSlug]);
 
-  // ── Product catalog visibility ────────────────────────────────────────────
-  // Checks section toggles, theme config, and microsite settings
+  // ── Product catalog visibility (WP3 Stage B: Microsite Isolation) ───────────
+  // Canonical microsite.show_products strictly outranks global catalog flags.
+  const explicitMicrositeFlag =
+    tenantMetadata?.microsite?.show_products ??
+    tenantMetadata?.microsite_show_products ??
+    tenantMetadata?.microsite_settings?.show_products;
+
   const isCatalogSectionDisabled =
     tenantMetadata?.sections?.catalog?.is_active === false ||
     tenantMetadata?.sections?.products?.is_active === false ||
@@ -510,15 +515,14 @@ export default function MicrositeBioTemplate({
     tenantMetadata?.storefront_sections?.products?.is_active === false;
 
   const showProducts =
-    !isCatalogSectionDisabled &&
-    (tenantMetadata?.show_products ??
-      tenantMetadata?.display_catalog ??
-      tenantMetadata?.theme_config?.show_products ??
-      tenantMetadata?.theme?.show_products ??
-      tenantMetadata?.microsite_settings?.show_products ??
-      tenantMetadata?.microsite?.show_products ??
-      tenantMetadata?.microsite_show_products ??
-      true);
+    explicitMicrositeFlag !== undefined
+      ? Boolean(explicitMicrositeFlag)
+      : !isCatalogSectionDisabled &&
+        (tenantMetadata?.show_products ??
+          tenantMetadata?.display_catalog ??
+          tenantMetadata?.theme_config?.show_products ??
+          tenantMetadata?.theme?.show_products ??
+          true);
 
   const featuredIds: string[] = React.useMemo(() => {
     const raw =

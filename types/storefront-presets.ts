@@ -44,8 +44,9 @@ export const ALL_STOREFRONT_PRESETS = [
 ] as const;
 export type StorefrontPresetId = (typeof ALL_STOREFRONT_PRESETS)[number];
 
-/** Canonical top-level layout family derived strictly from the active preset. */
-export type StorefrontLayoutMode = 'catalog' | 'microsite' | 'profile';
+/** Canonical top-level layout family derived strictly from the active preset (WP3 Stage B). */
+export type StorefrontCanonicalMode = 'catalog' | 'microsite' | 'personal_profile';
+export type StorefrontLayoutMode = 'catalog' | 'microsite' | 'personal_profile' | 'profile';
 
 /** Maps every canonical preset to its governing layout mode. */
 export const PRESET_MODE_MAP: Readonly<Record<StorefrontPresetId, StorefrontLayoutMode>> = {

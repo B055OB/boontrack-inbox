@@ -388,10 +388,8 @@ export async function PUT(
     const existingTheme = existingMetadata.theme || resolveDefaultTheme();
 
     const validTemplates = ['default', 'personal', 'microsite'];
-    const newTemplate =
-      template && validTemplates.includes(template)
-        ? template
-        : existingTheme.template || 'default';
+    const hasExplicitTemplate = Boolean(template && validTemplates.includes(template));
+    const newTemplate = hasExplicitTemplate ? template : existingTheme.template || 'default';
 
     const validVisualThemes: VisualThemeType[] = [
       'clean_minimal',
@@ -434,13 +432,14 @@ export async function PUT(
 
     const updatedMetadata: Record<string, any> = {
       ...existingMetadata,
-      template: newTemplate,
-      storefront_template: newTemplate,
-      selected_template: newTemplate,
       visual_theme: newVisualTheme,
       theme_id: newVisualTheme,
       theme: standardizedTheme,
     };
+
+    if (hasExplicitTemplate) {
+      updatedMetadata.template = newTemplate;
+    }
 
     if (Array.isArray(body.buttons)) {
       if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
@@ -466,16 +465,7 @@ export async function PUT(
 
     if (showProducts !== undefined) {
       standardizedTheme.show_products = showProducts;
-      updatedMetadata.show_products = showProducts;
-      updatedMetadata.display_catalog = showProducts;
-      updatedMetadata.microsite_show_products = showProducts;
-      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
-      updatedMetadata.microsite.show_products = showProducts;
-      if (!updatedMetadata.theme_config) updatedMetadata.theme_config = {};
-      updatedMetadata.theme_config.show_products = showProducts;
-      if (!updatedMetadata.sections) updatedMetadata.sections = {};
-      updatedMetadata.sections.catalog = { is_active: showProducts };
-      updatedMetadata.sections.products = { is_active: showProducts };
+      // Note: sections.catalog is strictly owned by Store Settings / Catalog Domain (WP3 Stage B)
     }
 
     const incomingSection10 = extractSection10Payload(body);

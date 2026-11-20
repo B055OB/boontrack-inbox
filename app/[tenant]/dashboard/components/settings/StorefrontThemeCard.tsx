@@ -666,7 +666,6 @@ export default function StorefrontThemeCard({
             },
             theme: {
               visual_theme: newThemeId,
-              template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
               chat_enabled: newChatEnabled,
               chat_position: 'bottom-right',
             },
@@ -687,13 +686,10 @@ export default function StorefrontThemeCard({
             .maybeSingle();
 
           if (tenantRow) {
-            const existingTmpl = tenantRow.metadata?.template || tenantRow.metadata?.storefront_template || 'default';
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
               visual_theme: newThemeId,
               theme_id: newThemeId,
-              template: existingTmpl,
-              storefront_template: existingTmpl,
               featured_product_ids: featuredProductIds,
               microsite_featured_product_ids: featuredProductIds,
               buttons: buttons,
@@ -709,7 +705,6 @@ export default function StorefrontThemeCard({
                 primary_color: sw.accent,
                 bg_color: sw.bg,
                 card_color: sw.card,
-                template: existingTmpl,
                 chat_enabled: newChatEnabled,
                 chat_position: 'bottom-right',
                 updated_at: nowIso,

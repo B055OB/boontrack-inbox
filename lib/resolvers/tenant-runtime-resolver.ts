@@ -445,6 +445,81 @@ export function assertTenantRuntimeAllowed(runtime: TenantRuntimeContext): void 
   }
 }
 
+// ── RESOLVE STOREFRONT MODE (WP3 STAGE B — CANONICAL SINGLE SOURCE OF TRUTH) ──
+
+/**
+ * Pure Deterministic Storefront Mode Resolver (WP3 Stage B)
+ * Resolves the canonical storefront mode ('catalog' | 'microsite' | 'personal_profile').
+ *
+ * Rules:
+ * 1. If metadata.storefront_mode is one of 'catalog', 'microsite', 'personal_profile', return it immediately.
+ * 2. If metadata.storefront_mode contains a non-empty unrecognized/corrupt value, fail-safe directly to 'catalog' and IGNORE all legacy keys (CTO refinement).
+ * 3. If metadata.storefront_mode is undefined, null, or empty string "" (after trim), evaluate legacy keys read-only in strict deterministic order:
+ *    selected_template -> storefront_template -> template
+ *    - ['default', 'storefront', 'catalog', 'commerce', 'commerce_template', 'clean_commerce'] -> 'catalog'
+ *    - ['microsite'] -> 'microsite'
+ *    - ['personal', 'profile', 'personal_profile'] -> 'personal_profile'
+ * 4. NEVER read or use theme.template as a mode source.
+ * 5. If no valid legacy candidate exists, fallback to 'catalog'.
+ * 6. Pure function: ZERO database writes or runtime metadata repair.
+ */
+export function resolveStorefrontMode(
+  metadata?: Record<string, any> | null
+): 'catalog' | 'microsite' | 'personal_profile' {
+  const meta = metadata || {};
+
+  // Rule 1 & 2: Evaluate metadata.storefront_mode if present
+  if (meta.storefront_mode !== undefined && meta.storefront_mode !== null) {
+    const rawMode = String(meta.storefront_mode).toLowerCase().trim();
+    if (rawMode === 'catalog') return 'catalog';
+    if (rawMode === 'microsite') return 'microsite';
+    if (rawMode === 'personal_profile') return 'personal_profile';
+
+    // Rule 2: If non-empty unrecognized/corrupt value, fail-safe directly to 'catalog' and IGNORE all legacy keys
+    if (rawMode.length > 0) {
+      return 'catalog';
+    }
+  }
+
+  // Rule 3: If metadata.storefront_mode is undefined, null, or empty string, evaluate legacy keys in order:
+  // selected_template -> storefront_template -> template
+  const legacyCandidates = [
+    meta.selected_template,
+    meta.storefront_template,
+    meta.template,
+  ];
+
+  const CATALOG_ALIASES = [
+    'default',
+    'storefront',
+    'catalog',
+    'commerce',
+    'commerce_template',
+    'clean_commerce',
+  ];
+  const MICROSITE_ALIASES = ['microsite'];
+  const PROFILE_ALIASES = ['personal', 'profile', 'personal_profile'];
+
+  for (const candidate of legacyCandidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const norm = String(candidate).toLowerCase().trim();
+    if (norm === '') continue;
+
+    if (CATALOG_ALIASES.includes(norm)) {
+      return 'catalog';
+    }
+    if (MICROSITE_ALIASES.includes(norm)) {
+      return 'microsite';
+    }
+    if (PROFILE_ALIASES.includes(norm)) {
+      return 'personal_profile';
+    }
+  }
+
+  // Rule 5: Fallback to 'catalog'
+  return 'catalog';
+}
+
 /**
  * Fail-Closed Template Resolver (CTO Mandate)
  * Evaluates templateCode against registered catalog and ensures strict compatibility with businessType.
@@ -545,37 +620,13 @@ export function resolveTemplate(context: TenantRuntimeContext): ResolvedTemplate
   } else if (templateCode === 'CORPORATE_V1') {
     subVariant = 'corporate';
   } else if (templateCode === 'SHOP_V1' || templateCode === 'DROP_V1') {
-    const rawSub = (
-      context.tenant?.metadata?.selected_template ||
-      context.tenant?.metadata?.storefront_template ||
-      context.tenant?.metadata?.theme?.template ||
-      'storefront'
-    ).toLowerCase().trim();
-
-    if (rawSub === 'personal') {
-      subVariant = 'personal';
-    } else if (rawSub === 'microsite') {
+    const canonicalMode = resolveStorefrontMode(context.tenant?.metadata);
+    if (canonicalMode === 'microsite') {
       subVariant = 'microsite';
-    } else if (
-      rawSub === 'storefront' ||
-      rawSub === 'default' ||
-      rawSub === 'commerce_template' ||
-      rawSub === 'commerce' ||
-      rawSub === 'clean_commerce' ||
-      rawSub === ''
-    ) {
-      subVariant = 'storefront';
+    } else if (canonicalMode === 'personal_profile') {
+      subVariant = 'personal';
     } else {
-      // Unrecognized sub-variant -> Fail-Closed!
-      return {
-        status: 'ERROR',
-        templateCode,
-        subVariant: 'unknown',
-        capabilities: context.capabilities,
-        error: 'CORRUPT_CONFIG',
-        errorMessage: `Sub-varian template '${rawSub}' tidak terdaftar atau korup pada katalog storefront.`,
-        statusCode: 422,
-      };
+      subVariant = 'storefront';
     }
   }
 
@@ -710,20 +761,15 @@ export function resolveStorefrontSections(
       }
     }
 
-    // Also check theme, theme_config, and microsite for catalog/product visibility toggles
+    // Check catalog/product presentation visibility toggles (strictly isolated from microsite - WP3 Stage B)
     if (keys.includes('featured_catalog') || keys.includes('catalog') || keys.includes('products')) {
-      const themeShow =
+      const catalogShow =
         meta.show_products ??
-        meta.display_catalog ??
-        meta.theme?.show_products ??
-        meta.theme_config?.show_products ??
-        meta.microsite?.show_products ??
-        meta.microsite_settings?.show_products ??
-        meta.microsite_show_products;
-      if (themeShow !== undefined) {
-        if (typeof themeShow === 'boolean') return { is_active: themeShow };
-        if (themeShow === 'false' || themeShow === false) return { is_active: false };
-        if (themeShow === 'true' || themeShow === true) return { is_active: true };
+        meta.display_catalog;
+      if (catalogShow !== undefined) {
+        if (typeof catalogShow === 'boolean') return { is_active: catalogShow };
+        if (catalogShow === 'false' || catalogShow === false) return { is_active: false };
+        if (catalogShow === 'true' || catalogShow === true) return { is_active: true };
       }
     }
 
