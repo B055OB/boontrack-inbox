@@ -389,6 +389,7 @@ export async function PATCH(
       tenantUpdatePayload.max_monthly_messages = Number(body.pricing?.chat_quota ?? body.max_monthly_messages);
     }
 
+    tenantUpdatePayload.updated_at = new Date().toISOString();
     const { error: updateErr } = await supabaseAdmin
       .from('tenants')
       .update(tenantUpdatePayload)

@@ -143,6 +143,7 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
         phone: normalizedPhone,
         whatsapp_number: normalizedPhone,
         status: 'pending_verification',
+        updated_at: new Date().toISOString(),
       })
       .eq('id', existingTenant.id);
 

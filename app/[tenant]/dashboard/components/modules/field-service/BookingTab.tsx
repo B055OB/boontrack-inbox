@@ -312,10 +312,13 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           const updatedMetaBookings = data.metadata.bookings.map((b: any) =>
             b.id === id ? { ...b, status: newStatus } : b
           );
-          await supabase
-            .from('tenants')
-            .update({ metadata: { ...data.metadata, bookings: updatedMetaBookings } })
-            .eq('id', data.id);
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { bookings: updatedMetaBookings },
+            }),
+          });
         }
       }
     } catch {}
@@ -363,10 +366,13 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
 
         if (data) {
           const current = Array.isArray(data.metadata?.bookings) ? data.metadata.bookings : [];
-          await supabase
-            .from('tenants')
-            .update({ metadata: { ...data.metadata, bookings: [newBooking, ...current].slice(0, 100) } })
-            .eq('id', data.id);
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { bookings: [newBooking, ...current].slice(0, 100) },
+            }),
+          });
         }
       }
     } catch {}
@@ -444,10 +450,13 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           .eq('slug', tenantSlug)
           .maybeSingle();
         if (data) {
-          await supabase
-            .from('tenants')
-            .update({ metadata: { ...data.metadata, technicians: newList } })
-            .eq('id', data.id);
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { technicians: newList },
+            }),
+          });
         }
       }
       setTechnicians(newList);

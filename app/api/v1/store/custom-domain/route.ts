@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
               custom_domain: domain,
               custom_domain_status: 'pending',
             },
+        updated_at: new Date().toISOString(),
           })
           .eq('slug', tenant_slug);
       } catch (err) {
@@ -133,6 +134,7 @@ export async function DELETE(req: NextRequest) {
               custom_domain: null,
               custom_domain_status: null,
             },
+        updated_at: new Date().toISOString(),
           })
           .eq('slug', tenantSlug);
       } catch (err) {

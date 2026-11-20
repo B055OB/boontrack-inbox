@@ -98,6 +98,7 @@ export async function GET(
               ...metadata,
               rotator: updatedRotator,
             },
+          updated_at: new Date().toISOString(),
           })
           .eq('id', tenant.id);
 

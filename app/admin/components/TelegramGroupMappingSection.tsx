@@ -311,10 +311,13 @@ export default function TelegramGroupMappingSection({
             ...(tenantRow.metadata || {}),
             telegram_groups: updatedMappings,
           };
-          await supabase
-            .from('tenants')
-            .update({ metadata: newMeta, updated_at: new Date().toISOString() })
-            .eq('id', tenantRow.id);
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { telegram_groups: updatedMappings },
+            }),
+          });
 
           if (dataSource === 'fallback_mock') {
             setDataSource('tenant_metadata');
@@ -363,10 +366,13 @@ export default function TelegramGroupMappingSection({
           ...(tenantRow.metadata || {}),
           telegram_groups: nextMappings,
         };
-        await supabase
-          .from('tenants')
-          .update({ metadata: newMeta, updated_at: new Date().toISOString() })
-          .eq('id', tenantRow.id);
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { telegram_groups: nextMappings },
+            }),
+          });
       }
 
       showToast(`Status grup ${item.group_name} diubah menjadi ${nextStatus ? 'Aktif' : 'Nonaktif'}`, 'info');
@@ -410,10 +416,13 @@ export default function TelegramGroupMappingSection({
           ...(tenantRow.metadata || {}),
           telegram_groups: nextMappings,
         };
-        await supabase
-          .from('tenants')
-          .update({ metadata: newMeta, updated_at: new Date().toISOString() })
-          .eq('id', tenantRow.id);
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metadata: { telegram_groups: nextMappings },
+            }),
+          });
       }
 
       showToast(`Pemetaan grup "${itemName}" (${itemGroupId}) berhasil dihapus`, 'success');

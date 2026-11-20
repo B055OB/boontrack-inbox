@@ -123,8 +123,7 @@ export async function saveTenantScheduleSettings(
 
     const { error } = await sb
       .from('tenants')
-      .update({ metadata: updatedMetadata })
-      .eq('id', tenant.id);
+      .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
 
     return !error;
   } catch {

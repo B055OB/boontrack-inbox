@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from('tenants')
-        .update({ metadata: updatedMeta })
+        .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
         .eq('id', tenantRow.id);
     }
 

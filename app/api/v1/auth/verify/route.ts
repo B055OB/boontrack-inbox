@@ -208,6 +208,7 @@ async function handleVerify(req: NextRequest) {
         status: newStatus,
         is_active: true,
         metadata: updatedMeta,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', matchedTenant.id);
 

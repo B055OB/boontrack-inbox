@@ -509,6 +509,7 @@ export async function PUT(
       .from('tenants')
       .update({
         metadata: updatedMetadata,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', tenantRow.id);
 

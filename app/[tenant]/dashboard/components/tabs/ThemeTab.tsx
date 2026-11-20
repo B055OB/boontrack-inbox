@@ -157,53 +157,17 @@ export default function ThemeTab({
     setErrorMessage(null);
 
     try {
-      const supabase = getSupabase();
-      let saveSuccess = false;
-
-      // 1. Direct Supabase save if available
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        const currentMeta = tenantRow?.metadata || {};
-        const updatedMeta = {
-          ...currentMeta,
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           visual_theme: theme.id,
-          theme: {
-            ...(currentMeta.theme || {}),
-            visual_theme: theme.id,
-          },
-        };
+        }),
+      });
 
-        const { error: updateErr } = await supabase
-          .from('tenants')
-          .update({
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
-
-        if (!updateErr) {
-          saveSuccess = true;
-        }
+      if (!res.ok) {
+        throw new Error('Gagal menyimpan tema visual toko.');
       }
-
-      // Always sync to Theme API to guarantee Next.js ISR cache revalidation (Zero stale cache)
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            visual_theme: theme.id,
-          }),
-        });
-      } catch (apiErr) {
-        console.warn('[ThemeTab] Theme API revalidate note:', apiErr);
-      }
-
       const successNotice = `Tema visual berhasil diperbarui ke "${theme.title}"!`;
       setToastMessage(successNotice);
       onSaved?.(successNotice);
@@ -234,53 +198,21 @@ export default function ThemeTab({
     setErrorMessage(null);
 
     try {
-      const supabase = getSupabase();
-      let currentMeta: Record<string, any> = {};
-
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        currentMeta = tenantRow?.metadata || {};
-      }
-
-      const updatedMeta = {
-        ...currentMeta,
-        sections: {
-          ...(currentMeta.sections || {}),
-          catalog: {
-            ...((currentMeta.sections?.catalog && typeof currentMeta.sections.catalog === 'object') ? currentMeta.sections.catalog : {}),
-            is_active: newVal,
+      const themeRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          visual_theme: selectedTheme,
+          sections: {
+            catalog: {
+              is_active: newVal,
+            },
           },
-        },
-      };
-
-      if (supabase) {
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
+        }),
+      });
+      if (!themeRes.ok) {
+        throw new Error('Gagal menyimpan pengaturan visibilitas produk.');
       }
-
-      // Trigger theme API revalidate
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            visual_theme: selectedTheme,
-          }),
-        });
-      } catch (apiErr) {
-        console.warn('[ThemeTab] Theme API revalidate note:', apiErr);
-      }
-
       const successNotice = newVal
         ? 'Etalase produk berhasil diaktifkan di halaman depan.'
         : 'Etalase produk berhasil disembunyikan dari halaman depan.';

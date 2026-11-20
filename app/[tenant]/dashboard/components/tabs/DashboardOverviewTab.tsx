@@ -175,11 +175,14 @@ export default function DashboardOverviewTab({
 
             // Persist to Supabase if not yet marked
             if (!isPersistedInDb && tenantRes.data?.id) {
-              const updatedMeta = { ...meta, onboarding_completed: true };
-              await supabase
-                .from('tenants')
-                .update({ metadata: updatedMeta })
-                .eq('id', tenantRes.data.id);
+              await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  onboarding_completed: true,
+                  metadata: { onboarding_completed: true },
+                }),
+              });
             }
           }
         }
@@ -207,26 +210,7 @@ export default function DashboardOverviewTab({
     const targetMode = canonicalModeMap[templateKey];
 
     try {
-      // 1. Direct update to Supabase tenants.metadata (Strictly metadata.storefront_mode)
-      const supabase = getSupabase();
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('id, metadata')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-
-      if (tenantRow?.id) {
-        const updatedMeta = {
-          ...(tenantRow.metadata || {}),
-          storefront_mode: targetMode,
-        };
-        await supabase
-          .from('tenants')
-          .update({ metadata: updatedMeta })
-          .eq('id', tenantRow.id);
-      }
-
-      // 2. Sync via settings API route (strictly storefront_mode)
+      // Sync via authenticated settings API route (strictly storefront_mode)
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

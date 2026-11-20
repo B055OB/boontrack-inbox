@@ -424,8 +424,7 @@ export class StudioCreditService {
     if (tier && tier !== current.tier) {
       await supabase
         .from('tenants')
-        .update({ tier: updatedTier })
-        .eq('id', tenantId);
+        .update({ tier: updatedTier, updated_at: new Date().toISOString() }).eq('id', tenantId);
     }
 
     // 3. Record audit log into tenant_credit_ledger

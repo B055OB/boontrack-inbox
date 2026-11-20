@@ -133,30 +133,15 @@ export default function FollowUpRulesConfig({
       if (!res.ok) {
         // Direct Supabase fallback
         const supabase = getSupabase();
-        if (supabase) {
-          const { data: current } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          const newMetadata = {
-            ...(current?.metadata || {}),
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             followup_rules: sanitizedRules,
-          };
-
-          const { error: sbErr } = await supabase
-            .from('tenants')
-            .update({
-              metadata: newMetadata,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('slug', tenantSlug);
-
-          if (sbErr) throw sbErr;
-        } else {
-          throw new Error('Gagal menyimpan aturan ke server.');
-        }
+            follow_up_rules: sanitizedRules,
+          }),
+        });
+        if (!res.ok) throw new Error('Gagal menyimpan aturan follow-up ke server.');
       }
 
       setRules(sanitizedRules);

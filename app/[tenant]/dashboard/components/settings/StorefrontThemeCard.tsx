@@ -538,33 +538,18 @@ export default function StorefrontThemeCard({
       });
 
       const supabase = getSupabase();
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow) {
-          const updatedMeta = {
-            ...(tenantRow.metadata || {}),
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          featured_product_ids: nextIds,
+          microsite_featured_product_ids: nextIds,
+          metadata: {
             featured_product_ids: nextIds,
             microsite_featured_product_ids: nextIds,
-            microsite: {
-              ...(tenantRow.metadata?.microsite || {}),
-              featured_product_ids: nextIds,
-            },
-            theme: {
-              ...(tenantRow.metadata?.theme || {}),
-              featured_product_ids: nextIds,
-            },
-          };
-          await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('slug', tenantSlug);
-        }
-      }
+          },
+        }),
+      });
     } catch (saveErr) {
       console.warn('[StorefrontThemeCard] Persist featured products error:', saveErr);
     }
@@ -673,51 +658,6 @@ export default function StorefrontThemeCard({
         });
       } catch (settingsErr) {
         console.warn('[StorefrontThemeCard] Settings API sync note:', settingsErr);
-      }
-
-      // Step C: Update langsung ke Supabase DB tenants.metadata (Double Safety Net)
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              visual_theme: newThemeId,
-              theme_id: newThemeId,
-              featured_product_ids: featuredProductIds,
-              microsite_featured_product_ids: featuredProductIds,
-              buttons: buttons,
-              microsite: {
-                ...(tenantRow.metadata?.microsite || {}),
-                buttons: buttons,
-                featured_product_ids: featuredProductIds,
-              },
-              theme: {
-                ...(tenantRow.metadata?.theme || {}),
-                theme_id: newThemeId,
-                visual_theme: newThemeId,
-                primary_color: sw.accent,
-                bg_color: sw.bg,
-                card_color: sw.card,
-                chat_enabled: newChatEnabled,
-                chat_position: 'bottom-right',
-                updated_at: nowIso,
-              },
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('slug', tenantSlug);
-          }
-        }
-      } catch (sbErr) {
-        console.warn('[StorefrontThemeCard] Direct Supabase update note:', sbErr);
       }
 
       setToastMessage('✅ Perubahan tampilan toko berhasil disimpan!');

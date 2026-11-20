@@ -610,53 +610,7 @@ export function useTenantDashboard() {
         setStoreQrisPayload(decodedPayload);
       }
 
-      // Direct persist ke database Supabase (tenants.metadata)
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              qris_image_url: publicUrl,
-              qris_url: publicUrl,
-              qris_image: publicUrl,
-              is_qris_active: true,
-              qris_enabled: true,
-              ...(decodedPayload ? {
-                qris_payload: decodedPayload,
-                qris_static_string: decodedPayload,
-              } : {}),
-              payment_settings: {
-                ...(tenantRow.metadata?.payment_settings || {}),
-                qris: publicUrl,
-                is_qris_active: true,
-              },
-              payment_config: {
-                ...(tenantRow.metadata?.payment_config || {}),
-                enable_qris: true,
-                qris_image_url: publicUrl,
-                ...(decodedPayload ? {
-                  qris_payload: decodedPayload,
-                  raw_qris_string: decodedPayload,
-                  static_qris_payload: decodedPayload,
-                } : {}),
-              },
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Direct Supabase QRIS sync note:', sbErr);
-      }
+      // Direct browser mutation migrated to authenticated settings API route below
 
       // Sync via settings API route
       try {
@@ -722,33 +676,7 @@ export function useTenantDashboard() {
 
       setStoreLogoUrl(publicUrl);
 
-      // Direct persist ke database Supabase (tenants.metadata.logo_url)
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              logo_url: publicUrl,
-              avatar_url: publicUrl,
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Direct Supabase logo sync note:', sbErr);
-      }
-
-      // Sync via settings API route
+      // Sync via authenticated settings API route
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
@@ -2208,23 +2136,7 @@ export function useTenantDashboard() {
     setIsSavingGreeting(true);
     try {
       const supabase = getSupabase();
-      if (supabase) {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-        const meta = tRow?.metadata || {};
-        meta.greeting_message = textToSave;
-        meta.custom_greeting_message = textToSave;
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: meta,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
-      }
+      // Direct browser mutation migrated to authenticated settings API below
 
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',

@@ -141,6 +141,7 @@ export async function POST(
       subscription_ends_at: validUntil,
       due_date: validUntil.split('T')[0],
       metadata: updatedMetadata,
+      updated_at: new Date().toISOString(),
     };
 
     const { data: updatedTenant, error: updateErr } = await supabaseAdmin

@@ -205,6 +205,7 @@ export async function activateShopSubscription(
       subscription_ends_at: dates.expires_at,
       due_date: dates.expires_at.split('T')[0],
       metadata: updatedMetadata,
+      updated_at: new Date().toISOString(),
     })
     .eq('id', tenant.id);
 
@@ -353,7 +354,7 @@ export async function renewPeriodQuota(
         current_period_ends_at: newPeriodEndsAt,
       },
     };
-    await supabase.from('tenants').update({ metadata: updatedMeta }).eq('id', sub.tenant_id);
+    await supabase.from('tenants').update({ metadata: updatedMeta, updated_at: new Date().toISOString() }).eq('id', sub.tenant_id);
   }
 
   return { success: true, newPeriodEndsAt };

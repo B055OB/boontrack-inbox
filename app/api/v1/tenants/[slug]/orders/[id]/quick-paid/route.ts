@@ -421,6 +421,7 @@ export async function POST(
           .update({
             status: 'active',
             metadata: meta,
+                updated_at: new Date().toISOString(),
           })
           .eq('slug', slug);
 

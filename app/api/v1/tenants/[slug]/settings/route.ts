@@ -869,6 +869,11 @@ export async function PUT(
 
     const updatedMetadata = {
       ...(existing.metadata || {}),
+      ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+      ...(body.storefront_mode !== undefined ? { storefront_mode: body.storefront_mode } : {}),
+      ...(body.onboarding_completed !== undefined ? { onboarding_completed: Boolean(body.onboarding_completed) } : {}),
+      ...(body.featured_product_ids !== undefined ? { featured_product_ids: body.featured_product_ids } : {}),
+      ...(body.microsite_featured_product_ids !== undefined ? { microsite_featured_product_ids: body.microsite_featured_product_ids } : {}),
       ...(effectiveStoreName !== undefined ? { store_name: effectiveStoreName } : {}),
       ...(bot_strategy ? { bot_strategy } : {}),
       ...(bot_mode ? { bot_mode } : {}),

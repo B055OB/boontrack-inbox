@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from('affiliates')
-        .update({ metadata: updatedMeta })
+        .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
         .eq('id', aff.id);
 
       const verificationUrl = `${baseUrl}/auth/verify?token=${newToken}&type=affiliate&id=${aff.id}`;
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
 
         await supabase
           .from('affiliates')
-          .update({ metadata: updatedMeta })
+          .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
           .eq('id', affFallback.id);
 
         const verificationUrl = `${baseUrl}/auth/confirm?token=${newToken}&type=affiliate&id=${affFallback.id}`;

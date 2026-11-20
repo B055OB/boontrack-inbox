@@ -265,29 +265,24 @@ export default function MicrositeTab({
         },
       };
 
-      const { error: dbErr } = await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta })
-        .eq('slug', tenantSlug);
-
-      if (dbErr) throw dbErr;
-
-      // Also sync via settings API route (strictly microsite settings)
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bio: bioText,
-            microsite: {
-              buttons,
-              show_products: showProducts,
-              featured_product_ids: featuredProductIds,
-              product_mode: productMode,
-            },
-          }),
-        });
-      } catch {}
+      // Authenticated mutation routed through settings API route (strictly microsite settings)
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bio: bioText,
+          microsite: {
+            buttons,
+            show_products: showProducts,
+            featured_product_ids: featuredProductIds,
+            product_mode: productMode,
+          },
+        }),
+      });
+      if (!settingsRes.ok) {
+        const errJson = await settingsRes.json().catch(() => ({}));
+        throw new Error(errJson.message || 'Gagal menyimpan konfigurasi microsite.');
+      }
 
       setFeedback({ type: 'success', text: 'Konfigurasi microsite & tombol CTA berhasil disimpan!' });
       if (onSaved) onSaved('Konfigurasi microsite berhasil diperbarui.');

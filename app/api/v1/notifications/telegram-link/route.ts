@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
       .update({
         telegram_chat_id: cleanChatId,
         metadata: updatedMetadata,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', tenant.id);
 

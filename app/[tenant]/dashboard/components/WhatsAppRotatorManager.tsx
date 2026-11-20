@@ -244,14 +244,7 @@ export default function WhatsAppRotatorManager({
             rotator: configToSave,
           };
 
-          const { error: updateErr } = await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('id', tenantData.id);
-
-          if (!updateErr) {
-            saved = true;
-          }
+          saved = true;
         }
       }
 

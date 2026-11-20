@@ -383,8 +383,7 @@ export async function processFunnelBookingMessage(
 
       await supabase
         .from('tenants')
-        .update({ metadata: updatedMetadata })
-        .eq('id', tenant.id);
+        .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
     } catch (err) {
       console.error('[Booking Service] Error updating tenant metadata bookings:', err);
     }

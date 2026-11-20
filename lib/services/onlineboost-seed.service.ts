@@ -343,8 +343,7 @@ export class OnlineboostSeedService {
 
     const { error: metaUpdateErr } = await supabase
       .from('tenants')
-      .update({ metadata: updatedMetadata })
-      .eq('id', tenant.id);
+      .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
 
     if (metaUpdateErr) {
       throw new Error(`Failed to update metadata: ${metaUpdateErr.message}`);

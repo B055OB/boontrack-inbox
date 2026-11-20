@@ -781,6 +781,7 @@ export async function handleTelegramUpdate(
             .update({
               telegram_chat_id: String(chatId),
               metadata: updatedMeta,
+              updated_at: new Date().toISOString(),
             })
             .eq('id', tenant.id);
 

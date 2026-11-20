@@ -94,6 +94,7 @@ export async function PATCH(
         status: nextStatus,
         is_active: nextActive,
         metadata: nextMetadata,
+        updated_at: new Date().toISOString(),
       })
       .eq('slug', slug);
 

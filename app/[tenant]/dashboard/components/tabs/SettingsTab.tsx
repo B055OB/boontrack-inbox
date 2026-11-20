@@ -1007,12 +1007,7 @@ export default function SettingsTab({
                   } : {}),
                 };
 
-                const { error: updateErr } = await supabase
-                  .from('tenants')
-                  .update({ metadata: updatedMeta })
-                  .eq('id', tenantRow.id);
-
-                if (updateErr) throw new Error(updateErr.message);
+                // Direct browser mutation migrated to authenticated settings API endpoint below
 
                 await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
                   method: 'PUT',
