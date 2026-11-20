@@ -1002,142 +1002,44 @@ export interface GenerateOrdersMetaCsvResult {
 }
 
 /**
- * Generates CSV string and audit summary for orders aligned with Meta Offline Event Manager & CAPI standard.
- * Features:
- * - Transparent skip summary: returns totalRows, exportedRows, skippedRows, and detailed skip reasons.
- * - Strict integrity: Invalid date or invalid nominal is rejected (NEVER silently coerced to now or 0).
- * - Deterministic timezone: Anchored to WIB (+07:00).
+ * WP4-CT EMERGENCY CONTAINMENT NOTICE:
+ * Client-side Meta Offline CSV generation is QUARANTINED and FAIL-CLOSED.
+ * Browser-based export lacked server-side entitlement checks, leaked unhashed PII,
+ * and exported non-PAID orders. This helper fails closed unconditionally for ALL roles
+ * until a verified server-side endpoint (/api/v1/tracking/offline-conversions/export)
+ * is authorized and deployed.
  */
 export function generateOrdersMetaCsv(
   orders: any[],
   tenantSlug?: string,
   currency: string = 'IDR'
 ): GenerateOrdersMetaCsvResult {
-  const headers = [
-    'event_name',
-    'event_time',
-    'value',
-    'currency',
-    'phone',
-    'order_id',
-    'customer_name',
-    'customer_email',
-    'city',
-    'product_name',
-    'quantity',
-    'payment_method',
-    'payment_status',
-    'order_status',
-    'notes',
-  ];
+  console.warn(
+    `[WP4-CT EMERGENCY CONTAINMENT] Blocked client-side Meta Offline CSV generation attempt for tenant '${tenantSlug || 'unknown'}'. All client-side generation is fail-closed.`
+  );
 
-  const escapeCsv = (val: any): string => {
-    if (val === null || val === undefined) return '';
-    const str = String(val).replace(/"/g, '""').trim();
-    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-      return `"${str}"`;
-    }
-    return str;
-  };
-
-  const rows: string[] = [];
-  const skippedDetails: MetaCsvExportSkipDetail[] = [];
   const totalRows = (orders || []).length;
+  const skippedDetails: MetaCsvExportSkipDetail[] = (orders || []).map((ord, idx) => ({
+    orderId: String(ord?.order_id || ord?.invoice_number || ord?.invoice_no || ord?.order_number || ord?.id || `row_${idx + 1}`).replace(/^#/, ''),
+    reason: 'WP4_CT_CONTAINMENT_DENIED',
+    message: 'Client-side Meta Offline CSV generation is quarantined and disabled for all roles pending server-side verification.',
+  }));
 
-  for (let idx = 0; idx < totalRows; idx++) {
-    const ord = orders[idx];
-    const orderId = String(ord.order_id || ord.invoice_number || ord.invoice_no || ord.order_number || ord.id || `row_${idx + 1}`).replace(/^#/, '');
-    const eventName = 'Purchase';
-
-    // 1. Strict & Deterministic Date Validation
-    const rawDate = ord.paid_at || ord.created_at || ord.createdDate || ord.date;
-    const parsedDate = parseDeterministicDate(rawDate, 7);
-    if (!parsedDate.valid) {
-      const skipReason = !rawDate ? 'missing_date' : 'invalid_date';
-      skippedDetails.push({
-        orderId,
-        reason: skipReason,
-        message: parsedDate.reason || `Tanggal transaksi '${rawDate}' tidak valid.`,
-        rawDate,
-      });
-      console.warn(`[Meta CSV Export] Order ${orderId} ditolak (${skipReason}): ${parsedDate.reason || 'tanggal tidak valid'}`);
-      continue;
-    }
-    const eventTime = parsedDate.isoWithOffset;
-
-    // 2. Strict Nominal Validation
-    const rawValue = ord.total_amount ?? ord.gross_amount ?? ord.amount;
-    const parsedNominal = parseStrictNominal(rawValue);
-    if (!parsedNominal.valid) {
-      const skipReason = (rawValue === undefined || rawValue === null || rawValue === '') ? 'missing_amount' : 'invalid_amount';
-      skippedDetails.push({
-        orderId,
-        reason: skipReason,
-        message: parsedNominal.reason || `Nominal transaksi '${rawValue}' tidak valid.`,
-        rawValue,
-      });
-      console.warn(`[Meta CSV Export] Order ${orderId} ditolak (${skipReason}): ${parsedNominal.reason || 'nominal tidak valid'}`);
-      continue;
-    }
-    const numValue = parsedNominal.value;
-
-    // currency: ISO currency code
-    const curr = String(ord.currency || currency || 'IDR').toUpperCase();
-
-    // phone: E.164 normalized digits
-    const rawPhone = ord.customer_phone || ord.phone || ord.whatsapp || '';
-    let phoneDigits = String(rawPhone).replace(/\D/g, '');
-    if (phoneDigits.startsWith('08')) {
-      phoneDigits = '628' + phoneDigits.slice(2);
-    } else if (phoneDigits.startsWith('0')) {
-      phoneDigits = '62' + phoneDigits.slice(1);
-    } else if (phoneDigits.startsWith('8')) {
-      phoneDigits = '62' + phoneDigits;
-    }
-
-    // Operational fields
-    const custName = ord.customer_name || ord.name || 'Pelanggan';
-    const custEmail = ord.customer_email || ord.email || '';
-    const city = ord.shipping_address?.city || ord.city || '';
-    const productName = ord.items_summary || ord.product_title || ord.product_name || 'Produk Toko';
-    const qty = ord.quantity || 1;
-    const paymentMethod = ord.payment_method || 'Online';
-    const paymentStatus = ord.payment_status || ord.status || 'PAID';
-    const orderStatus = ord.order_status || 'COMPLETED';
-    const notes = ord.notes || ord.catatan || '';
-
-    rows.push([
-      escapeCsv(eventName),
-      escapeCsv(eventTime),
-      escapeCsv(numValue),
-      escapeCsv(curr),
-      escapeCsv(phoneDigits),
-      escapeCsv(orderId),
-      escapeCsv(custName),
-      escapeCsv(custEmail),
-      escapeCsv(city),
-      escapeCsv(productName),
-      escapeCsv(qty),
-      escapeCsv(paymentMethod),
-      escapeCsv(paymentStatus),
-      escapeCsv(orderStatus),
-      escapeCsv(notes),
-    ].join(','));
-  }
-
-  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-  const summary: MetaCsvExportSummary = {
-    totalRows,
-    exportedRows: rows.length,
-    skippedRows: skippedDetails.length,
-    skippedDetails,
+  // FAIL-CLOSED: Return empty CSV content and 0 exported rows under all conditions
+  return {
+    csv: '',
+    summary: {
+      totalRows,
+      exportedRows: 0,
+      skippedRows: totalRows,
+      skippedDetails,
+    },
   };
-
-  return { csv, summary };
 }
 
 /**
  * Backward-compatible helper that generates Meta CSV as raw string.
+ * Fails closed under WP4-CT containment, always returning empty string.
  */
 export function generateOrdersMetaCsvString(
   orders: any[],
@@ -1148,48 +1050,22 @@ export function generateOrdersMetaCsvString(
 }
 
 /**
- * Export orders to Meta Offline Conversions & CAPI compliant CSV format.
- * Triggers client-side CSV download in browser if valid rows exist.
- * Returns MetaCsvExportSummary detailing total, exported, and skipped rows for UI/logs.
+ * WP4-CT EMERGENCY CONTAINMENT:
+ * Export orders to Meta Offline Conversions CSV is DISABLED and FAILS CLOSED.
+ * No Blob is created, no Object URL is created, and no download is triggered.
+ * Unconditionally denied for all callers and roles.
  */
 export function exportOrdersToMetaCsv(
   orders: any[],
   tenantSlug?: string,
   currency: string = 'IDR'
 ): MetaCsvExportSummary {
-  if (!orders || orders.length === 0) {
-    if (typeof alert !== 'undefined') {
-      alert('Tidak ada pesanan untuk diekspor.');
-    }
-    return {
-      totalRows: 0,
-      exportedRows: 0,
-      skippedRows: 0,
-      skippedDetails: [],
-    };
-  }
+  console.warn(
+    `[WP4-CT EMERGENCY CONTAINMENT] exportOrdersToMetaCsv invocation blocked. File download and Blob creation are permanently removed from client-side runtime.`
+  );
 
-  const { csv, summary } = generateOrdersMetaCsv(orders, tenantSlug, currency);
+  const { summary } = generateOrdersMetaCsv(orders, tenantSlug, currency);
 
-  if (summary.skippedRows > 0) {
-    console.warn(
-      `[Meta CSV Export] ${summary.skippedRows} dari ${summary.totalRows} pesanan dilewati karena data tidak valid:`,
-      summary.skippedDetails
-    );
-  }
-
-  if (summary.exportedRows > 0 && typeof document !== 'undefined') {
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute('download', `Meta_Offline_Events_${tenantSlug || 'store'}_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-
+  // FAIL-CLOSED: ZERO Blob creation, ZERO URL.createObjectURL, ZERO link.click(), ZERO download
   return summary;
 }

@@ -39,7 +39,6 @@ import {
   printThermalShippingLabel,
   printOrderInvoice,
   exportOrdersToLincahCsv,
-  exportOrdersToMetaCsv,
   MetaCsvExportSummary,
 } from '@/lib/utils/orderFulfillment';
 import { MetaCsvExportSummaryModal } from '../MetaCsvExportSummaryModal';
@@ -796,21 +795,17 @@ export default function OrdersTab({
             <span>Import Excel/CSV</span>
           </button>
 
-          {/* BULK EXPORT: Meta Offline Conversions & CAPI CSV */}
+          {/* BULK EXPORT: Meta Offline Conversions & CAPI CSV (WP4-CT EMERGENCY CONTAINMENT: FAIL-CLOSED DISABLED) */}
           <button
             type="button"
             id="orders-export-meta-csv-btn"
-            onClick={() => {
-              const summary = exportOrdersToMetaCsv(filteredOrders, tenantSlug);
-              setMetaExportSummary(summary);
-              setIsExportSummaryModalOpen(true);
-            }}
-            disabled={filteredOrders.length === 0}
-            className="bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-semibold px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            title="Export pesanan ke format CSV Meta Offline Events / CAPI (kompatibel Ads Manager)"
+            disabled={true}
+            aria-disabled="true"
+            className="bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 font-medium px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 cursor-not-allowed opacity-60"
+            title="Ekspor Meta Offline CSV dinonaktifkan sementara demi perlindungan data (WP4-CT Containment). Menunggu rilis endpoint server terverifikasi."
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Ekspor Meta CSV</span>
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span>Ekspor Meta CSV (Dinonaktifkan)</span>
           </button>
 
           {/* BULK EXPORT: Lincah.id Mass Upload CSV */}
