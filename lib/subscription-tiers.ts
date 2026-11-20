@@ -21,6 +21,8 @@ export interface CanonicalTierDef {
     unlimited_products: boolean;
     single_page_checkout: boolean;
     crm: boolean;
+    whatsapp_engine: boolean;
+    whatsapp_official: boolean;
   };
 }
 
@@ -43,6 +45,8 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       unlimited_products: true,
       single_page_checkout: true,
       crm: false,
+      whatsapp_engine: true,
+      whatsapp_official: false,
     },
   },
   ENTERPRISE: {
@@ -63,6 +67,8 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       unlimited_products: true,
       single_page_checkout: true,
       crm: true,
+      whatsapp_engine: true,
+      whatsapp_official: true,
     },
   },
   STARTER: {
@@ -83,6 +89,8 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       unlimited_products: true,
       single_page_checkout: true,
       crm: false,
+      whatsapp_engine: false,
+      whatsapp_official: false,
     },
   },
   CHECKOUT_LITE: {
@@ -103,6 +111,8 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       unlimited_products: false,
       single_page_checkout: true,
       crm: false,
+      whatsapp_engine: false,
+      whatsapp_official: false,
     },
   },
 };
@@ -143,6 +153,10 @@ export const TIER_HIERARCHY_LEVELS: Record<string, number> = {
  */
 export const FEATURE_MIN_LEVELS: Record<string, number> = {
   single_page_checkout: 0,
+  standard_pixel: 0,
+  meta_pixel: 0,
+  standard_meta_pixel: 0,
+  basic_pixel: 0,
   unlimited_products: 1,
   ai_bot: 2,
   chatbox: 2,
@@ -162,7 +176,11 @@ export const FEATURE_MIN_LEVELS: Record<string, number> = {
   reseller_system: 3,
   multi_cs: 3,
   broadcast: 3,
+  waba: 3,
+  official_waba: 3,
   custom_domain: 3,
+  whatsapp_engine: 2,
+  whatsapp_official: 3,
 };
 
 /**
@@ -197,6 +215,13 @@ export function getTierLevel(rawTier?: string | null): number {
 /**
  * Centralized feature gating helper:
  * Returns true if the tier or tenant metadata allows access to the requested feature.
+ *
+ * STRICT FAIL-CLOSED PRECEDENCE:
+ * 1. Explicit negative override in tenant metadata (features or capabilities === false) -> return false (DENIED).
+ * 2. Explicit positive override in tenant metadata (features or capabilities === true) -> return true (ALLOWED).
+ * 3. Standard Meta Pixel check (meta_pixel, standard_pixel, basic_pixel) is universally accessible across all tiers.
+ * 4. Active special grant check (Special grants on ENTERPRISE or TEAM inherit features, UNLESS denied in step 1).
+ * 5. Tier threshold hierarchy fallback (userLevel >= minLevel).
  */
 export function canAccessFeature(
   rawTier?: string | null,
@@ -206,7 +231,28 @@ export function canAccessFeature(
   if (!featureKey) return false;
   const normFeature = featureKey.toLowerCase().replace(/-/g, '_');
 
-  // 1. Direct explicit boolean override in tenant metadata (features or capabilities)
+  // 1. Explicit negative boolean override in tenant metadata (features or capabilities) -> STRICT FAIL-CLOSED
+  if (
+    tenantMeta?.features?.[normFeature] === false ||
+    tenantMeta?.features?.[featureKey] === false ||
+    tenantMeta?.capabilities?.[normFeature] === false ||
+    tenantMeta?.capabilities?.[featureKey] === false
+  ) {
+    return false;
+  }
+
+  // Handle explicit negative overrides on related aliases
+  if (normFeature === 'crm' && (tenantMeta?.features?.has_crm === false || tenantMeta?.features?.memory_crm === false)) {
+    return false;
+  }
+  if ((normFeature === 'has_capi' || normFeature === 'capi') && (tenantMeta?.features?.has_capi === false || tenantMeta?.features?.capi === false)) {
+    return false;
+  }
+  if ((normFeature === 'broadcast' || normFeature === 'waba') && (tenantMeta?.features?.broadcast === false || tenantMeta?.features?.waba === false)) {
+    return false;
+  }
+
+  // 2. Direct explicit positive boolean override in tenant metadata (features or capabilities)
   if (tenantMeta?.features?.[normFeature] === true || tenantMeta?.features?.[featureKey] === true) {
     return true;
   }
@@ -214,7 +260,17 @@ export function canAccessFeature(
     return true;
   }
 
-  // 2. Active special grant check (Special grants on ENTERPRISE or TEAM inherit all features)
+  // 3. Standard Meta Pixel (client-side pixel, non-CAPI) is universally allowed across all tiers (AC-11)
+  if (
+    normFeature === 'standard_pixel' ||
+    normFeature === 'meta_pixel' ||
+    normFeature === 'standard_meta_pixel' ||
+    normFeature === 'basic_pixel'
+  ) {
+    return true;
+  }
+
+  // 4. Active special grant check (Special grants on ENTERPRISE or TEAM inherit all features, unless denied in step 1)
   const isGrant = Boolean(
     tenantMeta?.subscription?.type === 'granted' ||
       tenantMeta?.subscription?.subscription_type === 'granted' ||
@@ -224,7 +280,12 @@ export function canAccessFeature(
 
   const userLevel = getTierLevel(rawTier);
 
-  // Level 4 (ENTERPRISE / SPECIAL_GRANT) inherits EVERYTHING without exception
+  // If capability is completely unknown in canonical registry, FAIL CLOSED (return false)
+  if (FEATURE_MIN_LEVELS[normFeature] === undefined) {
+    return false;
+  }
+
+  // Level 4 (ENTERPRISE / SPECIAL_GRANT) inherits features, provided not explicitly denied in Step 1
   if (
     userLevel >= 4 ||
     (isGrant &&
@@ -234,7 +295,7 @@ export function canAccessFeature(
     return true;
   }
 
-  const minLevel = FEATURE_MIN_LEVELS[normFeature] ?? 2;
+  const minLevel = FEATURE_MIN_LEVELS[normFeature];
   return userLevel >= minLevel;
 }
 
@@ -242,24 +303,74 @@ export function canAccessFeature(
  * Centralized tenant-level feature access helper:
  * Evaluates tenant object (including subscription_tier, tier, metadata, and capabilities)
  * against the target feature.
+ *
+ * STRICT PRECEDENCE:
+ * 1. Explicit negative feature flags check in metadata or root -> STRICT FAIL-CLOSED DENIAL.
+ * 2. Explicit positive feature flags check in metadata or root -> ALLOWED.
+ * 3. Resolve tier candidate and evaluate through canAccessFeature().
  */
 export function hasTierAccess(tenant: any, featureKey: string): boolean {
   if (!tenant || !featureKey) return false;
   const normFeature = featureKey.toLowerCase().replace(/-/g, '_');
 
-  // Direct feature flags check in metadata or root
+  // 1. Direct explicit negative feature flags check in metadata or root -> STRICT FAIL-CLOSED
+  if (
+    tenant.metadata?.features?.[normFeature] === false ||
+    tenant.metadata?.features?.[featureKey] === false ||
+    tenant.features?.[normFeature] === false ||
+    tenant.features?.[featureKey] === false ||
+    tenant.metadata?.capabilities?.[normFeature] === false ||
+    tenant.capabilities?.[normFeature] === false ||
+    tenant.metadata?.capabilities?.[featureKey] === false ||
+    tenant.capabilities?.[featureKey] === false
+  ) {
+    return false;
+  }
+
+  // Handle explicit negative overrides on related aliases
+  if (
+    normFeature === 'crm' &&
+    (tenant.metadata?.features?.has_crm === false ||
+      tenant.metadata?.features?.memory_crm === false ||
+      tenant.features?.has_crm === false ||
+      tenant.features?.memory_crm === false)
+  ) {
+    return false;
+  }
+  if (
+    (normFeature === 'has_capi' || normFeature === 'capi') &&
+    (tenant.metadata?.features?.has_capi === false ||
+      tenant.metadata?.features?.capi === false ||
+      tenant.features?.has_capi === false ||
+      tenant.features?.capi === false)
+  ) {
+    return false;
+  }
+  if (
+    (normFeature === 'broadcast' || normFeature === 'waba') &&
+    (tenant.metadata?.features?.broadcast === false ||
+      tenant.metadata?.features?.waba === false ||
+      tenant.features?.broadcast === false ||
+      tenant.features?.waba === false)
+  ) {
+    return false;
+  }
+
+  // 2. Direct explicit positive feature flags check in metadata or root
   if (
     tenant.metadata?.features?.[normFeature] === true ||
     tenant.metadata?.features?.[featureKey] === true ||
     tenant.features?.[normFeature] === true ||
     tenant.features?.[featureKey] === true ||
     tenant.metadata?.capabilities?.[normFeature] === true ||
-    tenant.capabilities?.[normFeature] === true
+    tenant.capabilities?.[normFeature] === true ||
+    tenant.metadata?.capabilities?.[featureKey] === true ||
+    tenant.capabilities?.[featureKey] === true
   ) {
     return true;
   }
 
-  // Resolve best tier candidate
+  // 3. Resolve best tier candidate
   const tierCandidate =
     tenant.subscription_tier ||
     tenant.tier ||

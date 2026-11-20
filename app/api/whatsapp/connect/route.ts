@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseClient";
+import { resolveVerifiedTenantContext } from "@/lib/auth/tenant-context";
+import { isInternalMachineAuthorized } from "@/lib/auth/merchant-session";
+import { hasTierAccess } from "@/lib/subscription-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -82,12 +85,22 @@ async function syncWhatsAppConnectionRecord(
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantSlug = (
+    let tenantSlug = (
       searchParams.get("tenant") ||
       searchParams.get("tenant_slug") ||
       searchParams.get("slug") ||
       ""
     ).trim().toLowerCase();
+
+    if (!tenantSlug && req.method === "POST") {
+      try {
+        const cloned = req.clone();
+        const body = await cloned.json().catch(() => ({}));
+        tenantSlug = String(
+          body.tenant || body.tenant_slug || body.slug || body.tenant_id || ""
+        ).trim().toLowerCase();
+      } catch {}
+    }
 
     if (!tenantSlug) {
       return NextResponse.json(
@@ -96,32 +109,117 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: "Database service client tidak tersedia." },
+        { status: 500 }
+      );
+    }
+
+    // ── AUTH GUARD & SERVER-SIDE TENANT CONTEXT (WP1 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    let verifiedTenantId = '';
+    let verifiedTenantSlug = '';
+    let verifiedTier = 'PRO_SCALE';
+    let verifiedMetadata: Record<string, any> = {};
+
+    if (!isInternalAuth) {
+      const authResult = await resolveVerifiedTenantContext(req, tenantSlug);
+      if (!authResult.success) {
+        return NextResponse.json(
+          { success: false, error: authResult.error, code: authResult.code },
+          { status: authResult.status }
+        );
+      }
+
+      // Role check: Only OWNER, MERCHANT, OPERATOR, SUPERADMIN can manage WhatsApp engine connection
+      const allowedRoles = ['OWNER', 'MERCHANT', 'OPERATOR', 'SUPERADMIN'];
+      if (!allowedRoles.includes(authResult.context.role)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Forbidden: Peran '${authResult.context.role}' tidak memiliki izin untuk mengelola koneksi WhatsApp.`,
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+
+      verifiedTenantId = authResult.context.tenantId;
+      verifiedTenantSlug = authResult.context.tenantSlug;
+      verifiedTier = authResult.context.tier;
+      verifiedMetadata = authResult.context.metadata || {};
+
+      // Canonical Capability Gate: whatsapp_engine
+      const tenantContext = {
+        id: verifiedTenantId,
+        slug: verifiedTenantSlug,
+        tier: verifiedTier,
+        metadata: verifiedMetadata,
+      };
+
+      if (!hasTierAccess(tenantContext, 'whatsapp_engine')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Fitur WhatsApp Engine (Evolution/Baileys) eksklusif untuk paket Ads Performance atau Team Scale.',
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      const { data: canonTenant } = await supabaseAdmin
+        .from('tenants')
+        .select('id, slug, tier, metadata')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
+
+      if (!canonTenant) {
+        return NextResponse.json(
+          { success: false, error: `Tenant '${tenantSlug}' tidak ditemukan di database.` },
+          { status: 404 }
+        );
+      }
+
+      verifiedTenantId = canonTenant.id;
+      verifiedTenantSlug = canonTenant.slug;
+      verifiedTier = canonTenant.tier || 'PRO_SCALE';
+      verifiedMetadata = canonTenant.metadata || {};
+
+      if (!hasTierAccess(canonTenant, 'whatsapp_engine')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Fitur WhatsApp Engine (Evolution/Baileys) eksklusif untuk paket Ads Performance atau Team Scale.',
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    const tenantId = verifiedTenantId;
+    tenantSlug = verifiedTenantSlug;
+
     const isReload =
       searchParams.get("action") === "reload" ||
       searchParams.get("force") === "true" ||
       searchParams.get("force_refresh") === "true";
 
-    const supabaseAdmin = getSupabaseAdmin();
-
-    // 1. Resolve Tenant & WhatsApp Connection Record from Supabase Database
-    const { data: tenant } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug, metadata")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    const tenantId = tenant?.id || tenantSlug;
-    const tenantWhatsapp = cleanDigits(tenant?.metadata?.whatsapp_number || tenant?.metadata?.phone);
+    // 1. Resolve WhatsApp Connection Record from Supabase Database
+    const tenantWhatsapp = cleanDigits(verifiedMetadata?.whatsapp_number || verifiedMetadata?.phone);
 
     const { data: waConn } = await supabaseAdmin
       .from("whatsapp_connections")
       .select("*")
-      .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantId}`)
+      .or(`tenant_slug.eq.${verifiedTenantSlug},tenant_id.eq.${verifiedTenantId}`)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    const instanceName = waConn?.instance_name || tenantSlug;
+    const instanceName = waConn?.instance_name || verifiedTenantSlug;
     const evoUrl = (
       process.env.NEXT_PUBLIC_EVOLUTION_API_URL ||
       process.env.EVOLUTION_API_URL ||

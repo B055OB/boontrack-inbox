@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseClient";
+import { resolveVerifiedTenantContext } from "@/lib/auth/tenant-context";
+import { isInternalMachineAuthorized } from "@/lib/auth/merchant-session";
+import { hasTierAccess } from "@/lib/subscription-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +51,99 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── AUTH GUARD & SERVER-SIDE TENANT CONTEXT (WP1 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    let verifiedTenantId = '';
+    let verifiedTenantSlug = '';
+    let verifiedTier = 'ENTERPRISE';
+    let verifiedMetadata: Record<string, any> = {};
+
+    if (!isInternalAuth) {
+      const authResult = await resolveVerifiedTenantContext(req, tenantSlug);
+      if (!authResult.success) {
+        return NextResponse.json(
+          { success: false, error: authResult.error, code: authResult.code },
+          { status: authResult.status }
+        );
+      }
+
+      // RBAC Role Gate: Only OWNER, MERCHANT, SUPERADMIN can configure Official WABA credentials
+      const allowedRoles = ['OWNER', 'MERCHANT', 'SUPERADMIN'];
+      if (!allowedRoles.includes(authResult.context.role)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Forbidden: Peran '${authResult.context.role}' tidak memiliki izin untuk mengonfigurasi Official WhatsApp (WABA).`,
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+
+      verifiedTenantId = authResult.context.tenantId;
+      verifiedTenantSlug = authResult.context.tenantSlug;
+      verifiedTier = authResult.context.tier;
+      verifiedMetadata = authResult.context.metadata || {};
+
+      // Canonical Capability Gate: whatsapp_official
+      const tenantContext = {
+        id: verifiedTenantId,
+        slug: verifiedTenantSlug,
+        tier: verifiedTier,
+        metadata: verifiedMetadata,
+      };
+
+      if (!hasTierAccess(tenantContext, 'whatsapp_official')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Fitur Official WhatsApp Business API (WABA) eksklusif untuk paket Team Scale atau tenant dengan lisensi resmi.',
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      const supabase = getSupabaseAdmin();
+      if (!supabase) {
+        return NextResponse.json(
+          { success: false, error: 'Database service client tidak tersedia.' },
+          { status: 500 }
+        );
+      }
+      const { data: canonTenant } = await supabase
+        .from('tenants')
+        .select('id, slug, tier, metadata')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
+
+      if (!canonTenant) {
+        return NextResponse.json(
+          { success: false, error: `Tenant '${tenantSlug}' tidak ditemukan di database.` },
+          { status: 404 }
+        );
+      }
+
+      verifiedTenantId = canonTenant.id;
+      verifiedTenantSlug = canonTenant.slug;
+      verifiedTier = canonTenant.tier || 'ENTERPRISE';
+      verifiedMetadata = canonTenant.metadata || {};
+
+      if (!hasTierAccess(canonTenant, 'whatsapp_official')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Fitur Official WhatsApp Business API (WABA) eksklusif untuk paket Team Scale atau tenant dengan lisensi resmi.',
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const payload = {
-      tenant_id: tenantSlug,
-      tenant_slug: tenantSlug,
+      tenant_id: verifiedTenantId,
+      tenant_slug: verifiedTenantSlug,
       phone_number_id: phoneNumberId,
       waba_id: wabaId,
       access_token: accessToken,
@@ -186,24 +279,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cari tenant berdasarkan slug atau UUID
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantSlug);
-    let tenantRow: any = null;
-    if (isUuid) {
-      const { data } = await supabase.from("tenants").select("id, slug, metadata").eq("id", tenantSlug).maybeSingle();
-      tenantRow = data;
-    }
-    if (!tenantRow) {
-      const { data } = await supabase.from("tenants").select("id, slug, metadata").eq("slug", tenantSlug).maybeSingle();
-      tenantRow = data;
-    }
-
-    if (!tenantRow) {
-      return NextResponse.json(
-        { success: false, error: `Tenant '${tenantSlug}' tidak ditemukan di database.` },
-        { status: 404 }
-      );
-    }
+    // Authoritative tenant row resolved from validated server-side context
+    const tenantRow = {
+      id: verifiedTenantId,
+      slug: verifiedTenantSlug,
+      metadata: verifiedMetadata,
+    };
 
     // 1. Persist whatsapp_connections
     const { data: existingWabaConn } = await supabase
