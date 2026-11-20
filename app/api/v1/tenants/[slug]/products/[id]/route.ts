@@ -119,7 +119,8 @@ export async function GET(
  */
 async function handleProductMutation(
   req: NextRequest,
-  paramsPromise: Promise<{ slug: string; id: string }>
+  paramsPromise: Promise<{ slug: string; id: string }>,
+  mode: 'PUT' | 'PATCH' = 'PUT'
 ) {
   try {
     const { slug: rawSlug, id: productId } = await paramsPromise;
@@ -199,13 +200,14 @@ async function handleProductMutation(
       actor,
       req,
       customSupabaseAdmin: supabaseAdmin,
+      mode,
     });
 
     if (!result.success) {
       return NextResponse.json(
         {
           success: false,
-          code: result.code,
+          code: result.code === 'CROSS_TENANT_PRODUCT_FORBIDDEN' ? 'FORBIDDEN' : result.code,
           error: result.error,
           message: result.message || result.error,
         },
@@ -220,7 +222,7 @@ async function handleProductMutation(
       await fetch(
         getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products/${encodeURIComponent(productId)}`),
         {
-          method: 'PUT',
+          method: mode,
           headers: {
             'Content-Type': 'application/json',
             'X-Tenant-ID': slug,
@@ -258,14 +260,14 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> }
 ) {
-  return handleProductMutation(req, params);
+  return handleProductMutation(req, params, 'PUT');
 }
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> }
 ) {
-  return handleProductMutation(req, params);
+  return handleProductMutation(req, params, 'PATCH');
 }
 
 export async function DELETE(
@@ -342,7 +344,7 @@ export async function DELETE(
       return NextResponse.json(
         {
           success: false,
-          code: result.code,
+          code: result.code === 'CROSS_TENANT_PRODUCT_FORBIDDEN' ? 'FORBIDDEN' : result.code,
           error: result.error,
           message: result.message || result.error,
         },

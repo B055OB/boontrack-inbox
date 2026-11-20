@@ -238,9 +238,10 @@ describe('ADR-P0-07: CANONICAL PRODUCT WRITER & ATOMICITY PROOFS', () => {
     expect(result.statusCode).toBe(200);
     expect(result.product.id).toBe(committedSqlRow.id);
 
-    // But projection was marked as failed and queued for reconciliation
+    // But projection was marked as failed and needs reconciliation (Blocker 3)
     expect(result.projection?.success).toBe(false);
-    expect(result.projection?.queued_for_reconciliation).toBe(true);
+    expect(result.projection?.projection_status).toBe('FAILED_NEEDS_RECONCILIATION');
+    expect(result.projection?.recoverable_via).toBe('DRY_RUN_RECONCILIATION');
   });
 
   // ── TEST 4: SECTION 10 CUSTOM HTML ENTITLEMENT GATE ENFORCEMENT ──
@@ -306,7 +307,7 @@ describe('ADR-P0-07: CANONICAL PRODUCT WRITER & ATOMICITY PROOFS', () => {
 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(403);
-    expect(result.code).toBe('FORBIDDEN');
+    expect(result.code).toBe('CROSS_TENANT_PRODUCT_FORBIDDEN');
     expect(result.error).toContain('belongs to another tenant');
   });
 

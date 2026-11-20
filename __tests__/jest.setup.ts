@@ -159,6 +159,24 @@ const globalMockTenants: Record<string, any> = {
     tier: 'PRO_SCALE',
     business_type: 'retail',
   },
+  tokoku: {
+    id: '11111111-1111-4111-8111-111111111111',
+    slug: 'tokoku',
+    name: 'Tokoku Official',
+    status: 'active',
+    tier: 'PRO_SCALE',
+    business_type: 'digital',
+    metadata: {
+      products: [
+        {
+          id: 'legacy-prod-01',
+          slug: 'kursus-seo-legacy',
+          name: 'Kursus SEO Legacy',
+          price: 99000,
+        },
+      ],
+    },
+  },
 };
 
 const globalMockBookingSlots = [
@@ -260,6 +278,61 @@ const globalMockOrders: any[] = [
   },
 ];
 
+const globalMockProducts: any[] = [
+  {
+    id: 'prod-starter-1',
+    tenant_id: DEFAULT_TENANT_ID,
+    title: 'Starter Kit OnlineBoost',
+    name: 'Starter Kit OnlineBoost',
+    slug: 'prod-starter-1',
+    price: 249000,
+    promo_price: 249000,
+    product_type: 'digital',
+    is_active: true,
+  },
+  {
+    id: 'OB-BATCH1-249K',
+    tenant_id: DEFAULT_TENANT_ID,
+    title: 'Inkubasi OnlineBoost Batch 1',
+    name: 'Inkubasi OnlineBoost Batch 1',
+    slug: 'ob-batch1-249k',
+    sku: 'OB-BATCH1-249K',
+    price: 249000,
+    promo_price: 249000,
+    product_type: 'digital',
+    is_active: true,
+  },
+  {
+    id: 'ctwa-mastery-7day',
+    tenant_id: '00000000-0000-0000-0000-000000000003',
+    title: '7-Day Sprint CTWA Mastery',
+    name: '7-Day Sprint CTWA Mastery',
+    slug: 'ctwa-mastery-7day',
+    price: 99000,
+    promo_price: 99000,
+    product_type: 'digital',
+    is_active: true,
+  },
+  {
+    id: 'ambig-prod-1',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    title: 'Duplicate Title Product',
+    name: 'Duplicate Title Product',
+    slug: 'dup-1',
+    price: 50000,
+    is_active: true,
+  },
+  {
+    id: 'ambig-prod-2',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    title: 'Duplicate Title Product',
+    name: 'Duplicate Title Product',
+    slug: 'dup-2',
+    price: 60000,
+    is_active: true,
+  },
+];
+
 // Helper to create a chainable query builder
 function createGlobalMockBuilder(tableName: string) {
   const filters: Array<{ type: 'eq' | 'in' | 'or' | 'ilike'; col: string; val: any }> = [];
@@ -308,17 +381,19 @@ function createGlobalMockBuilder(tableName: string) {
     },
     upsert: (data: any) => ({
       select: () => ({
-        single: async () => ({ data, error: null }),
-        maybeSingle: async () => ({ data, error: null }),
+        single: async () => ({ data: Array.isArray(data) ? data[0] : data, error: null }),
+        maybeSingle: async () => ({ data: Array.isArray(data) ? data[0] : data, error: null }),
+        then: (resolve: any) => resolve({ data: Array.isArray(data) ? data : [data], error: null }),
       }),
-      then: (resolve: any) => resolve({ data, error: null }),
+      then: (resolve: any) => resolve({ data: Array.isArray(data) ? data : [data], error: null }),
     }),
     insert: (data: any) => ({
       select: () => ({
-        single: async () => ({ data, error: null }),
-        maybeSingle: async () => ({ data, error: null }),
+        single: async () => ({ data: Array.isArray(data) ? data[0] : data, error: null }),
+        maybeSingle: async () => ({ data: Array.isArray(data) ? data[0] : data, error: null }),
+        then: (resolve: any) => resolve({ data: Array.isArray(data) ? data : [data], error: null }),
       }),
-      then: (resolve: any) => resolve({ data, error: null }),
+      then: (resolve: any) => resolve({ data: Array.isArray(data) ? data : [data], error: null }),
     }),
     update: (updateData: any) => ({
       eq: (col: string, val: any) => {
@@ -360,6 +435,8 @@ function createGlobalMockBuilder(tableName: string) {
         }));
       } else if (tableName === 'tenant_booking_slots') {
         rows = [...globalMockBookingSlots];
+      } else if (tableName === 'products') {
+        rows = [...globalMockProducts];
       }
 
       // Check if filtering for nonexistent tenant

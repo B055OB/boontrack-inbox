@@ -137,7 +137,10 @@ export async function POST(
     // ── EXECUTE VIA SINGLE AUTHORITATIVE CANONICAL WRITER (ADR-P0-07) ──
     const result = await upsertCanonicalProduct({
       tenant: canonicalTenant as CanonicalTenantContext,
-      rawInput: rawBody,
+      rawInput: {
+        price: 0,
+        ...rawBody,
+      },
       actor,
       req,
       customSupabaseAdmin: supabaseAdmin,

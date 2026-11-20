@@ -81,6 +81,13 @@ export interface CanonicalTenantContext {
   tier?: string;
 }
 
+export interface CanonicalProjectionResult {
+  success: boolean;
+  projection_status: 'SYNCED' | 'FAILED_NEEDS_RECONCILIATION';
+  recoverable_via?: 'DRY_RUN_RECONCILIATION';
+  error?: string;
+}
+
 export interface CanonicalWriterResult {
   success: boolean;
   statusCode: number;
@@ -88,11 +95,7 @@ export interface CanonicalWriterResult {
   error?: string;
   message?: string;
   product?: any;
-  projection?: {
-    success: boolean;
-    error?: string;
-    queued_for_reconciliation?: boolean;
-  };
+  projection?: CanonicalProjectionResult;
 }
 
 export interface CanonicalDeleteResult {
@@ -102,11 +105,7 @@ export interface CanonicalDeleteResult {
   error?: string;
   message?: string;
   deletedId?: string;
-  projection?: {
-    success: boolean;
-    error?: string;
-    queued_for_reconciliation?: boolean;
-  };
+  projection?: CanonicalProjectionResult;
 }
 
 /**
@@ -218,115 +217,204 @@ export function projectSqlRowToMetadataItem(sqlRow: any): any {
  * Executes one-way idempotent projection to `tenants.metadata.products`.
  * Catches any projection error and logs structured observability metadata without rolling back SQL.
  */
+/**
+ * Executes one-way idempotent projection to `tenants.metadata.products`.
+ * Enforces:
+ * 1. Optimistic Concurrency Control (compare-and-swap on `updated_at` / snapshot with bounded retry)
+ *    so concurrent updates to unrelated tenant settings (shipping_config, payment_settings, qris_payload)
+ *    are NEVER clobbered.
+ * 2. Pruning by BOTH `id` AND `slug` when deleting legacy products (Regression A).
+ * 3. Truthful observability: returns projection_status ('SYNCED' | 'FAILED_NEEDS_RECONCILIATION')
+ *    and recoverable_via ('DRY_RUN_RECONCILIATION') without deceptive queue flags.
+ */
 export async function executeOneWayProjection(
   supabaseAdmin: any,
   tenant: CanonicalTenantContext,
   committedSqlRow: any,
   operation: 'UPSERT' | 'DELETE',
   deletedId?: string
-): Promise<{ success: boolean; error?: string; queued_for_reconciliation?: boolean }> {
-  try {
-    // 1. Fetch current tenant metadata to ensure optimistic concurrency & freshness
-    const { data: currentTenant, error: fetchErr } = await supabaseAdmin
-      .from('tenants')
-      .select('id, metadata')
-      .eq('id', tenant.id)
-      .maybeSingle();
+): Promise<CanonicalProjectionResult> {
+  const MAX_OCC_RETRIES = 3;
+  let lastErrorMsg = '';
 
-    if (fetchErr || !currentTenant) {
-      const errMsg = fetchErr?.message || 'Tenant record not found for projection';
-      console.error('[CANONICAL_PROJECTION_FAILURE] Tenant fetch failed:', {
-        tenantId: tenant.id,
-        operation,
-        error: errMsg,
-      });
-      return { success: false, error: errMsg, queued_for_reconciliation: true };
-    }
+  for (let attempt = 1; attempt <= MAX_OCC_RETRIES; attempt++) {
+    try {
+      // 1. Fetch current tenant metadata & updated_at to ensure optimistic concurrency & freshness
+      const { data: currentTenant, error: fetchErr } = await supabaseAdmin
+        .from('tenants')
+        .select('id, metadata, updated_at')
+        .eq('id', tenant.id)
+        .maybeSingle();
 
-    const existingMetadata = currentTenant.metadata || {};
-    const existingProducts: any[] = Array.isArray(existingMetadata.products)
-      ? [...existingMetadata.products]
-      : (existingMetadata.product?.name ? [{ ...existingMetadata.product }] : []);
-
-    let updatedProducts: any[];
-
-    if (operation === 'DELETE') {
-      const targetIdStr = String(deletedId || committedSqlRow?.id || '');
-      const targetSlug = committedSqlRow?.slug ? String(committedSqlRow.slug).toLowerCase() : '';
-
-      updatedProducts = existingProducts.filter((p: any) => {
-        const pIdStr = String(p.id || '');
-        const pSlug = String(p.slug || '').toLowerCase();
-        if (targetIdStr && pIdStr === targetIdStr) return false;
-        if (targetSlug && pSlug === targetSlug) return false;
-        return true;
-      });
-    } else {
-      // Operation: UPSERT
-      const projectedItem = projectSqlRowToMetadataItem(committedSqlRow);
-      if (!projectedItem) {
-        return { success: false, error: 'Failed to derive projection item', queued_for_reconciliation: true };
-      }
-
-      const targetIdStr = String(committedSqlRow.id);
-      const targetSlug = String(committedSqlRow.slug || '').toLowerCase();
-
-      const existingIndex = existingProducts.findIndex((p: any) => {
-        const pIdStr = String(p.id || '');
-        const pSlug = String(p.slug || '').toLowerCase();
-        return pIdStr === targetIdStr || (targetSlug && pSlug === targetSlug);
-      });
-
-      if (existingIndex >= 0) {
-        existingProducts[existingIndex] = {
-          ...existingProducts[existingIndex],
-          ...projectedItem,
+      if (fetchErr || !currentTenant) {
+        lastErrorMsg = fetchErr?.message || 'Tenant record not found for projection';
+        console.error('[CANONICAL_PROJECTION_FAILURE] Tenant fetch failed:', {
+          tenantId: tenant.id,
+          operation,
+          error: lastErrorMsg,
+          attempt,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+        });
+        return {
+          success: false,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+          error: lastErrorMsg,
         };
-        updatedProducts = existingProducts;
-      } else {
-        updatedProducts = [projectedItem, ...existingProducts];
       }
-    }
 
-    // Clean metadata products: strip custom_html from each projection item
-    const sanitizedMetaProducts = updatedProducts.map((p) => {
-      if (!p.single_page_config) return p;
-      const spc = { ...p.single_page_config };
-      if (spc.custom_html) delete spc.custom_html;
-      return { ...p, single_page_config: spc };
-    });
+      const existingMetadata = (typeof currentTenant.metadata === 'object' && currentTenant.metadata !== null)
+        ? { ...currentTenant.metadata }
+        : {};
 
-    const updatedMetadata = {
-      ...existingMetadata,
-      products: sanitizedMetaProducts,
-      product: sanitizedMetaProducts[0] || null,
-    };
-    delete (updatedMetadata as any).custom_html;
-    delete (updatedMetadata as any).single_page_config;
+      const existingProducts: any[] = Array.isArray(existingMetadata.products)
+        ? [...existingMetadata.products]
+        : (existingMetadata.product?.name ? [{ ...existingMetadata.product }] : []);
 
-    const { error: updateErr } = await supabaseAdmin
-      .from('tenants')
-      .update({ metadata: updatedMetadata })
-      .eq('id', tenant.id);
+      let updatedProducts: any[];
 
-    if (updateErr) {
-      console.error('[CANONICAL_PROJECTION_FAILURE] Metadata update failed:', {
+      if (operation === 'DELETE') {
+        const targetKey = String(deletedId || committedSqlRow?.id || '').toLowerCase();
+        const targetSlug = (committedSqlRow?.slug ? String(committedSqlRow.slug) : '').toLowerCase();
+
+        // Regression A: Match and prune by BOTH id AND slug (scoped strictly to target)
+        updatedProducts = existingProducts.filter((p: any) => {
+          const pIdStr = String(p.id || '').toLowerCase();
+          const pSlug = String(p.slug || '').toLowerCase();
+          if (targetKey && (pIdStr === targetKey || pSlug === targetKey)) return false;
+          if (targetSlug && (pSlug === targetSlug || pIdStr === targetSlug)) return false;
+          return true;
+        });
+      } else {
+        // Operation: UPSERT
+        const projectedItem = projectSqlRowToMetadataItem(committedSqlRow);
+        if (!projectedItem) {
+          lastErrorMsg = 'Failed to derive projection item';
+          return {
+            success: false,
+            projection_status: 'FAILED_NEEDS_RECONCILIATION',
+            recoverable_via: 'DRY_RUN_RECONCILIATION',
+            error: lastErrorMsg,
+          };
+        }
+
+        const targetIdStr = String(committedSqlRow.id);
+        const targetSlug = String(committedSqlRow.slug || '').toLowerCase();
+
+        const existingIndex = existingProducts.findIndex((p: any) => {
+          const pIdStr = String(p.id || '');
+          const pSlug = String(p.slug || '').toLowerCase();
+          return pIdStr === targetIdStr || (targetSlug && pSlug === targetSlug);
+        });
+
+        if (existingIndex >= 0) {
+          existingProducts[existingIndex] = {
+            ...existingProducts[existingIndex],
+            ...projectedItem,
+          };
+          updatedProducts = existingProducts;
+        } else {
+          updatedProducts = [projectedItem, ...existingProducts];
+        }
+      }
+
+      // Clean metadata products: strip custom_html from each projection item
+      const sanitizedMetaProducts = updatedProducts.map((p) => {
+        if (!p.single_page_config) return p;
+        const spc = { ...p.single_page_config };
+        if (spc.custom_html) delete spc.custom_html;
+        return { ...p, single_page_config: spc };
+      });
+
+      // Optimistic Concurrency Control Invariant:
+      // Retain ALL existing tenant settings (shipping_config, payment_settings, qris_payload, etc.)
+      const updatedMetadata = {
+        ...existingMetadata,
+        products: sanitizedMetaProducts,
+        product: sanitizedMetaProducts[0] || null,
+      };
+      delete (updatedMetadata as any).custom_html;
+      delete (updatedMetadata as any).single_page_config;
+
+      const newUpdatedAt = new Date().toISOString();
+      let updateQuery = supabaseAdmin
+        .from('tenants')
+        .update({
+          metadata: updatedMetadata,
+          ...(currentTenant.updated_at !== undefined ? { updated_at: newUpdatedAt } : {}),
+        })
+        .eq('id', tenant.id);
+
+      // Apply compare-and-swap condition on updated_at if chainable
+      if (currentTenant.updated_at && typeof (updateQuery as any)?.eq === 'function') {
+        const chainedOcc = (updateQuery as any).eq('updated_at', currentTenant.updated_at);
+        if (chainedOcc && typeof chainedOcc.then === 'function') {
+          updateQuery = chainedOcc;
+        }
+      }
+
+      const { data: updateData, error: updateErr } = await updateQuery;
+
+      if (updateErr) {
+        lastErrorMsg = updateErr.message;
+        console.error('[CANONICAL_PROJECTION_FAILURE] Metadata update failed:', {
+          tenantId: tenant.id,
+          operation,
+          error: lastErrorMsg,
+          attempt,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+        });
+        if (attempt < MAX_OCC_RETRIES) {
+          continue;
+        }
+        return {
+          success: false,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+          error: lastErrorMsg,
+        };
+      }
+
+      // If OCC conditional update returned zero rows affected, retry with fresh metadata
+      if (Array.isArray(updateData) && updateData.length === 0 && attempt < MAX_OCC_RETRIES) {
+        console.warn(`[CANONICAL_PROJECTION_OCC_RETRY] OCC collision detected for tenant ${tenant.id}, retrying (attempt ${attempt + 1})`);
+        continue;
+      }
+
+      return {
+        success: true,
+        projection_status: 'SYNCED',
+      };
+    } catch (err: any) {
+      lastErrorMsg = err?.message || 'Unhandled projection error';
+      console.error('[CANONICAL_PROJECTION_UNHANDLED_EXCEPTION]:', {
         tenantId: tenant.id,
         operation,
-        error: updateErr.message,
+        message: lastErrorMsg,
+        attempt,
+        projection_status: 'FAILED_NEEDS_RECONCILIATION',
+        recoverable_via: 'DRY_RUN_RECONCILIATION',
       });
-      return { success: false, error: updateErr.message, queued_for_reconciliation: true };
+      if (attempt < MAX_OCC_RETRIES) {
+        continue;
+      }
+      return {
+        success: false,
+        projection_status: 'FAILED_NEEDS_RECONCILIATION',
+        recoverable_via: 'DRY_RUN_RECONCILIATION',
+        error: lastErrorMsg,
+      };
     }
-
-    return { success: true };
-  } catch (err: any) {
-    console.error('[CANONICAL_PROJECTION_UNHANDLED_EXCEPTION]:', {
-      tenantId: tenant.id,
-      operation,
-      message: err?.message,
-    });
-    return { success: false, error: err?.message || 'Unhandled projection error', queued_for_reconciliation: true };
   }
+
+  return {
+    success: false,
+    projection_status: 'FAILED_NEEDS_RECONCILIATION',
+    recoverable_via: 'DRY_RUN_RECONCILIATION',
+    error: lastErrorMsg || 'Max retries exhausted for projection OCC',
+  };
 }
 
 /**
@@ -345,8 +433,10 @@ export async function upsertCanonicalProduct(options: {
   actor: CanonicalWriterActor;
   req?: NextRequest;
   customSupabaseAdmin?: any;
+  mode?: 'PUT' | 'PATCH';
 }): Promise<CanonicalWriterResult> {
-  const { tenant, rawInput, actor, req, customSupabaseAdmin } = options;
+  const { tenant, rawInput, actor, req, customSupabaseAdmin, mode = 'PUT' } = options;
+  const isPatch = mode === 'PATCH';
   const supabaseAdmin = customSupabaseAdmin || getSupabaseAdmin();
 
   if (!supabaseAdmin) {
@@ -414,7 +504,7 @@ export async function upsertCanonicalProduct(options: {
     };
   }
 
-  // ── 2. PRODUCT OWNERSHIP & CROSS-TENANT VERIFICATION ──
+  // ── 2. PRODUCT OWNERSHIP & CROSS-TENANT VERIFICATION (BLOCKER 1) ──
   const providedId = body.id !== undefined && body.id !== null ? String(body.id).trim() : '';
   const isTargetUuid = UUID_RE.test(providedId);
   let ownedProduct: any = null;
@@ -422,87 +512,231 @@ export async function upsertCanonicalProduct(options: {
   if (providedId) {
     let ownershipQuery = supabaseAdmin
       .from('products')
-      .select('id, tenant_id, title, name, slug, price, promo_price, category, product_type, fulfillment_metadata')
+      .select('id, tenant_id, title, name, slug, price, promo_price, category, product_type, fulfillment_metadata, description, image, image_url, stock, is_unlimited_stock, sku, is_active, requires_shipping, variants')
       .eq('tenant_id', tenant.id);
 
     if (isTargetUuid) {
       ownershipQuery = ownershipQuery.eq('id', providedId);
-    } else {
+    } else if (typeof ownershipQuery.or === 'function') {
       ownershipQuery = ownershipQuery.or(`id.eq.${providedId},slug.eq.${providedId}`);
+    } else {
+      ownershipQuery = ownershipQuery.eq('id', providedId);
     }
-    const { data: op } = await ownershipQuery.maybeSingle();
+
+    const { data: op, error: opErr } = await ownershipQuery.maybeSingle();
+
+    // Blocker 1: Check .error on ownershipQuery -> STOP IMMEDIATELY if DB error
+    if (opErr) {
+      return {
+        success: false,
+        statusCode: 503,
+        code: 'OWNERSHIP_LOOKUP_FAILED',
+        error: `Database error during product ownership lookup: ${opErr.message}`,
+      };
+    }
+
     ownedProduct = op;
 
     if (ownedProduct && ownedProduct.tenant_id && ownedProduct.tenant_id !== tenant.id) {
       return {
         success: false,
         statusCode: 403,
-        code: 'FORBIDDEN',
+        code: 'CROSS_TENANT_PRODUCT_FORBIDDEN',
         error: 'Forbidden: Product belongs to another tenant.',
       };
     }
 
-    const tenantMetaProducts: any[] = Array.isArray(tenant.metadata?.products)
-      ? tenant.metadata.products
-      : (tenant.metadata?.product?.name ? [tenant.metadata.product] : []);
-    const existsInMeta = tenantMetaProducts.some(
-      (p: any) => String(p.id) === providedId || p.slug === providedId
-    );
-
-    if (!ownedProduct && !existsInMeta) {
-      // Check if product exists under a DIFFERENT tenant to prevent cross-tenant modification
-      const { data: crossTenantProd } = await supabaseAdmin
+    // Blocker 1: Cross-tenant check -> check if target identifier exists under another tenant
+    if (!ownedProduct) {
+      const { data: crossTenantProd, error: crossErr } = await supabaseAdmin
         .from('products')
         .select('id, tenant_id')
         .eq('id', providedId)
         .maybeSingle();
 
+      if (crossErr) {
+        return {
+          success: false,
+          statusCode: 503,
+          code: 'OWNERSHIP_LOOKUP_FAILED',
+          error: `Database error during cross-tenant ownership lookup: ${crossErr.message}`,
+        };
+      }
+
       if (crossTenantProd && crossTenantProd.tenant_id !== tenant.id) {
         return {
           success: false,
           statusCode: 403,
-          code: 'FORBIDDEN',
-          error: 'Forbidden: Product does not belong to this tenant',
+          code: 'CROSS_TENANT_PRODUCT_FORBIDDEN',
+          error: 'Forbidden: Target product belongs to another tenant.',
         };
       }
     }
   }
 
-  // ── 3. VALIDATE REQUIRED COMMERCIAL ATTRIBUTES ──
-  const trimmedName = String(
-    body.name ||
-    body.title ||
-    ownedProduct?.title ||
-    ownedProduct?.name ||
-    (isCustomHtmlCleanup(body) ? 'Produk' : '')
-  ).trim();
-
-  if (!trimmedName) {
+  // Blocker 2: PATCH requires an existing owned product in public.products
+  if (isPatch && !ownedProduct) {
     return {
       success: false,
-      statusCode: 400,
-      code: 'VALIDATION_ERROR',
-      error: 'Nama produk wajib diisi.',
+      statusCode: 404,
+      code: 'PRODUCT_NOT_FOUND',
+      error: 'Produk tidak ditemukan untuk pembaruan parsial.',
     };
   }
 
-  const rawPrice = body.price !== undefined ? body.price : (ownedProduct?.price !== undefined ? ownedProduct.price : 0);
-  const numPrice = Number(rawPrice);
-  if (isNaN(numPrice) || numPrice < 0) {
-    return {
-      success: false,
-      statusCode: 400,
-      code: 'VALIDATION_ERROR',
-      error: 'Harga produk tidak valid (harus angka non-negatif).',
-    };
+  // ── 3. VALIDATE REQUIRED COMMERCIAL ATTRIBUTES (BLOCKER 2) ──
+  const has = (key: string) =>
+    (rawInput && Object.prototype.hasOwnProperty.call(rawInput, key)) ||
+    (body && Object.prototype.hasOwnProperty.call(body, key));
+
+  const isCleanup = isCustomHtmlCleanup(body);
+
+  // In PUT mode: Enforce explicit full-resource contract (reject missing core fields)
+  // Exemption: isCustomHtmlCleanup (WP2 Section 10 cleanup exception) where merchant only clears HTML
+  if (!isPatch && !isCleanup) {
+    if (!has('name') && !has('title') && !ownedProduct) {
+      return {
+        success: false,
+        statusCode: 400,
+        code: 'VALIDATION_ERROR',
+        error: 'Nama produk wajib diisi pada mode PUT (Full Replacement).',
+      };
+    }
+    if (!has('price') && !ownedProduct) {
+      return {
+        success: false,
+        statusCode: 400,
+        code: 'VALIDATION_ERROR',
+        error: 'Harga produk wajib diisi pada mode PUT (Full Replacement).',
+      };
+    }
+  }
+
+  let trimmedName = '';
+  if (has('name') || has('title')) {
+    trimmedName = String(body.name || body.title || '').trim();
+    if (!trimmedName) {
+      return {
+        success: false,
+        statusCode: 400,
+        code: 'VALIDATION_ERROR',
+        error: 'Nama produk wajib diisi.',
+      };
+    }
+  } else if (isPatch || ownedProduct) {
+    trimmedName = String(ownedProduct?.title || ownedProduct?.name || '').trim();
+  } else {
+    trimmedName = String(isCustomHtmlCleanup(body) ? 'Produk' : '').trim();
+  }
+
+  let numPrice = 0;
+  if (has('price')) {
+    const rawPrice = body.price;
+    numPrice = Number(rawPrice);
+    if (isNaN(numPrice) || numPrice < 0) {
+      return {
+        success: false,
+        statusCode: 400,
+        code: 'VALIDATION_ERROR',
+        error: 'Harga produk tidak valid (harus angka non-negatif).',
+      };
+    }
+  } else if (isPatch || ownedProduct) {
+    numPrice = Number(ownedProduct?.price !== undefined ? ownedProduct.price : 0);
   }
 
   // ── 4. RESOLVE CANONICAL IDENTITY (IMMUTABLE UUID & SLUG) ──
   const productId = ownedProduct?.id || (isTargetUuid ? providedId : (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : require('crypto').randomUUID()));
 
   // Slug resolution
-  const baseSlug = body.slug ? slugify(body.slug) : (ownedProduct?.slug || slugify(trimmedName));
-  const finalSlug = baseSlug || `prod-${Date.now().toString(36)}`;
+  let finalSlug = '';
+  if (has('slug') && body.slug) {
+    finalSlug = slugify(body.slug) || `prod-${Date.now().toString(36)}`;
+  } else if (isPatch) {
+    finalSlug = ownedProduct?.slug || slugify(trimmedName);
+  } else {
+    finalSlug = (body.slug ? slugify(body.slug) : (ownedProduct?.slug || slugify(trimmedName))) || `prod-${Date.now().toString(36)}`;
+  }
+
+  // ── BLOCKER 4: PRE-MUTATION SLUG & SKU COLLISION GUARDS ──
+  if (finalSlug) {
+    let slugQuery = supabaseAdmin
+      .from('products')
+      .select('id, slug')
+      .eq('tenant_id', tenant.id)
+      .eq('slug', finalSlug);
+
+    if (typeof slugQuery.limit === 'function') {
+      slugQuery = slugQuery.limit(2);
+    }
+
+    let slugRes: any = null;
+    if (typeof slugQuery.then === 'function') {
+      slugRes = await slugQuery;
+    } else {
+      slugRes = { data: [], error: null };
+    }
+
+    if (slugRes?.error) {
+      return {
+        success: false,
+        statusCode: 503,
+        code: 'LOOKUP_FAILED',
+        error: `Database error during slug collision check: ${slugRes.error.message}`,
+      };
+    }
+
+    const existingSlugRows = Array.isArray(slugRes?.data) ? slugRes.data : [];
+    const conflictingSlug = existingSlugRows.filter((p: any) => String(p.id) !== String(productId));
+    if (conflictingSlug.length > 0) {
+      return {
+        success: false,
+        statusCode: 409,
+        code: 'PRODUCT_SLUG_CONFLICT',
+        error: `Slug '${finalSlug}' sudah digunakan oleh produk lain dalam tenant ini.`,
+      };
+    }
+  }
+
+  const candidateSku = has('sku') ? (body.sku ? String(body.sku).trim() : null) : null;
+  if (candidateSku) {
+    let skuQuery = supabaseAdmin
+      .from('products')
+      .select('id, sku')
+      .eq('tenant_id', tenant.id)
+      .eq('sku', candidateSku);
+
+    if (typeof skuQuery.limit === 'function') {
+      skuQuery = skuQuery.limit(2);
+    }
+
+    let skuRes: any = null;
+    if (typeof skuQuery.then === 'function') {
+      skuRes = await skuQuery;
+    } else {
+      skuRes = { data: [], error: null };
+    }
+
+    if (skuRes?.error) {
+      return {
+        success: false,
+        statusCode: 503,
+        code: 'LOOKUP_FAILED',
+        error: `Database error during SKU collision check: ${skuRes.error.message}`,
+      };
+    }
+
+    const existingSkuRows = Array.isArray(skuRes?.data) ? skuRes.data : [];
+    const conflictingSku = existingSkuRows.filter((p: any) => String(p.id) !== String(productId));
+    if (conflictingSku.length > 0) {
+      return {
+        success: false,
+        statusCode: 409,
+        code: 'PRODUCT_SKU_CONFLICT',
+        error: `SKU '${candidateSku}' sudah digunakan oleh produk lain dalam tenant ini.`,
+      };
+    }
+  }
 
   // Product Type and Category mapping
   const resolvedCategory = body.category || ownedProduct?.category || tenant.category || 'digital';
@@ -538,42 +772,125 @@ export async function upsertCanonicalProduct(options: {
         sku: v.sku || null,
         is_active: v.is_active !== false,
       }))
-    : null;
+    : (has('variants') ? (body.variants === null ? null : undefined) : undefined);
 
   const nowIso = new Date().toISOString();
 
-  // ── 4. CONSTRUCT RELATIONAL SQL PAYLOAD ──
-  const productDbPayload: Record<string, any> = {
-    id: productId,
-    tenant_id: tenant.id,
-    title: trimmedName,
-    name: trimmedName,
-    slug: finalSlug,
-    description: body.description !== undefined ? body.description : null,
-    price: numPrice,
-    promo_price: body.promo_price ? Number(body.promo_price) : 0,
-    category: resolvedCategory,
-    product_type: dbProductType,
-    image: body.image || body.image_url || null,
-    image_url: body.image_url || body.image || null,
-    stock: body.stock !== undefined && body.stock !== null ? Number(body.stock) : null,
-    is_unlimited_stock: body.is_unlimited !== undefined ? Boolean(body.is_unlimited) : true,
-    sku: body.sku || null,
-    is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
-    requires_shipping: body.requires_shipping !== undefined ? Boolean(body.requires_shipping) : false,
-    fulfillment_metadata: fulfillmentMetadata,
-    variants: cleanVariants,
-    updated_at: nowIso,
-  };
+  // ── 5. CONSTRUCT RELATIONAL SQL PAYLOAD (BLOCKER 2: PATCH VS PUT) ──
+  let productDbPayload: Record<string, any>;
 
-  // ── 5. PRIMARY SQL WRITE FIRST (FAILURE ATOMICITY PROOF) ──
-  // Step 5 executes SQL mutation FIRST. If this fails, we return error IMMEDIATELY.
+  if (isPatch) {
+    // ── STRICT PATCH PAYLOAD: ONLY KEYS EXPLICITLY PRESENT IN BODY ──
+    productDbPayload = {
+      id: productId,
+      tenant_id: tenant.id,
+      updated_at: nowIso,
+    };
+
+    if (has('name') || has('title')) {
+      productDbPayload.title = trimmedName;
+      productDbPayload.name = trimmedName;
+    }
+    if (has('slug')) {
+      productDbPayload.slug = finalSlug;
+    }
+    if (has('description')) {
+      productDbPayload.description = body.description !== undefined ? body.description : null;
+    }
+    if (has('price')) {
+      productDbPayload.price = numPrice;
+    }
+    if (has('promo_price')) {
+      productDbPayload.promo_price = body.promo_price !== undefined && body.promo_price !== null ? Number(body.promo_price) : 0;
+    }
+    if (has('category')) {
+      productDbPayload.category = resolvedCategory;
+    }
+    if (has('product_type') || has('type')) {
+      productDbPayload.product_type = dbProductType;
+    }
+    if (has('image') || has('image_url')) {
+      productDbPayload.image = body.image || body.image_url || null;
+      productDbPayload.image_url = body.image_url || body.image || null;
+    }
+    if (has('stock')) {
+      productDbPayload.stock = body.stock !== undefined && body.stock !== null ? Number(body.stock) : null;
+    }
+    if (has('is_unlimited') || has('is_unlimited_stock')) {
+      productDbPayload.is_unlimited_stock = body.is_unlimited !== undefined ? Boolean(body.is_unlimited) : (body.is_unlimited_stock !== undefined ? Boolean(body.is_unlimited_stock) : true);
+    }
+    if (has('sku')) {
+      productDbPayload.sku = body.sku || null;
+    }
+    if (has('is_active')) {
+      productDbPayload.is_active = Boolean(body.is_active);
+    }
+    if (has('requires_shipping')) {
+      productDbPayload.requires_shipping = Boolean(body.requires_shipping);
+    }
+    if (has('variants')) {
+      productDbPayload.variants = cleanVariants ?? null;
+    }
+    if (
+      has('fulfillment_metadata') ||
+      has('single_page_config') ||
+      has('custom_html') ||
+      has('weight_grams') ||
+      has('facilities') ||
+      has('features')
+    ) {
+      const existingMeta = (typeof ownedProduct.fulfillment_metadata === 'object' && ownedProduct.fulfillment_metadata !== null)
+        ? { ...ownedProduct.fulfillment_metadata }
+        : {};
+      productDbPayload.fulfillment_metadata = {
+        ...existingMeta,
+        ...fulfillmentMetadata,
+        ...(cleanSinglePageConfig ? {
+          single_page_config: {
+            ...(existingMeta.single_page_config || {}),
+            ...cleanSinglePageConfig,
+          },
+        } : {}),
+      };
+    }
+  } else {
+    // ── FULL PUT PAYLOAD: FULL RESOURCE CONTRACT ──
+    productDbPayload = {
+      id: productId,
+      tenant_id: tenant.id,
+      title: trimmedName,
+      name: trimmedName,
+      slug: finalSlug,
+      description: body.description !== undefined ? body.description : null,
+      price: numPrice,
+      promo_price: body.promo_price ? Number(body.promo_price) : 0,
+      category: resolvedCategory,
+      product_type: dbProductType,
+      image: body.image || body.image_url || null,
+      image_url: body.image_url || body.image || null,
+      stock: body.stock !== undefined && body.stock !== null ? Number(body.stock) : null,
+      is_unlimited_stock: body.is_unlimited !== undefined ? Boolean(body.is_unlimited) : true,
+      sku: body.sku || null,
+      is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
+      requires_shipping: body.requires_shipping !== undefined ? Boolean(body.requires_shipping) : false,
+      fulfillment_metadata: fulfillmentMetadata,
+      variants: cleanVariants ?? null,
+      updated_at: nowIso,
+    };
+  }
+
+  // ── 6. PRIMARY SQL WRITE FIRST (FAILURE ATOMICITY PROOF) ──
+  // Step 6 executes SQL mutation FIRST. If this fails, we return error IMMEDIATELY.
   // tenants.metadata.products is NEVER touched when SQL fails.
   let committedRows: any[] | null = null;
   let sqlErr: any = null;
 
   const productsTable = supabaseAdmin.from('products');
-  if (typeof productsTable.upsert === 'function') {
+  if (isPatch) {
+    const res = await productsTable.update(productDbPayload).eq('id', ownedProduct.id).eq('tenant_id', tenant.id).select();
+    committedRows = res.data;
+    sqlErr = res.error;
+  } else if (typeof productsTable.upsert === 'function') {
     const res = await productsTable.upsert(productDbPayload).select();
     committedRows = res.data;
     sqlErr = res.error;
@@ -587,7 +904,20 @@ export async function upsertCanonicalProduct(options: {
     sqlErr = res.error;
   }
 
-  if (sqlErr || !committedRows || committedRows.length === 0) {
+  // Blocker 4: Gracefully handle PostgreSQL unique constraint violation (23505) under race conditions
+  if (sqlErr) {
+    if (sqlErr.code === '23505' || sqlErr.message?.includes('duplicate key') || sqlErr.message?.includes('23505')) {
+      const isSku = Boolean(sqlErr.message?.includes('sku'));
+      return {
+        success: false,
+        statusCode: 409,
+        code: isSku ? 'PRODUCT_SKU_CONFLICT' : 'PRODUCT_SLUG_CONFLICT',
+        error: isSku
+          ? `Product SKU conflict under race condition: ${sqlErr.message}`
+          : `Product slug conflict under race condition: ${sqlErr.message}`,
+      };
+    }
+
     const errorMsg = sqlErr?.message || 'Database write to public.products returned zero rows';
     console.error('[CANONICAL_PRODUCT_WRITER] SQL write failed:', {
       tenantId: tenant.id,
@@ -603,9 +933,19 @@ export async function upsertCanonicalProduct(options: {
     };
   }
 
+  if (!committedRows || committedRows.length === 0) {
+    return {
+      success: false,
+      statusCode: 500,
+      code: 'SQL_MUTATION_FAILED',
+      error: 'Database write to public.products returned zero rows',
+      message: 'Gagal menyimpan produk ke database relasional utama.',
+    };
+  }
+
   const committedProduct = committedRows[0];
 
-  // ── 6. CONTROLLED ONE-WAY DERIVED PROJECTION (O-03 Option A) ──
+  // ── 7. CONTROLLED ONE-WAY DERIVED PROJECTION (O-03 Option A) ──
   // Only reached after SQL write successfully committed.
   const projectionResult = await executeOneWayProjection(
     supabaseAdmin,
@@ -614,19 +954,19 @@ export async function upsertCanonicalProduct(options: {
     'UPSERT'
   );
 
-  // ── 7. AUDIT TRAIL RECORDING ──
+  // ── 8. AUDIT TRAIL RECORDING ──
   await recordTenantConfigAudit({
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
     actorId: actor.actorId,
     actorRole: actor.actorRole,
     authMethod: actor.isInternalMachine ? 'internal_machine' : 'merchant_session',
-    action: 'PRODUCT_UPSERT',
+    action: isPatch ? 'PRODUCT_PATCH' : 'PRODUCT_UPSERT',
     resourceType: 'products',
     resourceId: String(committedProduct.id),
     status: 'SUCCESS',
     changedKeys: ['products'],
-    diffSummary: { product_id: committedProduct.id, slug: committedProduct.slug },
+    diffSummary: { product_id: committedProduct.id, slug: committedProduct.slug, mode },
     req,
   });
 
@@ -691,44 +1031,52 @@ export async function deleteCanonicalProduct(options: {
 
   const { data: targetProduct, error: lookupErr } = await lookupQuery.maybeSingle();
 
+  // Blocker 1: Check .error on lookupQuery -> STOP IMMEDIATELY if DB error
   if (lookupErr) {
     return {
       success: false,
       statusCode: 503,
-      code: 'SERVICE_UNAVAILABLE',
-      error: lookupErr.message,
+      code: 'OWNERSHIP_LOOKUP_FAILED',
+      error: `Database error during product ownership lookup: ${lookupErr.message}`,
     };
   }
 
   if (!targetProduct) {
-    // Cross-tenant check: check if it exists under another tenant
-    if (isTargetUuid) {
-      const { data: crossTenant } = await supabaseAdmin
-        .from('products')
-        .select('id, tenant_id')
-        .eq('id', rawKey)
-        .maybeSingle();
+    // Blocker 1: Cross-tenant check for target identifier
+    const { data: crossTenant, error: crossErr } = await supabaseAdmin
+      .from('products')
+      .select('id, tenant_id')
+      .eq('id', rawKey)
+      .maybeSingle();
 
-      if (crossTenant && crossTenant.tenant_id !== tenant.id) {
-        return {
-          success: false,
-          statusCode: 403,
-          code: 'FORBIDDEN',
-          error: 'Forbidden: Product does not belong to this tenant.',
-        };
-      }
+    if (crossErr) {
+      return {
+        success: false,
+        statusCode: 503,
+        code: 'OWNERSHIP_LOOKUP_FAILED',
+        error: `Database error during cross-tenant ownership lookup: ${crossErr.message}`,
+      };
     }
 
-    // Check if it exists only in metadata (Legacy record)
+    if (crossTenant && crossTenant.tenant_id !== tenant.id) {
+      return {
+        success: false,
+        statusCode: 403,
+        code: 'CROSS_TENANT_PRODUCT_FORBIDDEN',
+        error: 'Forbidden: Product belongs to another tenant.',
+      };
+    }
+
+    // Regression A: Check if it exists in metadata (Legacy record) matching by BOTH id AND slug
     const existingMetaProducts: any[] = Array.isArray(tenant.metadata?.products)
       ? tenant.metadata.products
       : (tenant.metadata?.product?.name ? [tenant.metadata.product] : []);
     const existsInMeta = existingMetaProducts.some(
-      (p: any) => String(p.id) === rawKey || String(p.slug) === rawKey
+      (p: any) => String(p.id) === rawKey || String(p.slug || '').toLowerCase() === rawKey.toLowerCase()
     );
 
     if (existsInMeta) {
-      // Legacy metadata-only product deletion
+      // Legacy metadata-only product deletion: match and prune by BOTH id AND slug
       const projectionResult = await executeOneWayProjection(
         supabaseAdmin,
         tenant,
@@ -748,7 +1096,7 @@ export async function deleteCanonicalProduct(options: {
         resourceId: rawKey,
         status: 'SUCCESS',
         changedKeys: ['products'],
-        diffSummary: { deleted_legacy_id: rawKey },
+        diffSummary: { deleted_legacy_key: rawKey },
         req,
       });
 

@@ -133,6 +133,41 @@ jest.mock('@/lib/supabaseClient', () => {
       };
     }
 
+    if (table === 'products') {
+      const mockSqlProducts = (mockTenantData.metadata?.products || []).map((p: any) => ({
+        ...p,
+        title: p.name,
+        tenant_id: 'tenant-test-123',
+        is_active: true,
+      }));
+      return {
+        select: jest.fn().mockImplementation(() => {
+          let currentRows = [...mockSqlProducts];
+          const filterBuilder: any = {
+            eq: jest.fn().mockImplementation((col: string, val: any) => {
+              currentRows = currentRows.filter(r => (r as any)[col] === val);
+              return filterBuilder;
+            }),
+            or: jest.fn().mockImplementation((expr: string) => {
+              const parts = expr.split(',');
+              currentRows = currentRows.filter(r =>
+                parts.some(p => {
+                  const [c, op, v] = p.split('.');
+                  return op === 'eq' && String((r as any)[c]) === String(v);
+                })
+              );
+              return filterBuilder;
+            }),
+            limit: jest.fn().mockImplementation(() => filterBuilder),
+            single: jest.fn().mockImplementation(() => Promise.resolve({ data: currentRows[0] || null, error: null })),
+            maybeSingle: jest.fn().mockImplementation(() => Promise.resolve({ data: currentRows[0] || null, error: null })),
+            then: (resolve: any) => resolve({ data: currentRows, error: null }),
+          };
+          return filterBuilder;
+        }),
+      };
+    }
+
     // Default table fallback (products, order_items, etc.)
     return {
       select: jest.fn().mockReturnValue(chainableQuery),
