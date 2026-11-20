@@ -6,24 +6,79 @@ import {
   sanitizePublicText,
   validateLexicalPublicUrl,
 } from './public-catalog-sanitizer';
+import { hasTierAccess } from './subscription-tiers';
 
 /**
- * Pure route/product eligibility guard for the OnlineBoost Section 10 takeover.
+ * Pure route/product eligibility guard for Section 10 custom HTML takeover.
+ * Enforces canonical capability 'product_landing_custom_html' with zero tenant/SKU hardcoding.
  * Callers must still verify they are rendering within a product-detail route.
  */
 export function isSection10TakeoverEligible(
-  tenant?: string | null,
+  tenantContext?: any,
   sku?: string | null,
-  slug?: string | null
+  slug?: string | null,
+  productContext?: any
 ): boolean {
-  const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
-  const isObBatch1Target = Boolean(
-    (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
-    (sku || '').toUpperCase() === 'ACADEMY_CTWA_BATCH1_SCALE' ||
-    (slug || '').toLowerCase() === 'ob-batch1-249k' ||
-    (slug || '').toLowerCase() === 'kelas-inkubasi-ctwa-batch-1-scale'
-  );
-  return Boolean(isOnlineBoostTenant && isObBatch1Target);
+  // 1. Fail-closed: Must provide product identity (sku or slug)
+  const resolvedSku = (sku || productContext?.sku || '').trim();
+  const resolvedSlug = (slug || productContext?.slug || '').trim();
+  if (!resolvedSku && !resolvedSlug) {
+    return false;
+  }
+
+  // 2. Resolve tenant context
+  if (!tenantContext) {
+    return false;
+  }
+
+  const tenantObj =
+    typeof tenantContext === 'object' && tenantContext !== null
+      ? tenantContext
+      : { slug: String(tenantContext).trim() };
+
+  // 3. Strict Canonical Capability Enforcement (Zero Hardcoding)
+  // Tenant slug ('onlineboost') or SKU must NEVER grant access.
+  // Access requires hasTierAccess(tenantObj, 'product_landing_custom_html') === true.
+  if (!hasTierAccess(tenantObj, 'product_landing_custom_html')) {
+    return false;
+  }
+
+  // 4. Product ownership validation (if productContext specifies tenant binding)
+  if (productContext && typeof productContext === 'object') {
+    const prodTenantId = productContext.tenant_id;
+    const prodTenantSlug = productContext.tenant_slug;
+    if (prodTenantId && tenantObj.id && String(prodTenantId) !== String(tenantObj.id)) {
+      return false;
+    }
+    if (prodTenantSlug && tenantObj.slug && String(prodTenantSlug).toLowerCase() !== String(tenantObj.slug).toLowerCase()) {
+      return false;
+    }
+
+    // 5. If productContext contains single_page_config or custom_html attributes,
+    // verify custom_html is explicitly enabled and non-empty.
+    const spc = productContext.single_page_config || productContext.fulfillment_metadata?.single_page_config;
+    if (spc && typeof spc === 'object') {
+      const isCustomHtmlActive = Boolean(
+        spc.enable_custom_html ||
+        spc.is_custom_html_enabled ||
+        spc.use_custom_html ||
+        spc.active_section === 'custom_html' ||
+        productContext.enable_custom_html ||
+        productContext.is_custom_html_enabled ||
+        productContext.use_custom_html
+      );
+      const hasCustomHtml = Boolean(
+        (typeof spc.custom_html === 'string' && spc.custom_html.trim().length > 0) ||
+        (typeof productContext.custom_html === 'string' && productContext.custom_html.trim().length > 0)
+      );
+
+      if (!isCustomHtmlActive || !hasCustomHtml) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -2450,8 +2505,9 @@ export function transformPublicProductDto(
  * localStorage caching, or API mutation.
  * Guarantees that:
  * 1. All fields are pure primitives, clean arrays, or plain objects.
- * 2. Any accidental DOM elements (HTMLSpanElement, HTMLElement) or SyntheticEvents are stripped.
- * 3. Circular references are completely broken to guarantee JSON.stringify never throws.
+ * 2. Prototype pollution keys (__proto__, constructor, prototype) are strictly stripped.
+ * 3. Any accidental DOM elements (HTMLSpanElement, HTMLElement) or SyntheticEvents are stripped.
+ * 4. Circular references are completely broken to guarantee JSON.stringify never throws.
  */
 export function sanitizeProductPayload<T = any>(input: T, seen = new WeakSet()): T {
   if (input === null || input === undefined) return input;
@@ -2496,6 +2552,10 @@ export function sanitizeProductPayload<T = any>(input: T, seen = new WeakSet()):
   // Handle Plain Objects
   const cleanObj: Record<string, any> = {};
   for (const [key, value] of Object.entries(input as Record<string, any>)) {
+    // Prototype pollution prevention
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
     if (isDomOrReactFiber(value)) {
       continue;
     }
@@ -2555,7 +2615,6 @@ export function safeJsonStringify(val: any, indent?: number): string {
     );
   }
 }
-
 
 
 /**

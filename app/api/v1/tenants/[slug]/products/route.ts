@@ -1,4 +1,5 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
+import { hasTierAccess } from '@/lib/subscription-tiers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
@@ -24,6 +25,56 @@ import {
 import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
+function isCustomHtmlRequested(body: any): boolean {
+  if (!body || typeof body !== 'object') return false;
+
+  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
+  const meta = body.metadata || {};
+
+  const htmlString = (
+    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
+    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
+    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
+  ).trim();
+
+  const isFlagActive = Boolean(
+    body.enable_custom_html ||
+    body.is_custom_html_enabled ||
+    body.use_custom_html ||
+    spc.enable_custom_html ||
+    spc.is_custom_html_enabled ||
+    spc.use_custom_html ||
+    spc.active_section === 'custom_html'
+  );
+
+  return htmlString.length > 0 || isFlagActive;
+}
+
+function isCustomHtmlCleanup(body: any): boolean {
+  if (!body || typeof body !== 'object') return false;
+
+  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
+  const meta = body.metadata || {};
+
+  const htmlString = (
+    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
+    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
+    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
+  ).trim();
+
+  if (htmlString.length > 0) return false;
+
+  const hasExplicitDisable =
+    body.enable_custom_html === false ||
+    spc.enable_custom_html === false ||
+    body.is_custom_html_enabled === false ||
+    spc.is_custom_html_enabled === false ||
+    body.use_custom_html === false ||
+    spc.use_custom_html === false;
+
+  return hasExplicitDisable;
+}
 
 export interface ProductItem {
   id: string | number;
@@ -123,6 +174,21 @@ export async function POST(
     }
     const rawBody = await req.json();
     const body = sanitizeProductPayload(rawBody);
+
+    // ── SECTION 10 CUSTOM HTML ENTITLEMENT GATE (WP2) ──
+    if (isCustomHtmlRequested(body) && !isCustomHtmlCleanup(body)) {
+      const isEntitled = hasTierAccess(canonicalTenant, 'product_landing_custom_html');
+      if (!isEntitled) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'CUSTOM_HTML_UNAUTHORIZED',
+            error: 'Forbidden: Tenant is not entitled to Section 10 Product Landing Custom HTML. Add-on required.',
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // Validate & sanitize any landing page custom HTML payloads (64 KB limit + DOMPurify)
     const htmlCandidates = [
@@ -427,11 +493,27 @@ export async function POST(
         updatedProducts = [productWithActive, ...mergedExisting];
       }
 
+      // ADR-P0-07: Strip bulky custom_html from tenant metadata projection
+      // Relational public.products.fulfillment_metadata.single_page_config is the single source of truth
+      const sanitizedMetaProducts = updatedProducts.map((p) => {
+        if (!p.single_page_config) return p;
+        const spc = { ...p.single_page_config };
+        if (spc.custom_html) {
+          delete spc.custom_html;
+        }
+        return {
+          ...p,
+          single_page_config: spc,
+        };
+      });
+
       const updatedMetadata = {
         ...(existing?.metadata || {}),
-        products: updatedProducts,
-        product: productWithActive,
+        products: sanitizedMetaProducts,
+        product: sanitizedMetaProducts[0] || null,
       };
+      delete (updatedMetadata as any).custom_html;
+      delete (updatedMetadata as any).single_page_config;
 
       if (existing?.id) {
         const { data: updatedTenants, error: tUpdateErr } = await supabaseAdmin

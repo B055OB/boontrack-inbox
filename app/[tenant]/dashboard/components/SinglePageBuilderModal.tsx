@@ -121,6 +121,7 @@ export interface SinglePageBuilderModalProps {
   onSave: (e: React.FormEvent) => void;
   tenantSlug: string;
   isSaving?: boolean;
+  isCustomHtmlEntitled?: boolean;
 }
 
 export default function SinglePageBuilderModal({
@@ -132,6 +133,7 @@ export default function SinglePageBuilderModal({
   onSave,
   tenantSlug,
   isSaving = false,
+  isCustomHtmlEntitled = false,
 }: SinglePageBuilderModalProps) {
   const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('hook');
   const [isInternalSaving, setIsInternalSaving] = useState(false);
@@ -415,6 +417,11 @@ export default function SinglePageBuilderModal({
                       }`}>
                         {tab.label.replace(/^(#?\d+[\.\s]*)/, '')}
                       </span>
+                      {tab.id === 'custom_html' && !isCustomHtmlEntitled && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                          🔒 Add-On
+                        </span>
+                      )}
                     </div>
 
                     {/* Status Badge + Inline Toggle */}
@@ -422,6 +429,10 @@ export default function SinglePageBuilderModal({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (tab.id === 'custom_html' && !isCustomHtmlEntitled && !isEnabled) {
+                          alert('Section 10 Custom HTML membutuhkan Add-On product_landing_custom_html.');
+                          return;
+                        }
                         setSinglePageForm((p) => ({
                           ...p,
                           [tab.toggleKey]: !isEnabled,
@@ -2210,11 +2221,31 @@ export default function SinglePageBuilderModal({
           {/* TAB 10: CUSTOM HTML / AI LANDING PAGE */}
           {activeBuilderTab === 'custom_html' && (
             <div className="space-y-4 animate-fadeIn">
+              {!isCustomHtmlEntitled && (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-amber-700 dark:text-amber-300">
+                  <span className="text-xl">🔒</span>
+                  <div className="text-xs space-y-1">
+                    <p className="font-bold">Add-On Khusus Diperlukan</p>
+                    <p className="leading-relaxed text-slate-600 dark:text-slate-300">
+                      Section #10 Custom HTML / AI Landing Page memerlukan hak akses add-on <code className="bg-amber-500/20 px-1 py-0.5 rounded font-mono font-bold">product_landing_custom_html</code>.
+                      {Boolean(singlePageForm.custom_html || singlePageForm.enable_custom_html) ? (
+                        <> Anda diizinkan untuk <strong>menonaktifkan</strong> atau <strong>menghapus</strong> HTML yang tersimpan sebelumnya (Cleanup Mode).</>
+                      ) : (
+                        <> Hubungi Tim BoonTrack untuk aktivasi add-on landing page mandiri ini.</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
               <SectionToggleHeader
                 title="#10 Custom HTML / AI Landing Page"
                 description="Integrasikan custom landing page hasil buatan AI (v0, Lovable, Tailwind UI, atau custom code) secara langsung."
                 enabled={Boolean(singlePageForm.enable_custom_html || singlePageForm.is_custom_html_enabled || singlePageForm.use_custom_html)}
                 onChange={(val) => {
+                  if (val && !isCustomHtmlEntitled) {
+                    alert('Akses Ditolak: Anda memerlukan add-on product_landing_custom_html untuk mengaktifkan Section 10.');
+                    return;
+                  }
                   setSinglePageForm((p) => {
                     if (val) {
                       return {
@@ -2281,9 +2312,16 @@ export default function SinglePageBuilderModal({
                     id="custom-html-textarea"
                     rows={14}
                     value={singlePageForm.custom_html || ''}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, custom_html: e.target.value }))}
-                    placeholder="Tempel kode HTML lengkap di sini... Tambahkan atribut data-bt-checkout atau href='#checkout' pada tombol CTA Anda."
-                    className="w-full min-h-[300px] p-3.5 bg-slate-900 dark:bg-slate-950 text-emerald-400 placeholder:text-slate-500 font-mono text-xs rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y shadow-inner leading-relaxed"
+                    readOnly={!isCustomHtmlEntitled && !Boolean(singlePageForm.custom_html)}
+                    onChange={(e) => {
+                      if (!isCustomHtmlEntitled && e.target.value.trim().length > 0) {
+                        alert('Akses Ditolak: Anda memerlukan add-on product_landing_custom_html untuk mengisi HTML baru.');
+                        return;
+                      }
+                      setSinglePageForm((p) => ({ ...p, custom_html: e.target.value }));
+                    }}
+                    placeholder={!isCustomHtmlEntitled ? "Fitur Custom HTML terkunci. Memerlukan Add-On product_landing_custom_html." : "Tempel kode HTML lengkap di sini... Tambahkan atribut data-bt-checkout atau href='#checkout' pada tombol CTA Anda."}
+                    className="w-full min-h-[300px] p-3.5 bg-slate-900 dark:bg-slate-950 text-emerald-400 placeholder:text-slate-500 font-mono text-xs rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y shadow-inner leading-relaxed disabled:opacity-50"
                     spellCheck={false}
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">

@@ -2075,155 +2075,70 @@ export function useTenantDashboard() {
     });
 
     const cleanUpdatedProducts = sanitizeProductPayload(updatedProducts);
-    setProducts(cleanUpdatedProducts);
-    if (updatedTargetProduct) {
-      setActiveSinglePageProduct(updatedTargetProduct);
-    }
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanUpdatedProducts));
-    }
 
-    // Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow?.id) {
-          const existingMetaProducts: ProductItem[] = Array.isArray(tenantRow.metadata?.products)
-            ? tenantRow.metadata.products
-            : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
-          const allKnownProducts = existingMetaProducts;
-
-          const targetProd = cleanUpdatedProducts.find(p => isTargetProduct(p)) || updatedTargetProduct;
-          if (targetProd) {
-            const isTargetActive = targetProd.is_active !== false;
-            const targetSku = (targetProd.sku || '').trim().toLowerCase();
-            const targetId = String(targetProd.id || '').trim().toLowerCase();
-            const targetSlug = (targetProd.slug || prodSlug).trim().toLowerCase();
-
-            const editIndex = existingMetaProducts.findIndex(
-              p =>
-                String(p.id).toLowerCase() === targetId ||
-                (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
-                (targetSlug && (p.slug || '').toLowerCase() === targetSlug)
-            );
-
-            let finalMergedProducts: ProductItem[];
-            if (editIndex >= 0) {
-              finalMergedProducts = [...existingMetaProducts];
-              finalMergedProducts[editIndex] = {
-                ...finalMergedProducts[editIndex],
-                ...targetProd,
-                is_active: isTargetActive,
-              };
-            } else {
-              const fullProductItem = { ...targetProd, is_active: isTargetActive };
-              finalMergedProducts = [fullProductItem, ...allKnownProducts];
-            }
-
-            const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
-            const cleanUpdatedConfig = sanitizeProductPayload(updatedConfig);
-
-            const existingCopy = tenantRow.metadata?.storefront_copy || {};
-            const updatedCopy = {
-              ...existingCopy,
-              headline: cleanSpForm.headline || existingCopy.headline,
-              subheadline: cleanSpForm.subheadline || existingCopy.subheadline,
-              cta_label: cleanSpForm.cta_label || existingCopy.cta_label,
-              cta_primary_label: cleanSpForm.cta_label || existingCopy.cta_primary_label,
-            };
-
-            const existingSections = tenantRow.metadata?.storefront_sections || tenantRow.metadata?.sections || {};
-            const updatedSections = {
-              ...existingSections,
-              hero: { ...existingSections.hero, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_hero ?? true) },
-              testimonials: { ...existingSections.testimonials, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_testimonials ?? true) },
-              catalog: { ...existingSections.catalog, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_offer ?? true) },
-              benefits: { ...existingSections.benefits, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_problem_solution ?? true) },
-            };
-
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              products: cleanFinalMerged,
-              product: cleanFinalMerged[0] || sanitizeProductPayload(targetProd),
-              single_page_config: cleanUpdatedConfig,
-              storefront_copy: updatedCopy,
-              storefront_sections: updatedSections,
-              ...(isCustomHtmlActive
-                ? {
-                    is_custom_html_enabled: true,
-                    use_custom_html: true,
-                    custom_html: cleanSpForm.custom_html,
-                    active_section: 'custom_html',
-                    sections_override: false,
-                  }
-                : {}),
-            };
-
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-
-            // Sync juga ke tabel SQL products jika barisnya ada
-            try {
-              const isUuidVal = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(targetProd.id));
-              const orFilters: string[] = [];
-              if (prodSlug) orFilters.push(`slug.eq.${prodSlug}`);
-              if (targetProd.sku) orFilters.push(`sku.eq.${targetProd.sku}`);
-              if (isUuidVal) orFilters.push(`id.eq.${targetProd.id}`);
-
-              if (orFilters.length > 0) {
-                const { data: existingSql } = await supabase
-                  .from('products')
-                  .select('id, fulfillment_metadata')
-                  .eq('tenant_id', tenantRow.id)
-                  .or(orFilters.join(','))
-                  .maybeSingle();
-
-                if (existingSql?.id) {
-                  await supabase.from('products').update({
-                    slug: prodSlug,
-                    fulfillment_metadata: {
-                      ...(existingSql.fulfillment_metadata || {}),
-                      single_page_config: updatedConfig,
-                    },
-                  }).eq('id', existingSql.id);
-                }
-              }
-            } catch (sqlErr) {
-              console.debug('[Dashboard] SQL products single page sync note:', sqlErr);
-            }
-          }
-        }
-      }
-    } catch (dbErr) {
-      console.warn('[Dashboard] Direct Supabase single page save error:', dbErr);
-    }
-
+    // ── SECURE SERVER-SIDE PERSISTENCE (WP2 & ADR-P0-07) ──
+    // Zero direct client-side Supabase write bypass. Route solely through server API.
     try {
       const targetProd = cleanUpdatedProducts.find(p => isTargetProduct(p)) || updatedTargetProduct;
-      if (targetProd) {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
-          method: 'POST',
+      const payload = {
+        ...targetProd,
+        single_page_config: updatedConfig,
+        fulfillment_metadata: {
+          ...(targetProd?.fulfillment_metadata || {}),
+          single_page_config: updatedConfig,
+        },
+      };
+
+      const productKey = String(activeSinglePageProduct.id || prodSlug);
+      let res = await fetch(
+        `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products/${encodeURIComponent(productKey)}`,
+        {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: safeJsonStringify(sanitizeProductPayload(targetProd)),
-        });
+          body: safeJsonStringify(payload),
+        }
+      );
+
+      // If product ID is not found in relational table, fallback to POST upsert endpoint
+      if (res.status === 404) {
+        res = await fetch(
+          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: safeJsonStringify(payload),
+          }
+        );
       }
-    } catch (err) {
-      console.warn('Gagal sync single page ke backend:', err);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (res.status === 403 && errData?.code === 'CUSTOM_HTML_UNAUTHORIZED') {
+          setSaveFeedback('❌ Akses Ditolak: Fitur Section 10 Custom HTML membutuhkan Add-On khusus.');
+        } else {
+          setSaveFeedback(`❌ Gagal menyimpan konfigurasi: ${errData?.error || errData?.message || 'Terjadi kesalahan'}`);
+        }
+        return;
+      }
+
+      // Only on successful server save, commit to local state and close modal
+      setProducts(cleanUpdatedProducts);
+      if (updatedTargetProduct) {
+        setActiveSinglePageProduct(updatedTargetProduct);
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanUpdatedProducts));
+      }
+
+      setIsSinglePageModalOpen(false);
+      setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan!`);
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('[Dashboard] Gagal sync single page ke backend:', err);
+      setSaveFeedback(`❌ Gagal menghubungi server: ${err?.message || 'Koneksi terputus'}`);
     } finally {
       setIsSavingSinglePage(false);
     }
-
-    setIsSinglePageModalOpen(false);
-    setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan!`);
-    setTimeout(() => setSaveFeedback(null), 4000);
   };
 
   // 7. Live Chat Handlers

@@ -341,7 +341,7 @@ function SingleProductContent() {
   const [pageStatus, setPageStatus] = useState<'checking' | 'active' | 'tenant_not_found' | 'product_not_found'>('checking');
 
   // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase
-  const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig }>(() => 
+  const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig; tenantRow?: any }>(() =>
     resolveSinglePageProduct(tenant, slug)
   );
 
@@ -608,17 +608,18 @@ function SingleProductContent() {
             );
             const isOnlineBoostBatch1 = Boolean(isOnlineBoostTenant && isObBatch1Target);
             const isEligibleForSec10 = isSection10TakeoverEligible(
-              params?.tenant as string,
+              tenantRow || { slug: params?.tenant },
               match?.sku,
-              (params?.slug as string) || match?.slug
+              (params?.slug as string) || match?.slug,
+              match
             );
 
-            // Resilient candidate resolution: prioritize tenant-level section_10 HTML, then product custom_html
+            // Resilient candidate resolution: prioritize product fulfillment_metadata.single_page_config.custom_html
             const candidateCustomHtml =
-              tenantSec10Html ||
+              (typeof match?.fulfillment_metadata?.single_page_config?.custom_html === 'string' ? match.fulfillment_metadata.single_page_config.custom_html : '') ||
               (typeof cfg.custom_html === 'string' ? cfg.custom_html : '') ||
               (typeof match?.metadata?.custom_html === 'string' ? match.metadata.custom_html : '') ||
-              (typeof match?.fulfillment_metadata?.single_page_config?.custom_html === 'string' ? match.fulfillment_metadata.single_page_config.custom_html : '');
+              tenantSec10Html;
 
             const isCustomHtmlActiveFlag = Boolean(
               isTenantSec10Active ||
@@ -1096,6 +1097,7 @@ function SingleProductContent() {
             setResolvedData({
               product: dynamicProduct,
               config: dynamicConfig,
+              tenantRow: tenantRow || { slug: tenant },
             });
             if (isMounted) setPageStatus('active');
           } else if (isMounted) {
@@ -1124,9 +1126,10 @@ function SingleProductContent() {
   );
   const isOnlineBoostBatch1 = Boolean(isOnlineBoostTenant && isObBatch1Target);
   const isEligibleForSec10 = isSection10TakeoverEligible(
-    params?.tenant as string,
+    (resolvedData as any)?.tenantRow || { slug: params?.tenant },
     product?.sku,
-    (params?.slug as string) || product?.slug
+    (params?.slug as string) || product?.slug,
+    product
   );
 
   const isCustomHtmlActivePage = Boolean(

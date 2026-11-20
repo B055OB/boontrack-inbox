@@ -238,6 +238,10 @@ export default function TenantDashboardPage() {
     return isTeamScale || hasTierAccess(tenantData, 'reseller');
   }, [isTeamScale, tenantData]);
 
+  const isCustomHtmlEntitled = React.useMemo(() => {
+    return hasTierAccess(tenantData, 'product_landing_custom_html');
+  }, [tenantData]);
+
   const renderLockedFeatureCard = (cardProps: {
     title: string;
     badge: string;
@@ -1199,6 +1203,7 @@ export default function TenantDashboardPage() {
         onSave={handleSaveSinglePageConfig}
         tenantSlug={tenantSlug}
         isSaving={isSavingSinglePage}
+        isCustomHtmlEntitled={isCustomHtmlEntitled}
       />
 
       {/* MODAL EDIT PROFIL TOKO */}

@@ -157,9 +157,14 @@ export default function Section10CustomHtml({
   const routeSlug = (routeParams?.slug as string) || '';
   const routeSku = (routeParams?.sku as string) || '';
 
+  const tenantContext = {
+    slug: effectiveSlug,
+    metadata: metadata || {},
+  };
+
   const isTakeoverAllowed = Boolean(
     routeSlug &&
-    isSection10TakeoverEligible(effectiveSlug, routeSku, routeSlug)
+    isSection10TakeoverEligible(tenantContext, routeSku, routeSlug)
   );
 
   if (!isTakeoverAllowed) {

@@ -181,6 +181,7 @@ export const FEATURE_MIN_LEVELS: Record<string, number> = {
   custom_domain: 3,
   whatsapp_engine: 2,
   whatsapp_official: 3,
+  product_landing_custom_html: 4,
 };
 
 /**
@@ -258,6 +259,12 @@ export function canAccessFeature(
   }
   if (tenantMeta?.capabilities?.[normFeature] === true || tenantMeta?.capabilities?.[featureKey] === true) {
     return true;
+  }
+
+  // product_landing_custom_html is a modular add-on: default false on ALL standard/public plans,
+  // requiring explicit capability grant (capabilities.product_landing_custom_html: true)
+  if (normFeature === 'product_landing_custom_html') {
+    return false;
   }
 
   // 3. Standard Meta Pixel (client-side pixel, non-CAPI) is universally allowed across all tiers (AC-11)

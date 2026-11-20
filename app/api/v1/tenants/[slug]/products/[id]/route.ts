@@ -1,4 +1,5 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
+import { hasTierAccess } from '@/lib/subscription-tiers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
@@ -21,6 +22,56 @@ import {
 import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 const SAFE_PRODUCT_KEY_RE = /^[a-zA-Z0-9._-]+$/;
+
+function isCustomHtmlRequested(body: any): boolean {
+  if (!body || typeof body !== 'object') return false;
+
+  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
+  const meta = body.metadata || {};
+
+  const htmlString = (
+    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
+    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
+    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
+  ).trim();
+
+  const isFlagActive = Boolean(
+    body.enable_custom_html ||
+    body.is_custom_html_enabled ||
+    body.use_custom_html ||
+    spc.enable_custom_html ||
+    spc.is_custom_html_enabled ||
+    spc.use_custom_html ||
+    spc.active_section === 'custom_html'
+  );
+
+  return htmlString.length > 0 || isFlagActive;
+}
+
+function isCustomHtmlCleanup(body: any): boolean {
+  if (!body || typeof body !== 'object') return false;
+
+  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
+  const meta = body.metadata || {};
+
+  const htmlString = (
+    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
+    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
+    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
+  ).trim();
+
+  if (htmlString.length > 0) return false;
+
+  const hasExplicitDisable =
+    body.enable_custom_html === false ||
+    spc.enable_custom_html === false ||
+    body.is_custom_html_enabled === false ||
+    spc.is_custom_html_enabled === false ||
+    body.use_custom_html === false ||
+    spc.use_custom_html === false;
+
+  return hasExplicitDisable;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -151,6 +202,56 @@ async function handleProductMutation(
       }
     }
 
+    // Product Ownership & Cross-Tenant Access Verification
+    const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
+    let ownershipQuery = supabaseAdmin
+      .from('products')
+      .select('id, tenant_id, fulfillment_metadata')
+      .eq('tenant_id', tenant.id);
+
+    if (isTargetUuid) {
+      ownershipQuery = ownershipQuery.eq('id', productId);
+    } else {
+      ownershipQuery = ownershipQuery.or(`id.eq.${productId},slug.eq.${productId}`);
+    }
+    const { data: ownedProduct } = await ownershipQuery.maybeSingle();
+
+    const tenantMetaProducts: any[] = Array.isArray(tenant.metadata?.products)
+      ? tenant.metadata.products
+      : (tenant.metadata?.product?.name ? [tenant.metadata.product] : []);
+    const existsInMeta = tenantMetaProducts.some(
+      (p: any) => String(p.id) === String(productId) || p.slug === String(productId)
+    );
+
+    if (!ownedProduct && !existsInMeta) {
+      // Check if product exists under a DIFFERENT tenant to prevent cross-tenant modification
+      const { data: crossTenantProd } = await supabaseAdmin
+        .from('products')
+        .select('id, tenant_id')
+        .eq('id', productId)
+        .maybeSingle();
+
+      if (crossTenantProd && crossTenantProd.tenant_id !== tenant.id) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            error: 'Forbidden: Product does not belong to this tenant',
+          },
+          { status: 403 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PRODUCT_NOT_FOUND',
+          error: 'Produk tidak ditemukan.',
+        },
+        { status: 404 }
+      );
+    }
+
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {
       return perm.response;
@@ -158,6 +259,21 @@ async function handleProductMutation(
 
     const rawBody = await req.json();
     const body = sanitizeProductPayload(rawBody);
+
+    // ── SECTION 10 CUSTOM HTML ENTITLEMENT GATE (WP2) ──
+    if (isCustomHtmlRequested(body) && !isCustomHtmlCleanup(body)) {
+      const isEntitled = hasTierAccess(tenant, 'product_landing_custom_html');
+      if (!isEntitled) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'CUSTOM_HTML_UNAUTHORIZED',
+            error: 'Forbidden: Tenant is not entitled to Section 10 Product Landing Custom HTML. Add-on required.',
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // Validate & sanitize any custom HTML payload (64 KB max + DOMPurify)
     const htmlCandidates = [
@@ -314,11 +430,27 @@ async function handleProductMutation(
       });
     }
 
+    // ADR-P0-07: Strip bulky custom_html from tenant metadata projection
+    // Relational public.products.fulfillment_metadata.single_page_config is the single source of truth
+    const cleanSyncedMetaProducts = syncedMetaProducts.map((p: any) => {
+      if (!p.single_page_config) return p;
+      const spc = { ...p.single_page_config };
+      if (spc.custom_html) {
+        delete spc.custom_html;
+      }
+      return {
+        ...p,
+        single_page_config: spc,
+      };
+    });
+
     const updatedMetadata = {
       ...(tenant.metadata || {}),
-      products: syncedMetaProducts,
-      product: syncedMetaProducts[0] || null,
+      products: cleanSyncedMetaProducts,
+      product: cleanSyncedMetaProducts[0] || null,
     };
+    delete (updatedMetadata as any).custom_html;
+    delete (updatedMetadata as any).single_page_config;
 
     const { error: metaUpdateErr } = await supabaseAdmin
       .from('tenants')
