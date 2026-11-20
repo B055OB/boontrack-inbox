@@ -449,7 +449,304 @@ describe('CTO STAGE A REVIEW BLOCKERS & REGRESSION TEST SUITE', () => {
   // BLOCKER 3: P1 Concurrency & Truthful Projection Status
   // ══════════════════════════════════════════════════════════════════════
   describe('BLOCKER-3: Optimistic Concurrency Control & Truthful Projection Status', () => {
-    it('preserves unrelated tenant settings (shipping_config, payment_settings, qris_payload) during projection', async () => {
+    it('successful 1-row CAS update with .select("id") returns SYNCED', async () => {
+      let selectIdChained = false;
+      const mockSupabaseAdmin = {
+        from: jest.fn((table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: {
+                  id: tenant.id,
+                  metadata: tenant.metadata,
+                  updated_at: '2026-11-20T10:00:00.000Z',
+                },
+                error: null,
+              }),
+              update: jest.fn(() => ({
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn((col?: string) => {
+                      if (col === 'id') selectIdChained = true;
+                      return Promise.resolve({ data: [{ id: tenant.id }], error: null });
+                    }),
+                  }),
+                }),
+              })),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const committedRow = {
+        id: '99999999-9999-4999-8999-999999999999',
+        tenant_id: tenant.id,
+        title: 'Produk CAS 1-Row',
+        price: 75000,
+        category: 'digital',
+      };
+
+      const res = await executeOneWayProjection(
+        mockSupabaseAdmin,
+        tenant,
+        committedRow,
+        'UPSERT'
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.projection_status).toBe('SYNCED');
+      expect(selectIdChained).toBe(true);
+    });
+
+    it('zero-row CAS conflict (data: [] and data: null) triggers retry and NEVER returns SYNCED', async () => {
+      let updateAttempts = 0;
+      const mockSupabaseAdmin = {
+        from: jest.fn((table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: {
+                  id: tenant.id,
+                  metadata: tenant.metadata,
+                  updated_at: '2026-11-20T10:00:00.000Z',
+                },
+                error: null,
+              }),
+              update: jest.fn(() => ({
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn(() => {
+                      updateAttempts++;
+                      // Returns empty array (0 rows updated) representing CAS mismatch
+                      return Promise.resolve({ data: [], error: null });
+                    }),
+                  }),
+                }),
+              })),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const committedRow = {
+        id: '99999999-9999-4999-8999-999999999999',
+        tenant_id: tenant.id,
+        title: 'Produk Conflict Zero Row',
+        price: 75000,
+        category: 'digital',
+      };
+
+      const res = await executeOneWayProjection(
+        mockSupabaseAdmin,
+        tenant,
+        committedRow,
+        'UPSERT'
+      );
+
+      expect(res.success).toBe(false);
+      expect(res.projection_status).toBe('FAILED_NEEDS_RECONCILIATION');
+      expect(res.recoverable_via).toBe('DRY_RUN_RECONCILIATION');
+      expect(updateAttempts).toBe(3); // Retried all 3 times
+    });
+
+    it('concurrent metadata change between read and conditional update succeeds on bounded retry', async () => {
+      let fetchCount = 0;
+      let updateAttempts = 0;
+
+      const mockSupabaseAdmin = {
+        from: jest.fn((table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockImplementation(() => {
+                fetchCount++;
+                return Promise.resolve({
+                  data: {
+                    id: tenant.id,
+                    metadata: {
+                      ...tenant.metadata,
+                      shipping_config: fetchCount === 1 ? { jne: true } : { jne: true, jnt: true },
+                    },
+                    updated_at: fetchCount === 1 ? '2026-11-20T10:00:00.000Z' : '2026-11-20T10:00:01.000Z',
+                  },
+                  error: null,
+                });
+              }),
+              update: jest.fn(() => ({
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn(() => {
+                      updateAttempts++;
+                      if (updateAttempts === 1) {
+                        // First attempt: CAS conflict! 0 rows updated
+                        return Promise.resolve({ data: [], error: null });
+                      }
+                      // Second attempt: CAS succeeds! 1 row updated
+                      return Promise.resolve({ data: [{ id: tenant.id }], error: null });
+                    }),
+                  }),
+                }),
+              })),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const committedRow = {
+        id: '99999999-9999-4999-8999-999999999999',
+        tenant_id: tenant.id,
+        title: 'Produk Concurrent Retry',
+        price: 80000,
+        category: 'digital',
+      };
+
+      const res = await executeOneWayProjection(
+        mockSupabaseAdmin,
+        tenant,
+        committedRow,
+        'UPSERT'
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.projection_status).toBe('SYNCED');
+      expect(fetchCount).toBe(2);
+      expect(updateAttempts).toBe(2);
+    });
+
+    it('repeated CAS conflict exhausting retries returns FAILED_NEEDS_RECONCILIATION while SQL product remains intact', async () => {
+      let updateCount = 0;
+
+      const mockSupabaseAdmin = {
+        from: jest.fn((table: string) => {
+          if (table === 'products') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+              insert: jest.fn(() => ({
+                select: jest.fn().mockResolvedValue({
+                  data: [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', slug: 'persisted-sql' }],
+                  error: null,
+                }),
+              })),
+            };
+          }
+          if (table === 'tenants') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: {
+                  id: tenant.id,
+                  metadata: tenant.metadata,
+                  updated_at: '2026-11-20T10:00:00.000Z',
+                },
+                error: null,
+              }),
+              update: jest.fn(() => ({
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn(() => {
+                      updateCount++;
+                      // Consistently returns null or []
+                      return Promise.resolve({ data: null, error: null });
+                    }),
+                  }),
+                }),
+              })),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const result = await upsertCanonicalProduct({
+        tenant,
+        rawInput: {
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          name: 'Produk SQL Tetap Aman',
+          price: 50000,
+        },
+        actor,
+        customSupabaseAdmin: mockSupabaseAdmin,
+        mode: 'PUT',
+      });
+
+      // SQL write committed successfully!
+      expect(result.success).toBe(true);
+      expect(result.product.id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+      // Projection truthfully reflects failure needs reconciliation
+      expect(result.projection?.success).toBe(false);
+      expect(result.projection?.projection_status).toBe('FAILED_NEEDS_RECONCILIATION');
+      expect(result.projection?.recoverable_via).toBe('DRY_RUN_RECONCILIATION');
+      expect(updateCount).toBe(3); // Retries exhausted
+    });
+
+    it('missing or null updated_at fails closed with FAILED_NEEDS_RECONCILIATION without executing unguarded update', async () => {
+      let updateExecuted = false;
+
+      const mockSupabaseAdmin = {
+        from: jest.fn((table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: {
+                  id: tenant.id,
+                  metadata: tenant.metadata,
+                  updated_at: null, // Missing updated_at!
+                },
+                error: null,
+              }),
+              update: jest.fn(() => {
+                updateExecuted = true;
+                return {
+                  eq: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                      select: jest.fn().mockResolvedValue({ data: [{ id: tenant.id }], error: null }),
+                    }),
+                  }),
+                };
+              }),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const committedRow = {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        tenant_id: tenant.id,
+        title: 'Produk Guarded CAS Missing',
+        price: 50000,
+        category: 'digital',
+      };
+
+      const res = await executeOneWayProjection(
+        mockSupabaseAdmin,
+        tenant,
+        committedRow,
+        'UPSERT'
+      );
+
+      expect(res.success).toBe(false);
+      expect(res.projection_status).toBe('FAILED_NEEDS_RECONCILIATION');
+      expect(res.recoverable_via).toBe('DRY_RUN_RECONCILIATION');
+      expect(res.error).toContain('missing or empty updated_at snapshot');
+      expect(updateExecuted).toBe(false); // Zero unguarded writes!
+    });
+
+    it('preserves unrelated tenant settings (shipping_config, payment_settings, qris_payload) across retries', async () => {
       let projectedMetadata: any = null;
 
       const tenantWithSettings: CanonicalTenantContext = {
@@ -483,11 +780,12 @@ describe('CTO STAGE A REVIEW BLOCKERS & REGRESSION TEST SUITE', () => {
                 projectedMetadata = payload.metadata;
                 return {
                   eq: jest.fn().mockReturnValue({
-                    eq: jest.fn().mockResolvedValue({
-                      data: [{ id: tenantWithSettings.id }],
-                      error: null,
+                    eq: jest.fn().mockReturnValue({
+                      select: jest.fn().mockResolvedValue({
+                        data: [{ id: tenantWithSettings.id }],
+                        error: null,
+                      }),
                     }),
-                    then: (resolve: any) => resolve({ data: [{ id: tenantWithSettings.id }], error: null }),
                   }),
                 };
               }),
@@ -855,13 +1153,21 @@ describe('CTO STAGE A REVIEW BLOCKERS & REGRESSION TEST SUITE', () => {
               select: jest.fn().mockReturnThis(),
               eq: jest.fn().mockReturnThis(),
               maybeSingle: jest.fn().mockResolvedValue({
-                data: { id: tenantWithLegacy.id, metadata: tenantWithLegacy.metadata },
+                data: {
+                  id: tenantWithLegacy.id,
+                  metadata: tenantWithLegacy.metadata,
+                  updated_at: '2026-11-20T10:00:00.000Z',
+                },
                 error: null,
               }),
               update: jest.fn((payload: any) => {
                 updatedMetadataProducts = payload.metadata?.products;
                 return {
-                  eq: jest.fn().mockResolvedValue({ data: [{ id: tenantWithLegacy.id }], error: null }),
+                  eq: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                      select: jest.fn().mockResolvedValue({ data: [{ id: tenantWithLegacy.id }], error: null }),
+                    }),
+                  }),
                 };
               }),
             };

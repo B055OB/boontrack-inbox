@@ -264,6 +264,26 @@ export async function executeOneWayProjection(
         };
       }
 
+      // Blocker 3: Fail closed (FAILED_NEEDS_RECONCILIATION without overwriting metadata)
+      // when currentTenant.updated_at is null, undefined, or empty — never silently execute an unguarded metadata write.
+      if (!currentTenant.updated_at || typeof currentTenant.updated_at !== 'string' || !currentTenant.updated_at.trim()) {
+        lastErrorMsg = `Tenant record ${tenant.id} has missing or empty updated_at snapshot; failing closed to prevent unguarded metadata write`;
+        console.error('[CANONICAL_PROJECTION_FAILURE] Guarded CAS condition missing:', {
+          tenantId: tenant.id,
+          operation,
+          error: lastErrorMsg,
+          attempt,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+        });
+        return {
+          success: false,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+          error: lastErrorMsg,
+        };
+      }
+
       const existingMetadata = (typeof currentTenant.metadata === 'object' && currentTenant.metadata !== null)
         ? { ...currentTenant.metadata }
         : {};
@@ -338,23 +358,26 @@ export async function executeOneWayProjection(
       delete (updatedMetadata as any).single_page_config;
 
       const newUpdatedAt = new Date().toISOString();
-      let updateQuery = supabaseAdmin
+      let updateQueryBuilder = supabaseAdmin
         .from('tenants')
         .update({
           metadata: updatedMetadata,
-          ...(currentTenant.updated_at !== undefined ? { updated_at: newUpdatedAt } : {}),
-        })
-        .eq('id', tenant.id);
+          updated_at: newUpdatedAt,
+        });
 
-      // Apply compare-and-swap condition on updated_at if chainable
-      if (currentTenant.updated_at && typeof (updateQuery as any)?.eq === 'function') {
-        const chainedOcc = (updateQuery as any).eq('updated_at', currentTenant.updated_at);
-        if (chainedOcc && typeof chainedOcc.then === 'function') {
-          updateQuery = chainedOcc;
+      if (typeof updateQueryBuilder.eq === 'function') {
+        updateQueryBuilder = updateQueryBuilder.eq('id', tenant.id);
+        if (typeof updateQueryBuilder.eq === 'function') {
+          updateQueryBuilder = updateQueryBuilder.eq('updated_at', currentTenant.updated_at);
         }
       }
 
-      const { data: updateData, error: updateErr } = await updateQuery;
+      // Blocker 3: Chain .select('id') onto the conditional .update(...) query
+      if (typeof updateQueryBuilder.select === 'function') {
+        updateQueryBuilder = updateQueryBuilder.select('id');
+      }
+
+      const { data: updateData, error: updateErr } = await updateQueryBuilder;
 
       if (updateErr) {
         lastErrorMsg = updateErr.message;
@@ -377,10 +400,27 @@ export async function executeOneWayProjection(
         };
       }
 
-      // If OCC conditional update returned zero rows affected, retry with fresh metadata
-      if (Array.isArray(updateData) && updateData.length === 0 && attempt < MAX_OCC_RETRIES) {
-        console.warn(`[CANONICAL_PROJECTION_OCC_RETRY] OCC collision detected for tenant ${tenant.id}, retrying (attempt ${attempt + 1})`);
-        continue;
+      // Blocker 3: Treat zero updated rows (!Array.isArray(updateData) || updateData.length !== 1)
+      // strictly as an OCC conflict (triggering bounded retry up to MAX_OCC_RETRIES, and returning
+      // FAILED_NEEDS_RECONCILIATION upon exhaustion) — NEVER return SYNCED when updateData is null or [].
+      const isSuccessfulCas = Array.isArray(updateData) && updateData.length === 1;
+
+      if (!isSuccessfulCas) {
+        lastErrorMsg = `OCC CAS conflict on tenant ${tenant.id}: expected 1 updated row, received ${
+          Array.isArray(updateData) ? updateData.length : String(updateData)
+        }`;
+        console.warn(
+          `[CANONICAL_PROJECTION_OCC_RETRY] OCC collision detected for tenant ${tenant.id} (attempt ${attempt}/${MAX_OCC_RETRIES}): ${lastErrorMsg}`
+        );
+        if (attempt < MAX_OCC_RETRIES) {
+          continue;
+        }
+        return {
+          success: false,
+          projection_status: 'FAILED_NEEDS_RECONCILIATION',
+          recoverable_via: 'DRY_RUN_RECONCILIATION',
+          error: lastErrorMsg,
+        };
       }
 
       return {

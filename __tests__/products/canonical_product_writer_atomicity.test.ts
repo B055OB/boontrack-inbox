@@ -87,13 +87,17 @@ describe('ADR-P0-07: CANONICAL PRODUCT WRITER & ATOMICITY PROOFS', () => {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
-              data: { id: tenant.id, metadata: tenant.metadata },
+              data: { id: tenant.id, metadata: tenant.metadata, updated_at: '2026-11-20T10:00:00.000Z' },
               error: null,
             }),
             update: jest.fn((payload: any) => {
               updatedMetadata = payload.metadata;
               return {
-                eq: jest.fn().mockResolvedValue({ data: [{ id: tenant.id }], error: null }),
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn().mockResolvedValue({ data: [{ id: tenant.id }], error: null }),
+                  }),
+                }),
               };
             }),
           };
@@ -343,13 +347,17 @@ describe('ADR-P0-07: CANONICAL PRODUCT WRITER & ATOMICITY PROOFS', () => {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
-              data: { id: tenant.id, metadata: tenant.metadata },
+              data: { id: tenant.id, metadata: tenant.metadata, updated_at: '2026-11-20T10:00:00.000Z' },
               error: null,
             }),
             update: jest.fn(() => {
               metadataUpdated = true;
               return {
-                eq: jest.fn().mockResolvedValue({ data: [{ id: tenant.id }], error: null }),
+                eq: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    select: jest.fn().mockResolvedValue({ data: [{ id: tenant.id }], error: null }),
+                  }),
+                }),
               };
             }),
           };

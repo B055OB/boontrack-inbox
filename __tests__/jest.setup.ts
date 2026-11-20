@@ -35,6 +35,7 @@ const globalMockTenants: Record<string, any> = {
     status: 'active',
     tier: 'PRO_SCALE',
     business_type: 'digital',
+    updated_at: '2026-11-20T10:00:00.000Z',
     metadata: {
       features: ['crm', 'broadcast'],
       products: [
@@ -166,6 +167,7 @@ const globalMockTenants: Record<string, any> = {
     status: 'active',
     tier: 'PRO_SCALE',
     business_type: 'digital',
+    updated_at: '2026-11-20T10:00:00.000Z',
     metadata: {
       products: [
         {
@@ -395,21 +397,39 @@ function createGlobalMockBuilder(tableName: string) {
       }),
       then: (resolve: any) => resolve({ data: Array.isArray(data) ? data : [data], error: null }),
     }),
-    update: (updateData: any) => ({
-      eq: (col: string, val: any) => {
-        if (tableName === 'orders') {
-          const o = globalMockOrders.find(r => r[col] === val);
-          if (o) Object.assign(o, updateData);
-        }
-        return {
-          select: () => ({
-            single: async () => ({ data: globalMockOrders.find(r => r[col] === val) || null, error: null }),
-            maybeSingle: async () => ({ data: globalMockOrders.find(r => r[col] === val) || null, error: null }),
+    update: (updateData: any) => {
+      const updateFilters: Array<{ col: string; val: any }> = [];
+      const updateBuilder: any = {
+        eq: (col: string, val: any) => {
+          updateFilters.push({ col, val });
+          if (tableName === 'orders') {
+            const o = globalMockOrders.find(r => r[col] === val);
+            if (o) Object.assign(o, updateData);
+          }
+          if (tableName === 'tenants') {
+            const t = Object.values(globalMockTenants).find(r => r[col] === val);
+            if (t) Object.assign(t, updateData);
+          }
+          return updateBuilder;
+        },
+        select: (_fields?: string) => ({
+          single: async () => ({
+            data: tableName === 'tenants' ? { id: updateFilters.find(f => f.col === 'id')?.val || 'mock-tenant-id' } : (globalMockOrders[0] || null),
+            error: null,
           }),
-          then: (resolve: any) => resolve({ data: null, error: null }),
-        };
-      },
-    }),
+          maybeSingle: async () => ({
+            data: tableName === 'tenants' ? { id: updateFilters.find(f => f.col === 'id')?.val || 'mock-tenant-id' } : (globalMockOrders[0] || null),
+            error: null,
+          }),
+          then: (resolve: any) => resolve({
+            data: [{ id: updateFilters.find(f => f.col === 'id')?.val || 'mock-tenant-id' }],
+            error: null,
+          }),
+        }),
+        then: (resolve: any) => resolve({ data: null, error: null }),
+      };
+      return updateBuilder;
+    },
     delete: () => ({
       eq: () => ({
         eq: () => ({
