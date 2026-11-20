@@ -1,5 +1,4 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
-import { hasTierAccess } from '@/lib/subscription-tiers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
@@ -8,9 +7,6 @@ import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
   slugify,
-  mapToDbProductType,
-  DbProductType,
-  sanitizeProductPayload,
   safeJsonStringify,
 } from '@/lib/product-catalog';
 import { sanitizePublicProduct } from '@/lib/security/public-catalog-sanitizer';
@@ -19,62 +15,11 @@ import {
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 import {
-  sanitizeSection10Html,
-  validateCustomHtmlPayload,
-} from '@/lib/security/html-sanitizer';
-import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
-
-const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-
-function isCustomHtmlRequested(body: any): boolean {
-  if (!body || typeof body !== 'object') return false;
-
-  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
-  const meta = body.metadata || {};
-
-  const htmlString = (
-    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
-    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
-    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
-  ).trim();
-
-  const isFlagActive = Boolean(
-    body.enable_custom_html ||
-    body.is_custom_html_enabled ||
-    body.use_custom_html ||
-    spc.enable_custom_html ||
-    spc.is_custom_html_enabled ||
-    spc.use_custom_html ||
-    spc.active_section === 'custom_html'
-  );
-
-  return htmlString.length > 0 || isFlagActive;
-}
-
-function isCustomHtmlCleanup(body: any): boolean {
-  if (!body || typeof body !== 'object') return false;
-
-  const spc = body.single_page_config || body.fulfillment_metadata?.single_page_config || {};
-  const meta = body.metadata || {};
-
-  const htmlString = (
-    (typeof body.custom_html === 'string' ? body.custom_html : '') ||
-    (typeof spc.custom_html === 'string' ? spc.custom_html : '') ||
-    (typeof meta.custom_html === 'string' ? meta.custom_html : '')
-  ).trim();
-
-  if (htmlString.length > 0) return false;
-
-  const hasExplicitDisable =
-    body.enable_custom_html === false ||
-    spc.enable_custom_html === false ||
-    body.is_custom_html_enabled === false ||
-    spc.is_custom_html_enabled === false ||
-    body.use_custom_html === false ||
-    spc.use_custom_html === false;
-
-  return hasExplicitDisable;
-}
+  upsertCanonicalProduct,
+  deleteCanonicalProduct,
+  CanonicalTenantContext,
+  CanonicalWriterActor,
+} from '@/lib/products/canonical-product-writer';
 
 export interface ProductItem {
   id: string | number;
@@ -99,6 +44,9 @@ export interface ProductItem {
   custom_badge?: string;
   weight_grams?: number;
   requires_shipping?: boolean;
+  status?: string;
+  is_legacy?: boolean;
+  is_purchasable?: boolean;
   fulfillment_metadata?: any;
   single_page_config?: any;
   order_bumps?: any;
@@ -107,6 +55,11 @@ export interface ProductItem {
   updated_at?: string;
 }
 
+/**
+ * POST /api/v1/tenants/[slug]/products
+ * Canonical Single-Writer Entrypoint (ADR-P0-07)
+ * Writes to public.products SQL FIRST with fail-closed zero mutation to metadata on error.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -138,7 +91,7 @@ export async function POST(
 
     const { data: canonicalTenant, error: canonicalErr } = await supabaseAdmin
       .from('tenants')
-      .select('*')
+      .select('id, slug, metadata, category, tier')
       .eq('slug', slug)
       .maybeSingle();
 
@@ -157,7 +110,7 @@ export async function POST(
     }
 
     if (!isInternalAuth) {
-      const canonicalCheck = authorizeMerchantRequest(
+      const canonicalCheck =  authorizeMerchantRequest(
         req,
         slug,
         ['OWNER', 'MERCHANT'],
@@ -172,486 +125,42 @@ export async function POST(
     if (!perm.allowed && perm.response) {
       return perm.response;
     }
+
     const rawBody = await req.json();
-    const body = sanitizeProductPayload(rawBody);
 
-    // ── SECTION 10 CUSTOM HTML ENTITLEMENT GATE (WP2) ──
-    if (isCustomHtmlRequested(body) && !isCustomHtmlCleanup(body)) {
-      const isEntitled = hasTierAccess(canonicalTenant, 'product_landing_custom_html');
-      if (!isEntitled) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: 'CUSTOM_HTML_UNAUTHORIZED',
-            error: 'Forbidden: Tenant is not entitled to Section 10 Product Landing Custom HTML. Add-on required.',
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    // Validate & sanitize any landing page custom HTML payloads (64 KB limit + DOMPurify)
-    const htmlCandidates = [
-      body?.single_page_config?.custom_html,
-      body?.fulfillment_metadata?.single_page_config?.custom_html,
-      body?.metadata?.custom_html,
-      body?.custom_html,
-    ];
-    for (const candidate of htmlCandidates) {
-      if (candidate !== undefined && candidate !== null && candidate !== '') {
-        const check = validateCustomHtmlPayload(candidate);
-        if (!check.valid) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: check.error || 'HTML_VALIDATION_FAILED',
-              message: `Konten HTML produk melebihi batas ukuran atau format tidak valid (${check.byteLength ?? 0} bytes).`,
-            },
-            { status: check.status }
-          );
-        }
-      }
-    }
-
-    if (typeof body.custom_html === 'string') {
-      body.custom_html = sanitizeSection10Html(body.custom_html);
-    }
-    if (body.metadata && typeof body.metadata.custom_html === 'string') {
-      body.metadata = {
-        ...body.metadata,
-        custom_html: sanitizeSection10Html(body.metadata.custom_html),
-      };
-    }
-    if (body.fulfillment_metadata?.single_page_config && typeof body.fulfillment_metadata.single_page_config.custom_html === 'string') {
-      body.fulfillment_metadata = {
-        ...body.fulfillment_metadata,
-        single_page_config: {
-          ...body.fulfillment_metadata.single_page_config,
-          custom_html: sanitizeSection10Html(body.fulfillment_metadata.single_page_config.custom_html),
-        },
-      };
-    }
-
-    const {
-      id,
-      name,
-      category,
-      price,
-      promo_price,
-      variants,
-      promo,
-      description,
-      download_url,
-      type,
-    } = body;
-
-    const trimmedName = String(name || '').trim();
-    if (!trimmedName) {
-      return NextResponse.json(
-        { success: false, error: 'Nama produk wajib diisi.' },
-        { status: 400 }
-      );
-    }
-
-    const rawPrice = price !== undefined ? price : body.price;
-    let sanitizedPrice: number = 0;
-    if (typeof rawPrice === 'number') {
-      sanitizedPrice = isNaN(rawPrice) ? 0 : rawPrice;
-    } else if (typeof rawPrice === 'string') {
-      const num = parseFloat(rawPrice.replace(/[^0-9.-]+/g, ''));
-      sanitizedPrice = isNaN(num) ? 0 : num;
-    }
-
-    let sanitizedPromoPrice: number | undefined = undefined;
-    if (promo_price !== undefined && promo_price !== null && String(promo_price) !== '') {
-      const pNum = typeof promo_price === 'number' ? promo_price : parseFloat(String(promo_price).replace(/[^0-9.-]+/g, ''));
-      if (!isNaN(pNum) && pNum > 0) sanitizedPromoPrice = pNum;
-    }
-
-    const productId = id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const finalSlug = body.slug ? slugify(body.slug) : slugify(trimmedName);
-    const isServicePt = ['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(body?.product_type || '').toUpperCase());
-    const resolvedCategory = body?.category || category || (body?.product_type === 'PHYSICAL' ? 'Fisik' : (isServicePt ? 'Jasa' : 'Digital'));
-
-    // Graceful sanitization of order_bumps so empty/malformed bump entries never crash save
-    const rawBumps = body.order_bumps || body.metadata?.order_bumps || body.fulfillment_metadata?.order_bumps;
-    let cleanOrderBumps: any = undefined;
-    if (rawBumps) {
-      if (Array.isArray(rawBumps)) {
-        const validItems = rawBumps.filter((b: any) => b && typeof b === 'object' && b.name && String(b.name).trim().length > 0);
-        cleanOrderBumps = {
-          enabled: validItems.length > 0,
-          items: validItems.map((b: any) => ({
-            ...b,
-            name: String(b.name).trim(),
-            price: Number(b.price) || 0,
-            original_price: b.original_price ? Number(b.original_price) : undefined,
-            badge_text: b.badge_text?.trim() || 'Penawaran Spesial',
-            description: b.description?.trim() || '',
-            is_active: b.is_active !== false,
-          })),
-        };
-      } else if (typeof rawBumps === 'object') {
-        const rawItems = Array.isArray(rawBumps.items) ? rawBumps.items : [];
-        const validItems = rawItems.filter((b: any) => b && typeof b === 'object' && b.name && String(b.name).trim().length > 0);
-        cleanOrderBumps = {
-          enabled: Boolean(rawBumps.enabled) && validItems.length > 0,
-          items: validItems.map((b: any) => ({
-            ...b,
-            name: String(b.name).trim(),
-            price: Number(b.price) || 0,
-            original_price: b.original_price ? Number(b.original_price) : undefined,
-            badge_text: b.badge_text?.trim() || 'Penawaran Spesial',
-            description: b.description?.trim() || '',
-            is_active: b.is_active !== false,
-          })),
-        };
-      }
-    }
-
-    const newProduct: ProductItem = {
-      ...body,
-      id: productId,
-      name: trimmedName,
-      slug: finalSlug,
-      category: resolvedCategory,
-      price: sanitizedPrice,
-      promo_price: sanitizedPromoPrice,
-      variants: variants || '',
-      promo: promo || '',
-      description: description || '',
-      download_url: download_url || null,
-      type: type || (body?.product_type === 'PHYSICAL' ? 'physical' : (body?.product_type === 'FOOD' ? 'fnb' : (isServicePt || category === 'jasa' ? 'service' : 'digital'))),
-      product_type: body?.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
-      sku: body.sku || `SKU-${finalSlug}`,
-      is_active: body.is_active !== false,
-      weight_grams: body.weight_grams !== undefined && body.weight_grams !== null
-        ? Number(body.weight_grams)
-        : (body?.fulfillment_metadata?.weight_grams !== undefined ? Number(body.fulfillment_metadata.weight_grams) : undefined),
-      fulfillment_metadata: {
-        ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
-        ...(body.weight_grams !== undefined && body.weight_grams !== null ? { weight_grams: Number(body.weight_grams) } : {}),
-      },
-      order_bumps: cleanOrderBumps,
-      single_page_config: (body?.single_page_config && typeof body.single_page_config === 'object')
-        ? (() => {
-            const spc = { ...(body.single_page_config ?? {}), slug: finalSlug };
-            if (typeof spc.custom_html === 'string') {
-              spc.custom_html = sanitizeSection10Html(spc.custom_html);
-            }
-            const isCustomHtml = Boolean(
-              (spc.enable_custom_html || spc.is_custom_html_enabled || spc.use_custom_html) &&
-              spc.custom_html?.trim()
-            );
-            if (isCustomHtml) {
-              spc.is_custom_html_enabled = true;
-              spc.enable_custom_html = true;
-              spc.use_custom_html = true;
-              spc.active_section = 'custom_html';
-              spc.sections_override = false;
-              spc.enable_hero = false;
-              spc.enable_media_gallery = false;
-              spc.enable_client_logos = false;
-              spc.enable_problem_solution = false;
-              spc.enable_us_vs_them = false;
-              spc.enable_testimonials = false;
-              spc.enable_offer = false;
-              spc.enable_faq = false;
-              if (body.single_page_config?.enable_payment === false || spc.enable_payment === false) {
-                spc.enable_payment = false;
-              } else {
-                spc.enable_payment = true;
-              }
-              if (!spc.section_order || !spc.section_order.includes('custom_html')) {
-                spc.section_order = ['custom_html', 'payment_voucher'];
-              }
-            }
-            return spc;
-          })()
-        : undefined,
-      updated_at: new Date().toISOString(),
-      created_at: body.created_at || new Date().toISOString(),
-    };
-
-    let updatedProducts: ProductItem[] = [];
-
-    try {
-      const existing = canonicalTenant;
-
-      const existingProducts: ProductItem[] = Array.isArray(existing?.metadata?.products)
-        ? existing.metadata.products
-        : existing?.metadata?.product?.name
-        ? [
-            {
-              id: existing.metadata.product.id || `prod-legacy-${Date.now()}`,
-              name: existing.metadata.product.name,
-              category: existing.metadata.product.category || 'course',
-              price: Number(existing.metadata.product.price || 0),
-              promo_price: existing.metadata.product.promo_price
-                ? Number(existing.metadata.product.promo_price)
-                : undefined,
-              variants: existing.metadata.product.variants || '',
-              promo: existing.metadata.product.promo || '',
-              description: existing.metadata.product.description || '',
-              download_url: existing.metadata.product.download_url || null,
-              type: existing.metadata.product.type || 'digital',
-            },
-          ]
-        : [];
-
-      // ── DATA INTEGRITY GATE: Query SQL products table ONLY if existing metadata is empty to avoid resurrecting deleted products ──
-      let mergedExisting = [...existingProducts];
-      if (existing?.id && mergedExisting.length === 0) {
-        try {
-          const { data: sqlProds } = await supabaseAdmin
-            .from('products')
-            .select('*')
-            .eq('tenant_id', existing.id);
-          if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-            const existingSlugs = new Set(mergedExisting.map((p) => (p.slug || '').toLowerCase()));
-            const existingIds = new Set(mergedExisting.map((p) => String(p.id)));
-            for (const sp of sqlProds) {
-              const spSlug = (sp.slug || '').toLowerCase();
-              const spId = String(sp.id);
-              if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
-                mergedExisting.push({
-                  id: sp.id,
-                  name: sp.title || `Produk`,
-                  title: sp.title,
-                  slug: sp.slug,
-                  category: sp.category || 'digital',
-                  product_type: sp?.product_type || 'DIGITAL',
-                  type: sp?.product_type === 'PHYSICAL' ? 'physical' : (['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(sp?.product_type || '').toUpperCase()) ? 'service' : 'digital'),
-                  price: Number(sp.price) || 0,
-                  promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-                  sku: sp.sku || `SKU-${sp.id}`,
-                  is_active: sp.is_active !== false,
-                  image: sp.image || sp.image_url || '',
-                  image_url: sp.image || sp.image_url || '',
-                  description: sp.description || '',
-                  download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-                  stock: sp.stock ?? 999999,
-                  is_unlimited: sp.is_unlimited_stock ?? true,
-                  requires_shipping: Boolean(sp.requires_shipping),
-                  fulfillment_metadata: sp.fulfillment_metadata,
-                  single_page_config: sp.fulfillment_metadata?.single_page_config,
-                });
-              }
-            }
-          }
-        } catch (sqlReadErr) {
-          console.debug('[Products Route] SQL existing products query note:', sqlReadErr);
-        }
-      }
-
-      const targetSku = (body.sku || newProduct.sku || '').trim().toLowerCase();
-      const existingIndex = mergedExisting.findIndex(
-        (p: any) =>
-          (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
-          String(p.id) === String(productId) ||
-          (p.slug && p.slug.toLowerCase() === finalSlug.toLowerCase())
-      );
-
-      // VALIDASI KUOTA CHECKOUT_LITE: MAKSIMAL 3 PRODUK AKTIF
-      const tenantTier = String(existing?.tier || existing?.metadata?.tier || '').toUpperCase();
-      if (tenantTier === 'CHECKOUT_LITE') {
-        const isTargetActive = body.is_active !== false;
-        if (isTargetActive) {
-          const otherActiveCount = mergedExisting.filter(
-            (p: any) => String(p.id) !== String(productId) && p.is_active !== false
-          ).length;
-
-          if (otherActiveCount >= 3) {
-            return NextResponse.json(
-              {
-                success: false,
-                code: 'LIMIT_EXCEEDED',
-                error: 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.',
-              },
-              { status: 403 }
-            );
-          }
-        }
-      }
-
-      const productSku = body.sku || newProduct.sku || `SKU-${finalSlug}`;
-      const productWithActive: ProductItem = {
-        ...newProduct,
-        sku: productSku,
-        is_active: body.is_active !== false,
-      };
-
-      if (existingIndex >= 0) {
-        updatedProducts = [...mergedExisting];
-        updatedProducts[existingIndex] = {
-          ...updatedProducts[existingIndex],
-          ...productWithActive,
-          sku: productSku,
-        };
-      } else {
-        // APPEND LOGIC: Tambahkan produk baru ke array eksisting, DILARANG replace total
-        updatedProducts = [productWithActive, ...mergedExisting];
-      }
-
-      // ADR-P0-07: Strip bulky custom_html from tenant metadata projection
-      // Relational public.products.fulfillment_metadata.single_page_config is the single source of truth
-      const sanitizedMetaProducts = updatedProducts.map((p) => {
-        if (!p.single_page_config) return p;
-        const spc = { ...p.single_page_config };
-        if (spc.custom_html) {
-          delete spc.custom_html;
-        }
-        return {
-          ...p,
-          single_page_config: spc,
-        };
-      });
-
-      const updatedMetadata = {
-        ...(existing?.metadata || {}),
-        products: sanitizedMetaProducts,
-        product: sanitizedMetaProducts[0] || null,
-      };
-      delete (updatedMetadata as any).custom_html;
-      delete (updatedMetadata as any).single_page_config;
-
-      if (existing?.id) {
-        const { data: updatedTenants, error: tUpdateErr } = await supabaseAdmin
-          .from('tenants')
-          .update({
-            name: existing?.name || slug,
-            category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
-            metadata: updatedMetadata,
-          })
-          .eq('id', existing.id)
-          .select('id, metadata');
-
-        if (tUpdateErr || !updatedTenants || updatedTenants.length === 0) {
-          console.error('[Products Route] Failed to update tenant metadata or 0 rows affected:', tUpdateErr);
-          return NextResponse.json(
-            { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: tUpdateErr?.message || 'Gagal memperbarui metadata tenant.' },
-            { status: 400 }
-          );
-        }
-
-        // Sync ke tabel SQL `products` dengan validasi baris terpengaruh
-        const isUuidVal = isUuid(String(productId));
-        const dbProductType = mapToDbProductType(body.product_type || type, resolvedCategory);
-
-        const sqlProductPayload = {
-          ...(isUuidVal ? { id: String(productId) } : {}),
-          tenant_id: existing.id,
-          title: trimmedName,
-          name: trimmedName,
-          slug: finalSlug,
-          description: description || '',
-          price: sanitizedPrice,
-          promo_price: sanitizedPromoPrice ? Number(sanitizedPromoPrice) : 0,
-          image: body.image || body.image_url || '',
-          image_url: body.image || body.image_url || '',
-          category: resolvedCategory,
-          stock: body.stock !== undefined ? Number(body.stock) : 999999,
-          is_unlimited_stock: body.is_unlimited ?? true,
-          asset_reference: body.asset_reference || `product:${finalSlug}`,
-          license_status: 'UNVERIFIED',
-          product_type: dbProductType,
-          sku: productSku,
-          is_active: body.is_active !== false,
-          requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL' || dbProductType === 'FOOD')),
-          is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
-          fulfillment_metadata: {
-            ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
-            ...(body.weight_grams !== undefined && body.weight_grams !== null ? { weight_grams: Number(body.weight_grams) } : {}),
-            ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
-            ...(newProduct.single_page_config ? { single_page_config: newProduct.single_page_config } : {}),
-            ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
-            ...(Array.isArray(body?.features) ? { features: body.features } : {}),
-          },
-        };
-
-        const hasValidUuid = isUuid(String(productId || ''));
-        const orFilters: string[] = [];
-        if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
-        if (productSku) orFilters.push(`sku.eq.${productSku}`);
-        if (hasValidUuid) orFilters.push(`id.eq.${productId}`);
-
-        const { data: existingSql } = orFilters.length > 0
-          ? await supabaseAdmin
-              .from('products')
-              .select('id')
-              .eq('tenant_id', existing.id)
-              .or(orFilters.join(','))
-              .maybeSingle()
-          : { data: null };
-
-        if (existingSql?.id) {
-          const { data: updatedRows, error: pUpdateErr } = await supabaseAdmin
-            .from('products')
-            .update(sqlProductPayload)
-            .eq('id', existingSql.id)
-            .eq('tenant_id', existing.id)
-            .select();
-
-          if (pUpdateErr || !updatedRows || updatedRows.length === 0) {
-            console.error('[Products Route] SQL products update failed or 0 rows affected:', pUpdateErr);
-            return NextResponse.json(
-              { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: pUpdateErr?.message || 'Gagal memperbarui baris produk di basis data.' },
-              { status: 400 }
-            );
-          }
-        } else {
-          const { data: insertedRows, error: pInsertErr } = await supabaseAdmin
-            .from('products')
-            .insert(sqlProductPayload)
-            .select();
-
-          if (pInsertErr || !insertedRows || insertedRows.length === 0) {
-            console.error('[Products Route] SQL products insert failed or 0 rows affected:', pInsertErr);
-            return NextResponse.json(
-              { success: false, error: 'INSERT_FAILED_OR_ZERO_ROWS_AFFECTED', message: pInsertErr?.message || 'Gagal menambahkan baris produk di basis data.' },
-              { status: 400 }
-            );
-          }
-        }
-      } else {
-        const { data: upsertedTenant, error: upsertErr } = await supabaseAdmin.from('tenants').upsert({
-          slug,
-          name: existing?.name || slug,
-          category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
-          metadata: updatedMetadata,
-        }, { onConflict: 'slug' }).select('id');
-
-        if (upsertErr || !upsertedTenant || upsertedTenant.length === 0) {
-          return NextResponse.json(
-            { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: upsertErr?.message || 'Gagal membuat/memperbarui tenant.' },
-            { status: 400 }
-          );
-        }
-      }
-    } catch (dbErr) {
-      console.error('[Products Route] Supabase product save error:', dbErr);
-      return NextResponse.json(
-        { success: false, error: 'DATABASE_MUTATION_ERROR', message: dbErr instanceof Error ? dbErr.message : String(dbErr) },
-        { status: 500 }
-      );
-    }
-
-    await recordTenantConfigAudit({
-      tenantId: canonicalTenant.id,
-      tenantSlug: canonicalTenant.slug,
+    const actor: CanonicalWriterActor = {
       actorId,
       actorRole,
-      authMethod: isInternalAuth ? 'internal_machine' : 'merchant_session',
-      action: 'PRODUCT_UPSERT',
-      resourceType: 'products',
-      resourceId: String(productId),
-      status: 'SUCCESS',
-      changedKeys: ['products'],
-      diffSummary: { product_id: productId, slug: finalSlug },
+      isInternalMachine: isInternalAuth,
+    };
+
+    // ── EXECUTE VIA SINGLE AUTHORITATIVE CANONICAL WRITER (ADR-P0-07) ──
+    const result = await upsertCanonicalProduct({
+      tenant: canonicalTenant as CanonicalTenantContext,
+      rawInput: {
+        price: 0,
+        ...rawBody,
+      },
+      actor,
       req,
+      customSupabaseAdmin: supabaseAdmin,
     });
 
-    // Forward/Sync to Railway Production Core Backend
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: result.code,
+          error: result.error,
+          message: result.message || result.error,
+        },
+        { status: result.statusCode }
+      );
+    }
+
+    const committedProduct = result.product;
+
+    // Forward/Sync to Railway Production Core Backend (Non-blocking)
     try {
       await fetch(
         getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products`),
@@ -661,7 +170,7 @@ export async function POST(
             'Content-Type': 'application/json',
             'X-Tenant-ID': slug,
           },
-          body: safeJsonStringify(body),
+          body: safeJsonStringify(rawBody),
           cache: 'no-store',
         }
       );
@@ -684,8 +193,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil disimpan ke katalog toko.',
-      product: sanitizeProductPayload(newProduct),
-      products: sanitizeProductPayload(updatedProducts),
+      product: sanitizePublicProduct(committedProduct),
+      projection: result.projection,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error saving product';
@@ -693,6 +202,11 @@ export async function POST(
   }
 }
 
+/**
+ * DELETE /api/v1/tenants/[slug]/products
+ * Canonical Single-Writer Delete (ADR-P0-07)
+ * Executes SQL DELETE from public.products FIRST.
+ */
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -752,6 +266,7 @@ export async function DELETE(
     if (!perm.allowed && perm.response) {
       return perm.response;
     }
+
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
 
@@ -762,78 +277,32 @@ export async function DELETE(
       );
     }
 
-    let remainingProducts: ProductItem[] = [];
-
-    try {
-      const existing = canonicalTenant;
-
-      const existingProducts: ProductItem[] = Array.isArray(existing?.metadata?.products)
-        ? existing.metadata.products
-        : existing?.metadata?.product
-        ? [existing.metadata.product]
-        : [];
-
-      const targetProduct = existingProducts.find((p) => String(p.id) === String(id) || p.slug === String(id));
-      const targetSlug = targetProduct?.slug;
-
-      remainingProducts = existingProducts.filter((p) => String(p.id) !== String(id) && p.slug !== String(id));
-
-      const updatedMetadata = {
-        ...(existing?.metadata || {}),
-        products: remainingProducts,
-        product: remainingProducts[0] || null,
-      };
-
-      if (existing?.id) {
-        await supabaseAdmin
-          .from('tenants')
-          .update({
-            metadata: updatedMetadata,
-          })
-          .eq('id', existing.id)
-          .select('id');
-
-        // Hapus juga dari tabel SQL products Supabase
-        try {
-          const deleteConditions: string[] = [];
-          if (isUuid(String(id || ''))) deleteConditions.push(`id.eq.${id}`);
-          if (targetSlug) deleteConditions.push(`slug.eq.${targetSlug}`);
-          if (targetProduct?.sku) deleteConditions.push(`sku.eq.${targetProduct.sku}`);
-
-          if (deleteConditions.length > 0) {
-            await supabaseAdmin
-              .from('products')
-              .delete()
-              .eq('tenant_id', existing.id)
-              .or(deleteConditions.join(','));
-          }
-        } catch (delSqlErr) {
-          console.debug('[Products Route] SQL products delete note:', delSqlErr);
-        }
-      } else {
-        await supabaseAdmin.from('tenants').upsert({
-          slug,
-          metadata: updatedMetadata,
-        }, { onConflict: 'slug' });
-      }
-    } catch (dbErr) {
-      console.warn('Supabase product delete error:', dbErr);
-    }
-
-    await recordTenantConfigAudit({
-      tenantId: canonicalTenant.id,
-      tenantSlug: canonicalTenant.slug,
+    const actor: CanonicalWriterActor = {
       actorId,
       actorRole,
-      authMethod: isInternalAuth ? 'internal_machine' : 'merchant_session',
-      action: 'PRODUCT_DELETE',
-      resourceType: 'products',
-      resourceId: String(id),
-      status: 'SUCCESS',
-      changedKeys: ['products'],
-      diffSummary: { product_id: id },
+      isInternalMachine: isInternalAuth,
+    };
+
+    // ── EXECUTE VIA SINGLE AUTHORITATIVE CANONICAL WRITER (ADR-P0-07) ──
+    const result = await deleteCanonicalProduct({
+      tenant: canonicalTenant as CanonicalTenantContext,
+      productIdOrKey: id,
+      actor,
       req,
+      customSupabaseAdmin: supabaseAdmin,
     });
+
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: result.code,
+          error: result.error,
+          message: result.message || result.error,
+        },
+        { status: result.statusCode }
+      );
+    }
 
     // Forward/Sync DELETE to Railway Production Core Backend
     try {
@@ -868,7 +337,7 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil dihapus dari katalog.',
-      products: remainingProducts,
+      deletedId: result.deletedId,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error deleting product';
@@ -876,6 +345,11 @@ export async function DELETE(
   }
 }
 
+/**
+ * GET /api/v1/tenants/[slug]/products
+ * SQL-First Reader (ADR-P0-07 & Decisions O-01 / O-02)
+ * Treats relational `public.products` as canonical authority.
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -884,114 +358,118 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // 1. Single Source of Truth: Supabase (tenants.metadata.products & products table)
-    try {
-      const supabase = getSupabase();
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('id, metadata')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      let products: any[] = Array.isArray(tenantRow?.metadata?.products)
-        ? tenantRow.metadata.products.filter((p: any) => {
-            if (!p || typeof p !== 'object') return false;
-            if (p.is_active === false || p.is_active === 'false' || p.is_active === 0 || p.is_active === '0') return false;
-            const st = typeof p.status === 'string' ? p.status.toLowerCase().trim() : '';
-            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
-            return true;
-          })
-        : (tenantRow?.metadata?.product &&
-           tenantRow.metadata.product.name &&
-           tenantRow.metadata.product.name !== slug &&
-           tenantRow.metadata.product.is_active !== false &&
-           !['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(String(tenantRow.metadata.product.status || '').toLowerCase().trim()))
-        ? [tenantRow.metadata.product]
-        : [];
-
-      // Query juga dari tabel SQL `products` jika ada (hanya ambil produk aktif)
-      if (tenantRow?.id) {
-        const { data: sqlProds } = await supabase
-          .from('products')
-          .select('*')
-          .eq('tenant_id', tenantRow.id)
-          .eq('is_active', true);
-
-        if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-          const activeSqlProds = sqlProds.filter((sp: any) => {
-            if (!sp) return false;
-            if (sp.is_active === false || sp.is_active === 'false' || sp.is_active === 0 || sp.is_active === '0') return false;
-            const st = typeof sp.status === 'string' ? sp.status.toLowerCase().trim() : '';
-            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
-            return true;
-          });
-
-          const sqlMapped = activeSqlProds.map((sp: any, idx: number) => ({
-            id: sp.id,
-            name: sp.title || `Produk ${idx + 1}`,
-            title: sp.title || `Produk ${idx + 1}`,
-            slug: sp.slug,
-            category: sp?.category || (sp?.product_type === 'PHYSICAL' ? 'physical' : (['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(sp?.product_type || '').toUpperCase()) ? 'jasa' : 'digital')),
-            product_type: sp?.product_type || (sp?.category === 'fisik' ? 'PHYSICAL' : (sp?.category === 'jasa' || sp?.category === 'service' ? 'SERVICE' : 'DIGITAL')),
-            price: Number(sp.price) || 0,
-            promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-            description: sp.description || '',
-            download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-            image: sp.image || sp.fulfillment_metadata?.single_page_config?.banner_url || '',
-            stock: sp.stock !== undefined ? Number(sp.stock) : 999,
-            sku: sp.sku || '',
-            is_unlimited: sp.is_unlimited_stock ?? true,
-            is_active: sp.is_active !== false,
-            status: sp.status || 'ACTIVE',
-            fulfillment_metadata: sp.fulfillment_metadata,
-            single_page_config: sp.fulfillment_metadata?.single_page_config,
-          }));
-
-          const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
-          const existingIds = new Set(products.map((p) => String(p.id)));
-          for (const sp of sqlMapped) {
-            if (!existingSlugs.has((sp.slug || '').toLowerCase()) && !existingIds.has(String(sp.id))) {
-              products.push(sp);
-            }
-          }
-        }
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    let isMerchantAuthorized = isInternalAuth;
+    if (!isInternalAuth) {
+      const auth = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (auth.authorized) {
+        isMerchantAuthorized = true;
       }
-
-      if (products.length > 0) {
-        return NextResponse.json({
-          success: true,
-          products: products.map((p) => sanitizePublicProduct(p)),
-        });
-      }
-    } catch (supabaseErr) {
-      console.warn('Supabase products fetch note:', supabaseErr);
     }
 
-    // 2. Fallback jika Supabase kosong: Coba Railway Backend Core
-    try {
-      const railwayRes = await fetch(
-        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products`),
-        {
-          headers: { 'X-Tenant-ID': slug },
-          cache: 'no-store',
-        }
-      );
-      if (railwayRes.ok) {
-        const rData = await railwayRes.json();
-        if (Array.isArray(rData.products) && rData.products.length > 0) {
-          return NextResponse.json({
-            success: true,
-            products: rData.products.map((p: any) => sanitizePublicProduct(p)),
-          });
-        }
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: 'SERVICE_UNAVAILABLE' }, { status: 503 });
+    }
+
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('id, slug, metadata, category')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (!tenantRow) {
+      return NextResponse.json({ success: false, error: 'TENANT_NOT_FOUND' }, { status: 404 });
+    }
+
+    // ── 1. AUTHORITATIVE QUERY FROM RELATIONAL `public.products` ──
+    const { data: sqlProds, error: sqlErr } = await supabase
+      .from('products')
+      .select('*')
+      .eq('tenant_id', tenantRow.id);
+
+    const activeSqlProds = (sqlProds || []).filter((sp: any) => {
+      if (!sp) return false;
+      if (sp.is_active === false || sp.is_active === 'false' || sp.is_active === 0) return false;
+      const st = typeof sp.status === 'string' ? sp.status.toLowerCase().trim() : '';
+      if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
+      return true;
+    });
+
+    // Map SQL products into canonical response items
+    const canonicalProducts: ProductItem[] = activeSqlProds.map((sp: any, idx: number) => ({
+      id: sp.id,
+      name: sp.title || sp.name || `Produk ${idx + 1}`,
+      title: sp.title || sp.name || `Produk ${idx + 1}`,
+      slug: sp.slug,
+      category: sp.category || 'digital',
+      product_type: sp.product_type || 'DIGITAL',
+      price: Number(sp.price) || 0,
+      promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+      description: sp.description || '',
+      download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+      image: sp.image || sp.image_url || '',
+      image_url: sp.image_url || sp.image || '',
+      stock: sp.stock !== undefined && sp.stock !== null ? Number(sp.stock) : 999,
+      sku: sp.sku || '',
+      is_unlimited: sp.is_unlimited_stock ?? true,
+      is_active: sp.is_active !== false,
+      status: sp.status || 'ACTIVE',
+      fulfillment_metadata: sp.fulfillment_metadata,
+      single_page_config: sp.fulfillment_metadata?.single_page_config,
+      variants: sp.variants,
+    }));
+
+    // ── 2. CROSS-REFERENCE WITH METADATA (O-01 & O-02 COMPLIANCE) ──
+    const sqlIds = new Set(canonicalProducts.map(p => String(p.id)));
+    const sqlSlugs = new Set(canonicalProducts.map(p => String(p.slug).toLowerCase()));
+
+    const metaProducts: any[] = Array.isArray(tenantRow.metadata?.products)
+      ? tenantRow.metadata.products
+      : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
+
+    for (const mp of metaProducts) {
+      if (!mp) continue;
+      const mId = String(mp.id || '');
+      const mSlug = String(mp.slug || '').toLowerCase();
+
+      // If ID or Slug exists in SQL, SQL row ALWAYS wins. Metadata is superseded.
+      if (sqlIds.has(mId) || (mSlug && sqlSlugs.has(mSlug))) {
+        continue;
       }
-    } catch (railwayErr) {
-      console.warn('Railway backend products fetch note:', railwayErr);
+
+      // Metadata-only legacy product (O-01 Option B)
+      // If request is merchant-authorized, surface as LEGACY_REVIEW_REQUIRED for review.
+      // If public storefront request, omit from purchasable catalog.
+      if (isMerchantAuthorized) {
+        canonicalProducts.push({
+          id: mp.id,
+          name: mp.name || mp.title || 'Legacy Product',
+          title: mp.title || mp.name || 'Legacy Product',
+          slug: mp.slug,
+          category: mp.category || 'digital',
+          product_type: mp.product_type || 'DIGITAL',
+          price: Number(mp.price) || 0,
+          promo_price: mp.promo_price ? Number(mp.promo_price) : 0,
+          description: mp.description || '',
+          image: mp.image || mp.image_url || '',
+          image_url: mp.image_url || mp.image || '',
+          stock: mp.stock !== undefined ? Number(mp.stock) : 0,
+          sku: mp.sku || '',
+          is_unlimited: Boolean(mp.is_unlimited),
+          is_active: false,
+          status: 'LEGACY_REVIEW_REQUIRED',
+          is_legacy: true,
+          is_purchasable: false,
+          fulfillment_metadata: mp.fulfillment_metadata,
+          single_page_config: mp.single_page_config,
+        });
+      }
     }
 
     return NextResponse.json({
       success: true,
-      products: [],
+      products: canonicalProducts.map(p => sanitizePublicProduct(p)),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching products';
@@ -1000,5 +478,3 @@ export async function GET(
 }
 
 export { POST as PUT, POST as PATCH };
-
-

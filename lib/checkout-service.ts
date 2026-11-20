@@ -299,32 +299,91 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let matchedProd: any = null;
 
   try {
-    const products = Array.isArray(tenantRowData?.metadata?.products) ? tenantRowData.metadata.products : [];
     const prodIdStr = String(payload.productId || '').trim();
     const prodTitleStr = String(payload.productTitle || '').trim().toLowerCase();
 
-    matchedProd = products.find((p: any) => {
-      if (!p) return false;
-      if (prodIdStr && (String(p.id) === prodIdStr || String(p.slug) === prodIdStr || String(p.sku) === prodIdStr)) return true;
-      if (prodTitleStr && p.name && p.name.trim().toLowerCase() === prodTitleStr) return true;
-      return false;
-    });
+    // ADR-P0-07: SQL-First Product Lookup (public.products is Canonical Authority)
+    if (resolvedTenantId) {
+      if (prodIdStr) {
+        const isTargetUuid = isUuid(prodIdStr);
+        let prodQuery = supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', resolvedTenantId);
 
-    if (!matchedProd && resolvedTenantId) {
-      const isTargetUuid = isUuid(payload.productId);
-      let prodQuery = supabase.from('products').select('*').eq('tenant_id', resolvedTenantId);
-      if (isTargetUuid) {
-        prodQuery = prodQuery.or(`slug.eq.${payload.productId},id.eq.${payload.productId}`);
-      } else {
-        prodQuery = prodQuery.eq('slug', payload.productId);
+        if (isTargetUuid) {
+          prodQuery = prodQuery.or(`slug.eq.${prodIdStr},id.eq.${prodIdStr}`);
+        } else {
+          prodQuery = prodQuery.or(`slug.eq.${prodIdStr},id.eq.${prodIdStr}`);
+        }
+
+        const { data: sqlProds, error: sqlLookupErr } = await prodQuery;
+
+        if (!sqlLookupErr && Array.isArray(sqlProds) && sqlProds.length > 0) {
+          // O-02 Option B: Detect Ambiguous Slug Collision
+          if (sqlProds.length > 1) {
+            throw new Error('AMBIGUOUS_PRODUCT_SLUG: Multiple products match identifier. Merchant resolution required.');
+          }
+
+          const sqlProd = sqlProds[0];
+          if (sqlProd.is_active === false || ['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(String(sqlProd.status || '').toLowerCase().trim())) {
+            throw new Error('PRODUCT_INACTIVE: Produk tidak lagi aktif untuk pembelian.');
+          }
+
+          matchedProd = {
+            ...sqlProd,
+            name: sqlProd.title || sqlProd.name,
+            order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
+          };
+        }
+      } else if (payload.productTitle) {
+        // Regression B: Legacy caller sends productTitle without productId
+        const rawTitle = String(payload.productTitle).trim();
+        let titleQuery = supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', resolvedTenantId);
+
+        if (typeof titleQuery.or === 'function') {
+          titleQuery = titleQuery.or(`title.eq.${rawTitle},name.eq.${rawTitle}`);
+        } else {
+          titleQuery = titleQuery.eq('title', rawTitle);
+        }
+
+        const { data: titleProds, error: titleLookupErr } = await titleQuery;
+
+        if (!titleLookupErr && Array.isArray(titleProds) && titleProds.length > 0) {
+          if (titleProds.length > 1) {
+            throw new Error('AMBIGUOUS_PRODUCT_TITLE: Multiple products match title. Merchant resolution required.');
+          }
+
+          const sqlProd = titleProds[0];
+          if (sqlProd.is_active === false || ['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(String(sqlProd.status || '').toLowerCase().trim())) {
+            throw new Error('PRODUCT_INACTIVE: Produk tidak lagi aktif untuk pembelian.');
+          }
+
+          matchedProd = {
+            ...sqlProd,
+            name: sqlProd.title || sqlProd.name,
+            order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
+          };
+        }
       }
-      const { data: sqlProd } = await prodQuery.maybeSingle();
-      if (sqlProd) {
-        matchedProd = {
-          ...sqlProd,
-          name: sqlProd.title,
-          order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
-        };
+    }
+
+    // O-01 Option B: Fail-closed legacy check for metadata-only products
+    if (!matchedProd) {
+      const metadataProducts = Array.isArray(tenantRowData?.metadata?.products) ? tenantRowData.metadata.products : [];
+      const legacyMetaMatch = metadataProducts.find((p: any) => {
+        if (!p) return false;
+        if (prodIdStr && (String(p.id) === prodIdStr || String(p.slug) === prodIdStr || String(p.sku) === prodIdStr)) return true;
+        if (prodTitleStr && p.name && p.name.trim().toLowerCase() === prodTitleStr) return true;
+        return false;
+      });
+
+      if (legacyMetaMatch) {
+        // Decision O-01 Option B: Metadata-only legacy records are strictly unpurchasable
+        throw new Error('LEGACY_PRODUCT_NOT_PURCHASABLE: Product requires merchant review and publishing in dashboard before purchase.');
       }
     }
 
@@ -336,7 +395,15 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       verifiedOrderBumps = availableBumps.filter((b) => requestedIds.includes(String(b.id)));
       orderBumpsTotal = verifiedOrderBumps.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
     }
-  } catch (lookupErr) {
+  } catch (lookupErr: any) {
+    if (
+      lookupErr?.message?.includes('LEGACY_PRODUCT_NOT_PURCHASABLE') ||
+      lookupErr?.message?.includes('AMBIGUOUS_PRODUCT_SLUG') ||
+      lookupErr?.message?.includes('AMBIGUOUS_PRODUCT_TITLE') ||
+      lookupErr?.message?.includes('PRODUCT_INACTIVE')
+    ) {
+      throw lookupErr;
+    }
     console.warn('[Checkout Service] Product verification lookup note:', lookupErr);
   }
 

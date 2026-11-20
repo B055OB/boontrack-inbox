@@ -273,57 +273,44 @@ export default function TenantStorefrontPage() {
           const meta = tenantRow.metadata || {};
           setTenantMetadata(meta);
 
-          const rawProds = Array.isArray(meta.products) ? meta.products : [];
-          const prodsList = rawProds.filter((p: any) => {
-            if (!p || typeof p !== "object") return false;
-            if (p.is_active === false || p.is_active === "false" || p.is_active === 0 || p.is_active === "0") return false;
-            const st = typeof p.status === "string" ? p.status.toLowerCase().trim() : "";
-            if (["draft", "hidden", "archived", "inactive", "sembunyi"].includes(st)) return false;
-            return true;
-          });
-          const combinedProds = [...prodsList];
-          const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || "").toLowerCase()));
-          const existingIds = new Set(prodsList.map((p: any) => String(p.id)));
-
-          for (const sp of sqlProducts) {
-            if (!sp) continue;
-            const spSlug = (sp.slug || "").toLowerCase();
-            const spId = String(sp.id);
-            if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
-              const spPt = String(sp?.product_type || "").toUpperCase();
-              const isSpService = spPt === "SERVICE" || spPt === "FIELD_SERVICE" || spPt === "PROFESSIONAL_SERVICE" || spPt === "AGENCY";
-              combinedProds.push({
-                id: sp.id,
-                name: sp.title || `Produk`,
-                title: sp.title,
-                slug: sp.slug,
-                category: sp.category || (isSpService ? "Layanan" : "Digital"),
-                product_type: sp?.product_type || "DIGITAL",
-                requires_shipping: Boolean(
-                  sp.requires_shipping ||
-                    spPt === "PHYSICAL" ||
-                    spPt === "FOOD"
-                ),
-                type:
+          // ADR-P0-07: SQL-First Reader (public.products is Canonical Winner)
+          const canonicalSqlProducts = sqlProducts.map((sp: any, idx: number) => {
+            const spPt = String(sp?.product_type || "").toUpperCase();
+            const isSpService = spPt === "SERVICE" || spPt === "FIELD_SERVICE" || spPt === "PROFESSIONAL_SERVICE" || spPt === "AGENCY";
+            return {
+              id: sp.id,
+              name: sp.title || `Produk`,
+              title: sp.title,
+              slug: sp.slug,
+              category: sp.category || (isSpService ? "Layanan" : "Digital"),
+              product_type: sp?.product_type || "DIGITAL",
+              requires_shipping: Boolean(
+                sp.requires_shipping ||
+                  spPt === "PHYSICAL" ||
                   spPt === "FOOD"
-                    ? "food"
-                    : spPt === "PHYSICAL"
-                    ? "physical"
-                    : isSpService
-                    ? "service"
-                    : "digital",
-                price: Number(sp.price) || 0,
-                promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-                download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || "",
-                stock: sp.stock ?? 999999,
-                is_unlimited: sp.is_unlimited_stock ?? true,
-                fulfillment_metadata: sp.fulfillment_metadata,
-                single_page_config: sp.fulfillment_metadata?.single_page_config,
-                is_active: sp.is_active !== false,
-                status: sp.status || 'ACTIVE',
-              });
-            }
-          }
+              ),
+              type:
+                spPt === "FOOD"
+                  ? "food"
+                  : spPt === "PHYSICAL"
+                  ? "physical"
+                  : isSpService
+                  ? "service"
+                  : "digital",
+              price: Number(sp.price) || 0,
+              promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+              download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || "",
+              stock: sp.stock ?? 999999,
+              is_unlimited: sp.is_unlimited_stock ?? true,
+              fulfillment_metadata: sp.fulfillment_metadata,
+              single_page_config: sp.fulfillment_metadata?.single_page_config,
+              is_active: sp.is_active !== false,
+              status: sp.status || 'ACTIVE',
+            };
+          });
+
+          // Decision O-01 Option B: Only published relational products appear on active storefront catalog
+          const combinedProds = [...canonicalSqlProducts];
 
           setStoreProducts(
             combinedProds

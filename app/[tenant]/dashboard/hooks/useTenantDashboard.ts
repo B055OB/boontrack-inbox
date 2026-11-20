@@ -951,11 +951,29 @@ export function useTenantDashboard() {
               };
             });
 
-            // Gabungkan dengan prioritas metadata (update terbaru merchant)
-            const metaIds = new Set(mappedMeta.map((m: any) => String(m.id)));
-            const metaSlugs = new Set(mappedMeta.filter(Boolean).map((m: any) => String(m?.slug ?? '').toLowerCase()));
-            const nonDuplicates = hydratedProducts.filter((hp: any) => !metaIds.has(String(hp.id)) && !metaSlugs.has(String(hp.slug).toLowerCase()));
-            hydratedProducts = [...mappedMeta, ...nonDuplicates];
+            // ADR-P0-07: SQL-First Reader Precedence (public.products strictly wins)
+            // Relational SQL rows in hydratedProducts are the primary source of truth.
+            const sqlIds = new Set(hydratedProducts.map((hp: any) => String(hp.id)));
+            const sqlSlugs = new Set(hydratedProducts.filter(Boolean).map((hp: any) => String(hp?.slug ?? '').toLowerCase()));
+
+            // O-01 Option B: Metadata-only records tagged LEGACY_REVIEW_REQUIRED
+            const legacyMetaToReview: any[] = [];
+            for (const m of mappedMeta) {
+              const mId = String(m.id);
+              const mSlug = String(m?.slug ?? '').toLowerCase();
+              if (sqlIds.has(mId) || (mSlug && sqlSlugs.has(mSlug))) {
+                // SQL product strictly supersedes metadata record
+                continue;
+              }
+              legacyMetaToReview.push({
+                ...m,
+                status: 'LEGACY_REVIEW_REQUIRED',
+                is_legacy: true,
+                is_purchasable: false,
+              });
+            }
+
+            hydratedProducts = [...hydratedProducts, ...legacyMetaToReview];
           }
 
           if (hydratedProducts.length > 0) {
