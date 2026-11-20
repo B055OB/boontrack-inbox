@@ -28,5 +28,5 @@ CREATE TRIGGER trg_tenants_set_updated_at
     EXECUTE FUNCTION public.set_tenants_updated_at();
 
 -- Comment documenting OCC invariant
-COMMENT ON FUNCTION public.set_tenants_updated_at() IS 
+COMMENT ON FUNCTION public.set_tenants_updated_at() IS
 'Enforces strictly monotonic advancement of tenants.updated_at on every row update to guarantee Optimistic Concurrency Control (OCC) CAS invariants.';
