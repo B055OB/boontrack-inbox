@@ -59,21 +59,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Simpan status perangkat terhubung
+    // 3. Simpan status perangkat terhubung via OCC CAS
     const nowStr = new Date().toISOString();
-    const updatedMeta = {
-      ...(tenant.metadata || {}),
-      reader_device: {
-        is_connected: true,
-        status: 'CONNECTED',
-        device_name: deviceName,
-        device_id: deviceId || `dev_${Date.now()}`,
-        paired_at: nowStr,
-        last_active_at: nowStr,
-      },
-      reader_pairing_session: null, // One-Time Token: langsung bersihkan setelah sukses
-    };
-
     await updateTenantWithOccCas(
       supabase,
       tenant.id,

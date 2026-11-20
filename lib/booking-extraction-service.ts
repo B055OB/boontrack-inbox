@@ -377,11 +377,6 @@ export async function processFunnelBookingMessage(
         created_at: new Date().toISOString(),
       };
 
-      const updatedMetadata = {
-        ...metadata,
-        bookings: [newBookingRecord, ...existingBookings].slice(0, 100),
-      };
-
       await updateTenantWithOccCas(
         supabase,
         tenant.id,

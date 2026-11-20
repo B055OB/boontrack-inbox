@@ -172,34 +172,30 @@ export async function activateShopSubscription(
     };
   }
 
-  // 6. Synchronize Tenants Table (tier, subscription_tier, status, subscription_status, metadata)
-  const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
-  const updatedMetadata = {
-    ...existingMeta,
-    is_shop_subscriber: true,
-    is_shop_member: true,
-    subscription: {
-      id: insertedSub.id,
-      tier,
-      duration_months: durationMonths,
-      status: 'ACTIVE',
-      current_period_ends_at: dates.current_period_ends_at,
-      expires_at: dates.expires_at,
-      invoice_id: invoiceId || null,
-      ai_quota: {
-        base_quota: quota.baseQuota,
-        session_ttl_hours: quota.sessionTtlHours,
-        reset_cycle_days: quota.resetCycleDays,
-      },
-    },
-    ai_session_quota: quota.baseQuota,
-  };
-
+  // 6. Synchronize Tenants Table via OCC CAS (Pure Delta)
   const occResult = await updateTenantWithOccCas(
     supabase,
     tenant.id,
     (fresh) => {
-      const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+      const freshMeta = { ...(fresh.metadata && typeof fresh.metadata === 'object' ? fresh.metadata : {}) };
+      freshMeta.is_shop_subscriber = true;
+      freshMeta.is_shop_member = true;
+      freshMeta.subscription = {
+        id: insertedSub.id,
+        tier,
+        duration_months: durationMonths,
+        status: 'ACTIVE',
+        current_period_ends_at: dates.current_period_ends_at,
+        expires_at: dates.expires_at,
+        invoice_id: invoiceId || null,
+        ai_quota: {
+          base_quota: quota.baseQuota,
+          session_ttl_hours: quota.sessionTtlHours,
+          reset_cycle_days: quota.resetCycleDays,
+        },
+      };
+      freshMeta.ai_session_quota = quota.baseQuota;
+
       return {
         tier,
         subscription_tier: tier,
@@ -208,10 +204,7 @@ export async function activateShopSubscription(
         is_active: true,
         subscription_ends_at: dates.expires_at,
         due_date: dates.expires_at.split('T')[0],
-        metadata: {
-          ...freshMeta,
-          ...updatedMetadata,
-        },
+        metadata: freshMeta,
       };
     }
   );

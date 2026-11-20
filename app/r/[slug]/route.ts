@@ -73,35 +73,38 @@ export async function GET(
           targetPhone = '62' + targetPhone.slice(1);
         }
 
-        // Update counter & pointer di background/sync
-        const updatedCsList = allCs.map((cs: any) => {
-          if (cs.id === selectedCS.id) {
-            return {
-              ...cs,
-              lead_count: (Number(cs.lead_count) || 0) + 1,
-            };
-          }
-          return cs;
-        });
-
-        const updatedRotator = {
-          ...rotator,
-          last_index: nextIndex,
-          cs_list: updatedCsList,
-          last_rotated_at: new Date().toISOString(),
-        };
-
-        // Simpan pembaruan counter & index ke Supabase via OCC CAS
+        // Simpan pembaruan counter & index ke Supabase via OCC CAS (Pure Delta)
         await updateTenantWithOccCas(
           supabase,
           tenant.id,
           (freshTenant) => {
-            const freshMeta = freshTenant.metadata || {};
+            const freshMeta = { ...(freshTenant.metadata || {}) };
+            const currentRotator = freshMeta.rotator || {};
+            const currentAllCs = Array.isArray(currentRotator.cs_list) ? currentRotator.cs_list : [];
+            const currentActiveCs = currentAllCs.filter((c: any) => c.status === 'active' || c.status === undefined);
+            const currentLastIndex = typeof currentRotator.last_index === 'number' ? currentRotator.last_index : -1;
+            const freshNextIndex = currentActiveCs.length > 0 ? (currentLastIndex + 1) % currentActiveCs.length : 0;
+            const freshSelectedCS = currentActiveCs[freshNextIndex] || selectedCS;
+
+            const updatedCsList = currentAllCs.map((cs: any) => {
+              if (cs.id === freshSelectedCS.id) {
+                return {
+                  ...cs,
+                  lead_count: (Number(cs.lead_count) || 0) + 1,
+                };
+              }
+              return cs;
+            });
+
+            freshMeta.rotator = {
+              ...currentRotator,
+              last_index: freshNextIndex,
+              cs_list: updatedCsList,
+              last_rotated_at: new Date().toISOString(),
+            };
+
             return {
-              metadata: {
-                ...freshMeta,
-                rotator: updatedRotator,
-              },
+              metadata: freshMeta,
             };
           }
         );

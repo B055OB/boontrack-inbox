@@ -533,96 +533,93 @@ export async function POST(req: NextRequest) {
     }
 
     // Ensure tenants.metadata never retains plaintext Lincah API keys and stays synchronized for F&B/shipping readers
-    const sanitizedMeta = stripLincahSecretsFromMetadata(tenantRow.metadata || {});
-    if (mergedFnbSettings || mergedOrigin || (body.routing_rules && typeof body.routing_rules === 'object')) {
-      const existingMetaShipping =
-        sanitizedMeta.shipping_config && typeof sanitizedMeta.shipping_config === 'object'
-          ? { ...sanitizedMeta.shipping_config }
-          : {};
-
-      if (mergedFnbSettings && fnbNonRadiusPatch) {
-        const metaFnbSync =
-          hasExplicitRadius && validatedRadius !== null
-            ? mergedFnbSettings
-            : fnbNonRadiusPatch;
-        existingMetaShipping.fnb_settings = {
-          ...(existingMetaShipping.fnb_settings || {}),
-          ...metaFnbSync,
-        };
-        if (sanitizedMeta.fnb_settings && typeof sanitizedMeta.fnb_settings === 'object') {
-          sanitizedMeta.fnb_settings = {
-            ...sanitizedMeta.fnb_settings,
-            ...metaFnbSync,
-          };
-        }
-      }
-
-      if (mergedOrigin) {
-        existingMetaShipping.origin = {
-          ...(existingMetaShipping.origin || {}),
-          ...mergedOrigin,
-        };
-        if (typeof mergedOrigin.latitude === 'number') {
-          existingMetaShipping.origin_latitude = mergedOrigin.latitude;
-        }
-        if (typeof mergedOrigin.longitude === 'number') {
-          existingMetaShipping.origin_longitude = mergedOrigin.longitude;
-        }
-        if (typeof mergedOrigin.address === 'string' && mergedOrigin.address.trim()) {
-          existingMetaShipping.origin_address = mergedOrigin.address.trim();
-        }
-      }
-
-      if (hasExplicitRadius && validatedRadius !== null) {
-        existingMetaShipping.max_radius_km = validatedRadius;
-        if (existingMetaShipping.internal_courier && typeof existingMetaShipping.internal_courier === 'object') {
-          existingMetaShipping.internal_courier = {
-            ...existingMetaShipping.internal_courier,
-            max_radius_km: validatedRadius,
-          };
-        }
-        if (existingMetaShipping.lalamove_internal && typeof existingMetaShipping.lalamove_internal === 'object') {
-          existingMetaShipping.lalamove_internal = {
-            ...existingMetaShipping.lalamove_internal,
-            max_radius_km: validatedRadius,
-          };
-        }
-      }
-
-      if (body.routing_rules && typeof body.routing_rules === 'object') {
-        existingMetaShipping.routing_rules = {
-          ...(existingMetaShipping.routing_rules || {}),
-          ...body.routing_rules,
-        };
-      }
-
-      if (hasNumericCoords || resolvedAddress) {
-        sanitizedMeta.outlet_coordinates = {
-          ...(sanitizedMeta.outlet_coordinates && typeof sanitizedMeta.outlet_coordinates === 'object'
-            ? sanitizedMeta.outlet_coordinates
-            : {}),
-          ...(hasNumericCoords ? { latitude: resolvedLat, longitude: resolvedLng } : {}),
-          ...(resolvedAddress ? { address: resolvedAddress } : {}),
-        };
-      }
-
-      if (incomingFnb?.fnb_catering === true && !sanitizedMeta.fnb_catering) {
-        sanitizedMeta.fnb_catering = true;
-      }
-
-      sanitizedMeta.shipping_config = existingMetaShipping;
-    }
-
     const occResult = await updateTenantWithOccCas(
       supabaseAdmin,
       tenantRow.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
+        const freshMeta = stripLincahSecretsFromMetadata(freshTenant.metadata || {});
+
+        if (mergedFnbSettings || mergedOrigin || (body.routing_rules && typeof body.routing_rules === 'object')) {
+          const existingMetaShipping =
+            freshMeta.shipping_config && typeof freshMeta.shipping_config === 'object'
+              ? { ...freshMeta.shipping_config }
+              : {};
+
+          if (mergedFnbSettings && fnbNonRadiusPatch) {
+            const metaFnbSync =
+              hasExplicitRadius && validatedRadius !== null
+                ? mergedFnbSettings
+                : fnbNonRadiusPatch;
+            existingMetaShipping.fnb_settings = {
+              ...(existingMetaShipping.fnb_settings || {}),
+              ...metaFnbSync,
+            };
+            if (freshMeta.fnb_settings && typeof freshMeta.fnb_settings === 'object') {
+              freshMeta.fnb_settings = {
+                ...freshMeta.fnb_settings,
+                ...metaFnbSync,
+              };
+            }
+          }
+
+          if (mergedOrigin) {
+            existingMetaShipping.origin = {
+              ...(existingMetaShipping.origin || {}),
+              ...mergedOrigin,
+            };
+            if (typeof mergedOrigin.latitude === 'number') {
+              existingMetaShipping.origin_latitude = mergedOrigin.latitude;
+            }
+            if (typeof mergedOrigin.longitude === 'number') {
+              existingMetaShipping.origin_longitude = mergedOrigin.longitude;
+            }
+            if (typeof mergedOrigin.address === 'string' && mergedOrigin.address.trim()) {
+              existingMetaShipping.origin_address = mergedOrigin.address.trim();
+            }
+          }
+
+          if (hasExplicitRadius && validatedRadius !== null) {
+            existingMetaShipping.max_radius_km = validatedRadius;
+            if (existingMetaShipping.internal_courier && typeof existingMetaShipping.internal_courier === 'object') {
+              existingMetaShipping.internal_courier = {
+                ...existingMetaShipping.internal_courier,
+                max_radius_km: validatedRadius,
+              };
+            }
+            if (existingMetaShipping.lalamove_internal && typeof existingMetaShipping.lalamove_internal === 'object') {
+              existingMetaShipping.lalamove_internal = {
+                ...existingMetaShipping.lalamove_internal,
+                max_radius_km: validatedRadius,
+              };
+            }
+          }
+
+          if (body.routing_rules && typeof body.routing_rules === 'object') {
+            existingMetaShipping.routing_rules = {
+              ...(existingMetaShipping.routing_rules || {}),
+              ...body.routing_rules,
+            };
+          }
+
+          if (hasNumericCoords || resolvedAddress) {
+            freshMeta.outlet_coordinates = {
+              ...(freshMeta.outlet_coordinates && typeof freshMeta.outlet_coordinates === 'object'
+                ? freshMeta.outlet_coordinates
+                : {}),
+              ...(hasNumericCoords ? { latitude: resolvedLat, longitude: resolvedLng } : {}),
+              ...(resolvedAddress ? { address: resolvedAddress } : {}),
+            };
+          }
+
+          if (incomingFnb?.fnb_catering === true && !freshMeta.fnb_catering) {
+            freshMeta.fnb_catering = true;
+          }
+
+          freshMeta.shipping_config = existingMetaShipping;
+        }
+
         return {
-          metadata: {
-            ...freshMeta,
-            ...sanitizedMeta,
-          },
+          metadata: freshMeta,
         };
       }
     );
@@ -649,8 +646,9 @@ export async function POST(req: NextRequest) {
       req,
     });
 
+    const persistedMeta = occResult.updatedTenant?.metadata || {};
     const latestConfig = savedSelfPickupConfig || (await getStoreShippingConfig(canonicalSlug, supabaseAdmin));
-    const effectiveMaxRadiusKm = resolveConfigEffectiveMaxRadius(updatedBiteship, sanitizedMeta);
+    const effectiveMaxRadiusKm = resolveConfigEffectiveMaxRadius(updatedBiteship, persistedMeta);
 
     return NextResponse.json({
       success: true,
@@ -667,7 +665,7 @@ export async function POST(req: NextRequest) {
       },
       store_context: {
         effective_max_radius_km: effectiveMaxRadiusKm,
-        fnb_settings: sanitizedMeta.shipping_config?.fnb_settings || null,
+        fnb_settings: persistedMeta.shipping_config?.fnb_settings || null,
       },
     });
   } catch (err: any) {

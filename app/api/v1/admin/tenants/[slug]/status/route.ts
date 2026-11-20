@@ -62,45 +62,44 @@ export async function PATCH(
       );
     }
 
-    // 2. Perform requested mutation
-    let nextStatus: string;
-    let nextActive: boolean;
-    let nextMetadata = { ...(tenant.metadata || {}) };
-
-    if (action === 'ARCHIVE') {
-      nextStatus = 'ARCHIVED';
-      nextActive = false;
-      nextMetadata.is_archived = true;
-      nextMetadata.archived_at = new Date().toISOString();
-    } else {
-      // action === 'TOGGLE_STATUS'
-      if (typeof requestedActive === 'boolean') {
-        nextActive = requestedActive;
-        nextStatus = requestedActive ? 'ACTIVE' : 'SUSPENDED';
-      } else {
-        // Toggle based on current state
-        const isCurrentlyActive = tenant.is_active !== false && tenant.status !== 'SUSPENDED';
-        nextActive = !isCurrentlyActive;
-        nextStatus = nextActive ? 'ACTIVE' : 'SUSPENDED';
-      }
-      // If un-archiving or toggling back to active
-      if (nextActive) {
-        nextMetadata.is_archived = false;
-      }
-    }
-
+    // 2. Perform requested mutation via OCC CAS (Pure Delta)
+    let appliedStatus = '';
+    let appliedActive = false;
     const occResult = await updateTenantWithOccCas(
       supabaseAdmin,
       slug,
       (freshTenant) => {
-        const currentMeta = freshTenant.metadata || {};
+        const currentMeta = { ...(freshTenant.metadata || {}) };
+        let nextStatus: string;
+        let nextActive: boolean;
+
+        if (action === 'ARCHIVE') {
+          nextStatus = 'ARCHIVED';
+          nextActive = false;
+          currentMeta.is_archived = true;
+          currentMeta.archived_at = new Date().toISOString();
+        } else {
+          // action === 'TOGGLE_STATUS'
+          if (typeof requestedActive === 'boolean') {
+            nextActive = requestedActive;
+            nextStatus = requestedActive ? 'ACTIVE' : 'SUSPENDED';
+          } else {
+            const isCurrentlyActive = (freshTenant as any).is_active !== false && (freshTenant as any).status !== 'SUSPENDED';
+            nextActive = !isCurrentlyActive;
+            nextStatus = nextActive ? 'ACTIVE' : 'SUSPENDED';
+          }
+          if (nextActive) {
+            currentMeta.is_archived = false;
+          }
+        }
+
+        appliedStatus = nextStatus;
+        appliedActive = nextActive;
+
         return {
           status: nextStatus,
           is_active: nextActive,
-          metadata: {
-            ...currentMeta,
-            ...nextMetadata,
-          },
+          metadata: currentMeta,
         };
       }
     );
@@ -127,8 +126,8 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       tenant_slug: slug,
-      status: nextStatus,
-      is_active: nextActive,
+      status: appliedStatus,
+      is_active: appliedActive,
       action_performed: action,
       updated_at: new Date().toISOString(),
     });

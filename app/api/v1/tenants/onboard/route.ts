@@ -581,13 +581,71 @@ export async function POST(req: NextRequest) {
         supabase,
         existingTenant.id,
         (freshTenant) => {
-          const freshMeta = freshTenant.metadata || {};
+          const freshMeta = { ...(freshTenant.metadata || {}) };
+          freshMeta.owner_phone = formattedWa || freshMeta.owner_phone;
+          freshMeta.owner_name = merchantName || freshMeta.owner_name;
+          freshMeta.admin_password = pin || freshMeta.admin_password;
+          freshMeta.bank = {
+            name: bankName || 'BCA',
+            account: bankAccountNumber || '-',
+            holder: bankAccountHolder || merchantName,
+          };
+          freshMeta.onboarded_at = freshMeta.onboarded_at || new Date().toISOString();
+
+          if (isFood) {
+            freshMeta.self_pickup_config = {
+              is_enabled: true,
+              pickup_address: 'Dapur Utama / Outlet Resto',
+              pickup_operational_hours: '08:00 - 21:00 WIB',
+              pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor nota saat mengambil pesanan.',
+              ...(freshMeta.self_pickup_config || {}),
+            };
+            freshMeta.shipping_config = {
+              ...(freshMeta.shipping_config || {}),
+              is_self_pickup_enabled: true,
+              pickup_address: 'Dapur Utama / Outlet Resto',
+              pickup_operational_hours: '08:00 - 21:00 WIB',
+              pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor nota saat mengambil pesanan.',
+              fnb_settings: {
+                is_enabled: true,
+                instant_delivery_enabled: true,
+                self_pickup_enabled: true,
+                kitchen_notes_enabled: true,
+                instant_provider: 'GOSEND_GRAB',
+                max_radius_km: 30,
+                kitchen_hours: '08:00 - 21:00 WIB',
+                ...(freshMeta.shipping_config?.fnb_settings || {}),
+              },
+            };
+            freshMeta.single_page_config = {
+              ...(freshMeta.single_page_config || {}),
+              template: 'FOOD',
+              product_preset: 'FOOD',
+              is_digital: false,
+              hide_address_for_digital: false,
+              requires_kitchen_notes: true,
+              allow_instant_delivery: true,
+              allow_pickup: true,
+            };
+          }
+
+          if (productName && productName.trim() !== storeName.trim() && Number(productPrice) > 0) {
+            freshMeta.product = {
+              type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
+              name: productName,
+              price: Number(productPrice || 0),
+              promo: promoBundle || null,
+              variants: variants || null,
+              download_url: downloadUrl || null,
+              tone: aiTone || 'RAMAH',
+            };
+          }
+
           return {
-            ...tenantPayload,
-            metadata: {
-              ...freshMeta,
-              ...tenantPayload.metadata,
-            },
+            name: storeName || (freshTenant as any).name,
+            category: resolvedBusinessType || (freshTenant as any).category,
+            tier: (isTrial ? 'ADS_PERFORMANCE' : dbTier) || (freshTenant as any).tier,
+            metadata: freshMeta,
           };
         }
       );

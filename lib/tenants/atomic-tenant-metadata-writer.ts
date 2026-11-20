@@ -114,6 +114,20 @@ export async function updateTenantWithOccCas(
       };
     }
 
+    // WS02-A Fail-Closed Guard: Require non-empty string updated_at version token
+    if (
+      !freshTenant.updated_at ||
+      typeof freshTenant.updated_at !== 'string' ||
+      freshTenant.updated_at.trim() === ''
+    ) {
+      return {
+        success: false,
+        error: 'MISSING_OCC_VERSION_TOKEN: tenants.updated_at is null or empty',
+        message: `Tenant '${cleanIdentifier}' has missing or empty updated_at version token; failing closed to prevent unversioned lost updates`,
+        attempts: attempt,
+      };
+    }
+
     // 2. Build the patch using fresh database state
     let patch: TenantOccPatch | null;
     try {
@@ -163,14 +177,14 @@ export async function updateTenantWithOccCas(
       updated_at: newUpdatedAt,
     };
 
-    // 4. Conditional CAS update (.eq('id', ...).eq('updated_at', ...))
+    // 4. Conditional CAS update (.eq('id', ...).eq('updated_at', ...).select(...))
     let updateQueryBuilder = supabaseAdmin
       .from('tenants')
       .update(updatePayload);
 
     if (typeof updateQueryBuilder.eq === 'function') {
       updateQueryBuilder = updateQueryBuilder.eq('id', freshTenant.id);
-      if (typeof updateQueryBuilder.eq === 'function' && freshTenant.updated_at) {
+      if (typeof updateQueryBuilder.eq === 'function') {
         updateQueryBuilder = updateQueryBuilder.eq('updated_at', freshTenant.updated_at);
       }
     }
@@ -196,7 +210,16 @@ export async function updateTenantWithOccCas(
       };
     }
 
-    // 5. Evaluate CAS outcome (1 row updated = success; 0 rows = concurrent conflict)
+    // 5. Evaluate CAS outcome (1 row updated = success; 0 rows = concurrent conflict; > 1 rows = invariant violation)
+    if (Array.isArray(updateData) && updateData.length > 1) {
+      return {
+        success: false,
+        error: 'CAS_MULTI_ROW_INVARIANT_VIOLATION',
+        message: `CAS update matched multiple rows (${updateData.length}) on tenant ${freshTenant.id}`,
+        attempts: attempt,
+      };
+    }
+
     const isSuccessfulCas = Array.isArray(updateData)
       ? updateData.length === 1
       : updateData !== null && updateData !== undefined;

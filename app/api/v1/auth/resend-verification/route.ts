@@ -159,14 +159,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const currentMeta = tenant.metadata || {};
-    const updatedMeta = {
-      ...currentMeta,
-      verification_token: newToken,
-      verification_expires_at: expiresAt,
-      email_verified: false,
-    };
-
     await updateTenantWithOccCas(
       supabase,
       tenant.id,
@@ -187,7 +179,7 @@ export async function POST(req: NextRequest) {
 
     const emailResult = await sendBoonPilotVerificationEmail({
       to: cleanEmail,
-      name: currentMeta.merchant_name || tenant.name || 'Merchant',
+      name: tenant.metadata?.merchant_name || tenant.name || 'Merchant',
       role: 'merchant',
       verificationUrl,
       storeName: tenant.name || tenant.slug,

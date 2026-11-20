@@ -9,7 +9,7 @@ import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
 import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult, isDigitalProduct } from "@/lib/product-catalog";
-import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
+import { getStoreShippingConfig } from "@/lib/shipping/self-pickup-reader";
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
 

@@ -112,29 +112,7 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
       };
     }
 
-    // Refresh pending tenant with new/current token
-    const updatedMeta = {
-      ...(existingTenant.metadata || {}),
-      studio_activation_token: token,
-      token_expires_at: expiresAt,
-      verification_status: 'PENDING',
-      phone_verified: false,
-      whatsapp: normalizedPhone,
-      phone: normalizedPhone,
-      password_hash: existingTenant.metadata?.password_hash || passwordHash,
-      referral_code: cleanRef || existingTenant.metadata?.referral_code || undefined,
-      affiliate_code: cleanRef || existingTenant.metadata?.affiliate_code || undefined,
-      affiliate_id: matchedAffiliateId || existingTenant.metadata?.affiliate_id || undefined,
-      studio_workspace: {
-        ...(existingTenant.metadata?.studio_workspace || {}),
-        render_credits: 1,
-        max_concurrent_jobs: 1,
-        plan_tier: 'free_trial',
-        tier: 'free_trial',
-        status: 'PENDING',
-      },
-    };
-
+    // Refresh pending tenant with new/current token via OCC CAS
     await updateTenantWithOccCas(
       supabase,
       existingTenant.id,
@@ -431,40 +409,6 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
   const cleanPhone = senderPhone ? normalizeStudioPhone(senderPhone) : (currentMeta.whatsapp || currentMeta.phone || tenant.phone || '');
   const defaultPassword = '123456';
   const defaultPasswordHash = hashStudioPassword(defaultPassword);
-
-  const updatedMeta = {
-    ...currentMeta,
-    whatsapp: cleanPhone || currentMeta.whatsapp,
-    phone: cleanPhone || currentMeta.phone,
-    phone_verified: true,
-    verification_status: 'SUCCESS',
-    verified_at: new Date().toISOString(),
-    verified_by_sender: cleanPhone,
-    password_hash: currentMeta.password_hash || defaultPasswordHash,
-    studio_workspace: {
-      ...(currentMeta.studio_workspace || {}),
-      render_credits: currentMeta.studio_workspace?.render_credits ?? 1,
-      max_concurrent_jobs: currentMeta.studio_workspace?.max_concurrent_jobs ?? 1,
-      plan_tier: currentMeta.studio_workspace?.plan_tier ?? 'free_trial',
-      tier: 'free_trial',
-      status: 'ACTIVE',
-    },
-  };
-
-  const updatePayload: Record<string, any> = {
-    is_active: true,
-    status: 'active',
-    tenant_kind: 'studio',
-    business_type: 'studio',
-    access_username: tenant.access_username || 'admin',
-    access_password: tenant.access_password || defaultPassword,
-    metadata: updatedMeta,
-  };
-
-  if (cleanPhone) {
-    updatePayload.phone = cleanPhone;
-    updatePayload.whatsapp_number = cleanPhone;
-  }
 
   const occResult = await updateTenantWithOccCas(
     supabase,

@@ -56,30 +56,26 @@ export async function POST(req: NextRequest) {
             answer: k.content,
           }));
 
-        const updatedMetadata = {
-          ...currentMetadata,
+        const proposalMetadata = {
           boonpilot_proposal: publishedProposal,
           boonpilot_configuration: publishedProposal,
-          faqs: faqKnowledge.length > 0 ? faqKnowledge : (currentMetadata.faqs || []),
-          business_category: publishedProposal.business_profile?.business_category || currentMetadata.business_category || 'FIELD_SERVICE',
+          faqs: faqKnowledge.length > 0 ? faqKnowledge : [],
+          business_category: publishedProposal.business_profile?.business_category || 'FIELD_SERVICE',
           business_type: publishedProposal.template_code,
           vertical_type: publishedProposal.template_code,
           last_configured_at: new Date().toISOString(),
-          // Sync AI knowledge, persona, and playbook so all endpoints reflect it immediately
+          onboarding_completed: true,
+          proposal: publishedProposal,
           ai_knowledge: {
-            ...(currentMetadata.ai_knowledge || {}),
             ...mappedAi,
             assistant_name: mappedAi.ai_name,
           },
           persona: {
-            ...(currentMetadata.persona || {}),
             ...mappedAi,
             assistant_name: mappedAi.ai_name,
           },
           playbook: mappedPlaybook,
           seller_playbook: mappedPlaybook,
-          is_bot_active: currentMetadata.is_bot_active !== false,
-          bot_paused: Boolean(currentMetadata.bot_paused === true),
         };
 
         if (tenantData) {
@@ -87,12 +83,28 @@ export async function POST(req: NextRequest) {
             supabase,
             tenantSlug,
             (freshTenant) => {
-              const freshMeta = freshTenant.metadata || {};
+              const freshMeta = { ...(freshTenant.metadata || {}) };
+              Object.assign(freshMeta, proposalMetadata);
+              freshMeta.faqs = faqKnowledge.length > 0 ? faqKnowledge : (freshMeta.faqs || []);
+              freshMeta.ai_knowledge = {
+                ...(freshMeta.ai_knowledge || {}),
+                ...mappedAi,
+                assistant_name: mappedAi.ai_name,
+              };
+              freshMeta.persona = {
+                ...(freshMeta.persona || {}),
+                ...mappedAi,
+                assistant_name: mappedAi.ai_name,
+              };
+              if (freshMeta.is_bot_active === undefined) {
+                freshMeta.is_bot_active = true;
+              }
+              if (freshMeta.bot_paused === undefined) {
+                freshMeta.bot_paused = false;
+              }
+
               const updatePayload: Record<string, any> = {
-                metadata: {
-                  ...freshMeta,
-                  ...updatedMetadata,
-                },
+                metadata: freshMeta,
               };
               if (publishedProposal.business_profile?.store_name) {
                 updatePayload.name = publishedProposal.business_profile.store_name;
@@ -116,7 +128,7 @@ export async function POST(req: NextRequest) {
               plan_tier: 'SOLO_TRIAL',
               is_bot_active: true,
               bot_paused: false,
-              ...updatedMetadata,
+              ...proposalMetadata,
             },
             updated_at: new Date().toISOString(),
           };

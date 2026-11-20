@@ -33,11 +33,10 @@ import {
 } from './booking-template';
 import {
   get7DaySlotsAvailability,
-  saveTenantScheduleSettings,
   DEFAULT_SCHEDULE_SETTINGS,
   ScheduleSettings,
   ScheduleDaySlots,
-} from '@/lib/schedule-slot-service';
+} from '@/lib/schedule-slot-reader';
 
 export interface BookingSlot {
   id: string;
@@ -400,8 +399,18 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
       quota_per_slot: Math.max(1, editQuota),
     };
 
-    const supabase = getSupabase();
-    const ok = await saveTenantScheduleSettings(tenantSlug, newSettings, supabase);
+    let ok = false;
+    try {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/schedule-slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      const data = await res.json().catch(() => ({}));
+      ok = Boolean(data.success);
+    } catch {
+      ok = false;
+    }
     setIsSavingSettings(false);
     if (ok) {
       setScheduleSettings(newSettings);
@@ -409,7 +418,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
       setTimeout(() => setSettingsSavedToast(false), 2500);
       setIsSlotModalOpen(false);
       // Refresh slot display
-      const refreshed = await get7DaySlotsAvailability(tenantSlug, supabase);
+      const refreshed = await get7DaySlotsAvailability(tenantSlug);
       setDaySlots(refreshed.days);
     }
   };

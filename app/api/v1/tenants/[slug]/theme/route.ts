@@ -385,12 +385,8 @@ export async function PUT(
     const rawShowProducts = body.show_products !== undefined ? body.show_products : body.display_catalog;
     const showProducts = rawShowProducts !== undefined ? Boolean(rawShowProducts) : undefined;
 
-    const existingMetadata = tenantRow.metadata || {};
-    const existingTheme = existingMetadata.theme || resolveDefaultTheme();
-
     const validTemplates = ['default', 'personal', 'microsite'];
     const hasExplicitTemplate = Boolean(template && validTemplates.includes(template));
-    const newTemplate = hasExplicitTemplate ? template : existingTheme.template || 'default';
 
     const validVisualThemes: VisualThemeType[] = [
       'clean_minimal',
@@ -401,74 +397,7 @@ export async function PUT(
       'slate_monochrome',
     ];
 
-    const candidateTheme = visual_theme || theme_id;
-    const newVisualTheme =
-      candidateTheme && validVisualThemes.includes(candidateTheme)
-        ? candidateTheme
-        : existingTheme.visual_theme || existingMetadata.visual_theme || 'clean_minimal';
-
-    const newChatEnabled =
-      chat_enabled !== undefined ? Boolean(chat_enabled) : existingTheme.chat_enabled;
-
-    const newChatPosition =
-      chat_position === 'bottom-left' || chat_position === 'bottom-right'
-        ? chat_position
-        : existingTheme.chat_position || 'bottom-right';
-
-    const palette = THEME_PALETTES[newVisualTheme as VisualThemeType] || THEME_PALETTES.clean_minimal;
-    const nowIso = new Date().toISOString();
-
-    // Single Source of Truth Standard: tenants.metadata.theme
-    const standardizedTheme: StoreThemeConfig = {
-      theme_id: newVisualTheme,
-      visual_theme: newVisualTheme as VisualThemeType,
-      primary_color: body.primary_color || palette.accent,
-      bg_color: body.bg_color || palette.bg,
-      card_color: body.card_color || palette.card,
-      template: newTemplate,
-      chat_enabled: newChatEnabled,
-      chat_position: newChatPosition,
-      updated_at: nowIso,
-    };
-
-    const updatedMetadata: Record<string, any> = {
-      ...existingMetadata,
-      visual_theme: newVisualTheme,
-      theme_id: newVisualTheme,
-      theme: standardizedTheme,
-    };
-
-    if (hasExplicitTemplate) {
-      updatedMetadata.template = newTemplate;
-    }
-
-    if (Array.isArray(body.buttons)) {
-      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
-      const sanitizedButtons = body.buttons.map((btn: any) =>
-        btn && typeof btn === 'object'
-          ? {
-              ...btn,
-              url: typeof btn.url === 'string' ? sanitizeNavigationUrl(btn.url) : btn.url,
-            }
-          : btn
-      );
-      updatedMetadata.microsite.buttons = sanitizedButtons;
-      updatedMetadata.buttons = sanitizedButtons;
-    }
-
-    if (Array.isArray(featured_product_ids)) {
-      const cleanIds = featured_product_ids.map(String).slice(0, 5);
-      updatedMetadata.featured_product_ids = cleanIds;
-      updatedMetadata.microsite_featured_product_ids = cleanIds;
-      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
-      updatedMetadata.microsite.featured_product_ids = cleanIds;
-    }
-
-    if (showProducts !== undefined) {
-      standardizedTheme.show_products = showProducts;
-      // Note: sections.catalog is strictly owned by Store Settings / Catalog Domain (WP3 Stage B)
-    }
-
+    let sec10Config: any = null;
     const incomingSection10 = extractSection10Payload(body);
 
     if (incomingSection10 && typeof incomingSection10 === 'object') {
@@ -492,30 +421,95 @@ export async function PUT(
         );
       }
 
-      const sec10Config = {
+      sec10Config = {
         is_enabled: isSec10Active,
         is_active: isSec10Active,
         custom_html: sanitizeSection10Html(htmlValidation.html),
         title: typeof incomingSection10.title === 'string' ? incomingSection10.title : 'Section 10 Custom HTML',
       };
-
-      if (!updatedMetadata.theme_config) updatedMetadata.theme_config = {};
-      updatedMetadata.theme_config.section_10 = sec10Config;
-
-      if (!updatedMetadata.sections) updatedMetadata.sections = {};
-      updatedMetadata.sections.section_10 = sec10Config;
     }
 
     const occResult = await updateTenantWithOccCas(
       supabaseAdmin,
       tenantRow.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+        const freshTheme = (freshMeta.theme && typeof freshMeta.theme === 'object') ? freshMeta.theme : resolveDefaultTheme();
+
+        const candidateTheme = visual_theme || theme_id;
+        const newVisualTheme =
+          candidateTheme && validVisualThemes.includes(candidateTheme)
+            ? candidateTheme
+            : freshTheme.visual_theme || freshMeta.visual_theme || 'clean_minimal';
+
+        const newTemplate = hasExplicitTemplate ? template : freshTheme.template || freshMeta.template || 'default';
+
+        const newChatEnabled =
+          chat_enabled !== undefined ? Boolean(chat_enabled) : freshTheme.chat_enabled;
+
+        const newChatPosition =
+          chat_position === 'bottom-left' || chat_position === 'bottom-right'
+            ? chat_position
+            : freshTheme.chat_position || 'bottom-right';
+
+        const palette = THEME_PALETTES[newVisualTheme as VisualThemeType] || THEME_PALETTES.clean_minimal;
+        const nowIso = new Date().toISOString();
+
+        const standardizedTheme: StoreThemeConfig = {
+          theme_id: newVisualTheme,
+          visual_theme: newVisualTheme as VisualThemeType,
+          primary_color: body.primary_color || palette.accent,
+          bg_color: body.bg_color || palette.bg,
+          card_color: body.card_color || palette.card,
+          template: newTemplate,
+          chat_enabled: newChatEnabled,
+          chat_position: newChatPosition,
+          updated_at: nowIso,
+        };
+
+        if (showProducts !== undefined) {
+          standardizedTheme.show_products = showProducts;
+        }
+
+        freshMeta.visual_theme = newVisualTheme;
+        freshMeta.theme_id = newVisualTheme;
+        freshMeta.theme = standardizedTheme;
+
+        if (hasExplicitTemplate) {
+          freshMeta.template = newTemplate;
+        }
+
+        if (Array.isArray(body.buttons)) {
+          if (!freshMeta.microsite || typeof freshMeta.microsite !== 'object') freshMeta.microsite = {};
+          const sanitizedButtons = body.buttons.map((btn: any) =>
+            btn && typeof btn === 'object'
+              ? {
+                  ...btn,
+                  url: typeof btn.url === 'string' ? sanitizeNavigationUrl(btn.url) : btn.url,
+                }
+              : btn
+          );
+          freshMeta.microsite.buttons = sanitizedButtons;
+          freshMeta.buttons = sanitizedButtons;
+        }
+
+        if (Array.isArray(featured_product_ids)) {
+          const cleanIds = featured_product_ids.map(String).slice(0, 5);
+          freshMeta.featured_product_ids = cleanIds;
+          freshMeta.microsite_featured_product_ids = cleanIds;
+          if (!freshMeta.microsite || typeof freshMeta.microsite !== 'object') freshMeta.microsite = {};
+          freshMeta.microsite.featured_product_ids = cleanIds;
+        }
+
+        if (sec10Config) {
+          if (!freshMeta.theme_config || typeof freshMeta.theme_config !== 'object') freshMeta.theme_config = {};
+          freshMeta.theme_config.section_10 = sec10Config;
+          if (!freshMeta.sections || typeof freshMeta.sections !== 'object') freshMeta.sections = {};
+          freshMeta.sections.section_10 = sec10Config;
+        }
+
         return {
-          metadata: {
-            ...freshMeta,
-            ...updatedMetadata,
-          },
+          metadata: freshMeta,
         };
       }
     );
@@ -527,6 +521,7 @@ export async function PUT(
       );
     }
 
+    const persistedMeta = occResult.updatedTenant?.metadata || {};
     const changedKeys = computeChangedKeys(body);
     await recordTenantConfigAudit({
       tenantId: tenantRow.id,
@@ -541,7 +536,7 @@ export async function PUT(
       changedKeys,
       diffSummary: {
         changed_summary: redactSensitiveValues(
-          Object.fromEntries(changedKeys.map((k) => [k, k.includes('section_10') ? '[HTML_SANITIZED]' : updatedMetadata[k] ?? body[k]]))
+          Object.fromEntries(changedKeys.map((k) => [k, k.includes('section_10') ? '[HTML_SANITIZED]' : persistedMeta[k] ?? body[k]]))
         ),
       },
       req,
@@ -562,8 +557,8 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Template tampilan toko berhasil disimpan.',
-      theme: standardizedTheme,
-      section_10: updatedMetadata.theme_config?.section_10,
+      theme: persistedMeta.theme || null,
+      section_10: persistedMeta.theme_config?.section_10 || null,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Gagal memperbarui tema toko';

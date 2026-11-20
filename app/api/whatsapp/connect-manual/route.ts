@@ -330,41 +330,34 @@ export async function POST(req: NextRequest) {
         .insert(wabaPayload);
     }
 
-    // 2. Update tenants table metadata & direct columns dengan verifikasi 0 rows affected
-    const currentMeta = tenantRow.metadata || {};
-    const nextMeta = {
-      ...currentMeta,
-      waba_phone_number_id: phoneNumberId,
-      whatsapp_phone_number_id: phoneNumberId,
-      waba_account_id: wabaId,
-      waba_access_token: accessToken,
-      waba_configured: true,
-      waba_active: true,
-      whatsapp_gateway_type: "waba",
-      waba_config: {
-        phone_number_id: phoneNumberId,
-        waba_id: wabaId,
-        access_token: accessToken,
-        permanent_access_token: accessToken,
-        status: "CONNECTED",
-        verified_name: verifiedName,
-        display_phone_number: displayPhone,
-        quality_rating: qualityRating,
-        updated_at: nowIso,
-      },
-    };
-
+    // 2. Update tenants table metadata & direct columns via OCC CAS (Pure Delta)
     const occResult = await updateTenantWithOccCas(
       supabase,
       tenantRow.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+        freshMeta.waba_phone_number_id = phoneNumberId;
+        freshMeta.whatsapp_phone_number_id = phoneNumberId;
+        freshMeta.waba_account_id = wabaId;
+        freshMeta.waba_access_token = accessToken;
+        freshMeta.waba_configured = true;
+        freshMeta.waba_active = true;
+        freshMeta.whatsapp_gateway_type = "waba";
+        freshMeta.waba_config = {
+          phone_number_id: phoneNumberId,
+          waba_id: wabaId,
+          access_token: accessToken,
+          permanent_access_token: accessToken,
+          status: "CONNECTED",
+          verified_name: verifiedName,
+          display_phone_number: displayPhone,
+          quality_rating: qualityRating,
+          updated_at: nowIso,
+        };
+
         return {
           waba_phone_number_id: phoneNumberId,
-          metadata: {
-            ...freshMeta,
-            ...nextMeta,
-          },
+          metadata: freshMeta,
         };
       }
     );

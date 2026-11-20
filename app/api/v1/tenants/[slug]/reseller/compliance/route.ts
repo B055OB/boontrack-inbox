@@ -57,29 +57,24 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Tenant tidak ditemukan' }, { status: 404 });
     }
 
-    const existingMeta = tenant.metadata || {};
-    const updatedResellerSettings = {
-      ...(existingMeta.reseller_settings || {}),
-      enabled: true,
-      tos_accepted: true,
-      tos_accepted_at: acceptedAt,
-      tos_version: '1.0.0',
-      compliance_notes: 'Disetujui via ResellerComplianceModal (Single-Level Direct Sales & Non-Custodial)',
-    };
-
-    // 2. Update tenant record (kolom fisik + metadata) via OCC CAS
+    // 2. Update tenant record (kolom fisik + metadata) via OCC CAS (Pure Delta)
     const occRes = await updateTenantWithOccCas(
       supabase,
       tenant.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+        freshMeta.reseller_settings = {
+          ...(freshMeta.reseller_settings || {}),
+          enabled: true,
+          tos_accepted: true,
+          tos_accepted_at: acceptedAt,
+          tos_version: '1.0.0',
+          compliance_notes: 'Disetujui via ResellerComplianceModal (Single-Level Direct Sales & Non-Custodial)',
+        };
         return {
           reseller_tos_accepted_at: acceptedAt,
           reseller_enabled: true,
-          metadata: {
-            ...freshMeta,
-            reseller_settings: updatedResellerSettings,
-          },
+          metadata: freshMeta,
         };
       }
     );
@@ -91,12 +86,17 @@ export async function POST(
         supabase,
         tenant.id,
         (freshTenant) => {
-          const freshMeta = freshTenant.metadata || {};
+          const freshMeta = { ...(freshTenant.metadata || {}) };
+          freshMeta.reseller_settings = {
+            ...(freshMeta.reseller_settings || {}),
+            enabled: true,
+            tos_accepted: true,
+            tos_accepted_at: acceptedAt,
+            tos_version: '1.0.0',
+            compliance_notes: 'Disetujui via ResellerComplianceModal (Single-Level Direct Sales & Non-Custodial)',
+          };
           return {
-            metadata: {
-              ...freshMeta,
-              reseller_settings: updatedResellerSettings,
-            },
+            metadata: freshMeta,
           };
         }
       );

@@ -189,32 +189,25 @@ async function handleVerify(req: NextRequest) {
       );
     }
 
-    // Activate tenant status
-    const currentMeta = matchedTenant.metadata || {};
-    const updatedMeta = {
-      ...currentMeta,
-      email_verified: true,
-      email_verified_at: new Date().toISOString(),
-      verification_token: null,
-    };
-
-    // Determine target status
-    const newStatus = (matchedTenant.status === 'unverified' || !matchedTenant.status)
-      ? 'active'
-      : matchedTenant.status;
-
+    // Activate tenant status via OCC CAS (Pure Delta)
     await updateTenantWithOccCas(
       supabase,
       matchedTenant.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+        freshMeta.email_verified = true;
+        freshMeta.email_verified_at = new Date().toISOString();
+        freshMeta.verification_token = null;
+
+        const currentStatus = (freshTenant as any).status;
+        const newStatus = (currentStatus === 'unverified' || !currentStatus)
+          ? 'active'
+          : currentStatus;
+
         return {
           status: newStatus,
           is_active: true,
-          metadata: {
-            ...freshMeta,
-            ...updatedMeta,
-          },
+          metadata: freshMeta,
         };
       }
     );

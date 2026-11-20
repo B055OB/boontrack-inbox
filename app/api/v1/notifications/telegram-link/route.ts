@@ -113,13 +113,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Simpan telegram_chat_id ke kolom tabel & metadata JSONB
-    const updatedMetadata = {
-      ...(tenant.metadata || {}),
-      telegram_chat_id: cleanChatId,
-      ...(body.telegram_group_config !== undefined ? { telegram_group_config: body.telegram_group_config } : {}),
-    };
-
+    // 2. Simpan telegram_chat_id ke kolom tabel & metadata JSONB via OCC CAS
     const occResult = await updateTenantWithOccCas(
       supabase,
       tenant.id,

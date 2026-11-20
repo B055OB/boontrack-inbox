@@ -41,7 +41,7 @@ import {
   Minus,
   Utensils,
 } from 'lucide-react';
-import { getStoreShippingConfig } from '@/lib/shipping/self-pickup';
+import { getStoreShippingConfig } from '@/lib/shipping/self-pickup-reader';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
   initMetaPixel, 

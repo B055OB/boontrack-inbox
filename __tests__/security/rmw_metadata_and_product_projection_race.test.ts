@@ -281,4 +281,209 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
       expect(finalTenant.metadata?.products).toHaveLength(2);
     });
   });
+
+  describe('Scenario 4: Blocker WS02-A Fail-Closed on Missing/Null/Empty updated_at Token', () => {
+    it('fails closed immediately when updated_at is null without executing any update query', async () => {
+      mockDbState.tenants[TENANT_ID].updated_at = null as any;
+
+      let updateQueryCalled = false;
+      const customSupabase = {
+        from: (table: string) => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: JSON.parse(JSON.stringify(mockDbState.tenants[TENANT_ID])),
+                error: null,
+              }),
+            }),
+          }),
+          update: () => {
+            updateQueryCalled = true;
+            return {
+              eq: () => ({
+                select: () => ({
+                  then: (res: any) => res({ data: [], error: null }),
+                }),
+              }),
+            };
+          },
+        }),
+      };
+
+      const result = await updateTenantWithOccCas(
+        customSupabase as any,
+        TENANT_ID,
+        (freshTenant) => ({
+          metadata: {
+            ...freshTenant.metadata,
+            settings_saved: true,
+          },
+        })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('MISSING_OCC_VERSION_TOKEN: tenants.updated_at is null or empty');
+      expect(updateQueryCalled).toBe(false);
+    });
+
+    it('fails closed immediately when updated_at is empty string or whitespace', async () => {
+      mockDbState.tenants[TENANT_ID].updated_at = '   ';
+
+      let updateQueryCalled = false;
+      const customSupabase = {
+        from: (table: string) => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: JSON.parse(JSON.stringify(mockDbState.tenants[TENANT_ID])),
+                error: null,
+              }),
+            }),
+          }),
+          update: () => {
+            updateQueryCalled = true;
+            return {
+              eq: () => ({
+                select: () => ({
+                  then: (res: any) => res({ data: [], error: null }),
+                }),
+              }),
+            };
+          },
+        }),
+      };
+
+      const result = await updateTenantWithOccCas(
+        customSupabase as any,
+        TENANT_ID,
+        (freshTenant) => ({
+          metadata: {
+            ...freshTenant.metadata,
+            settings_saved: true,
+          },
+        })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('MISSING_OCC_VERSION_TOKEN: tenants.updated_at is null or empty');
+      expect(updateQueryCalled).toBe(false);
+    });
+
+    it('fails closed when CAS update returns more than 1 affected row (CAS_MULTI_ROW_INVARIANT_VIOLATION)', async () => {
+      const customSupabase = {
+        from: (table: string) => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: JSON.parse(JSON.stringify(mockDbState.tenants[TENANT_ID])),
+                error: null,
+              }),
+            }),
+          }),
+          update: () => ({
+            eq: () => ({
+              eq: () => ({
+                select: () => ({
+                  then: (res: any) => res({
+                    // Return 2 rows to simulate corrupted filter or multiple matched rows
+                    data: [
+                      { id: TENANT_ID, slug: 'shabu-ajhi' },
+                      { id: 'another-tenant-id', slug: 'another-slug' },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+
+      const result = await updateTenantWithOccCas(
+        customSupabase as any,
+        TENANT_ID,
+        (freshTenant) => ({
+          metadata: {
+            ...freshTenant.metadata,
+            test_key: 'value',
+          },
+        })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CAS_MULTI_ROW_INVARIANT_VIOLATION');
+    });
+  });
+
+  describe('Scenario 5: Pure Delta Callbacks Prevent Stale Outer Snapshot Overwrite', () => {
+    it('Direction 1: Route handler delta preserves concurrent metadata modifications made after handler initial read', async () => {
+      // Step A: Route handler reads tenant at T0
+      const initialSnapshot = JSON.parse(JSON.stringify(mockDbState.tenants[TENANT_ID]));
+      expect(initialSnapshot.metadata.visual_theme).toBe('clean_minimal');
+
+      // Step B: Concurrent Writer B mutates contact_whatsapp and bot_paused at T1
+      mockDbState.tenants[TENANT_ID].metadata = {
+        ...mockDbState.tenants[TENANT_ID].metadata,
+        contact_whatsapp: '081299990000',
+        bot_paused: true,
+      };
+      mockDbState.tenants[TENANT_ID].updated_at = T1;
+
+      // Step C: Route handler executes pure delta update (theme change) via updateTenantWithOccCas
+      const supabaseAdmin = createMockSupabaseAdmin();
+      const result = await updateTenantWithOccCas(
+        supabaseAdmin,
+        TENANT_ID,
+        (freshTenant) => {
+          // Pure delta: mutate freshTenant without spreading stale initialSnapshot
+          const freshMeta = { ...(freshTenant.metadata || {}) };
+          freshMeta.visual_theme = 'modern_dark';
+          return { metadata: freshMeta };
+        }
+      );
+
+      expect(result.success).toBe(true);
+
+      // Verify that Writer B's concurrent changes were NOT wiped out by handler
+      const finalTenant = mockDbState.tenants[TENANT_ID];
+      expect(finalTenant.metadata?.visual_theme).toBe('modern_dark');
+      expect(finalTenant.metadata?.contact_whatsapp).toBe('081299990000');
+      expect(finalTenant.metadata?.bot_paused).toBe(true);
+      expect(finalTenant.metadata?.products).toEqual([P1]);
+    });
+
+    it('Direction 2: Pure delta handler preserves concurrent canonical product projection committed after handler read', async () => {
+      // Step A: Settings route reads tenant at T0
+      const initialSnapshot = JSON.parse(JSON.stringify(mockDbState.tenants[TENANT_ID]));
+      expect(initialSnapshot.metadata.products).toEqual([P1]);
+
+      // Step B: Concurrent Canonical Product Projection updates products to [P1, P2] at T1
+      mockDbState.tenants[TENANT_ID].metadata = {
+        ...mockDbState.tenants[TENANT_ID].metadata,
+        products: [P1, P2],
+      };
+      mockDbState.tenants[TENANT_ID].updated_at = T1;
+
+      // Step C: Settings handler saves shipping_config via pure delta
+      const supabaseAdmin = createMockSupabaseAdmin();
+      const result = await updateTenantWithOccCas(
+        supabaseAdmin,
+        TENANT_ID,
+        (freshTenant) => {
+          const freshMeta = { ...(freshTenant.metadata || {}) };
+          freshMeta.shipping_config = {
+            delivery_mode: 'instant_only',
+          };
+          return { metadata: freshMeta };
+        }
+      );
+
+      expect(result.success).toBe(true);
+
+      const finalTenant = mockDbState.tenants[TENANT_ID];
+      expect(finalTenant.metadata?.shipping_config?.delivery_mode).toBe('instant_only');
+      // Product projection [P1, P2] must be 100% intact!
+      expect(finalTenant.metadata?.products).toEqual([P1, P2]);
+    });
+  });
 });

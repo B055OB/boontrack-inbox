@@ -32,7 +32,7 @@ import {
   Upload,
   Send,
 } from 'lucide-react';
-import { BankAccount, PaymentConfig, ShippingConfig } from '@/app/api/v1/admin/tenants/[slug]/config/route';
+import type { BankAccount, PaymentConfig, ShippingConfig } from '@/app/api/v1/admin/tenants/[slug]/config/route';
 import { getSupabase } from '@/lib/supabaseClient';
 import TelegramGroupMappingSection from '@/app/admin/components/TelegramGroupMappingSection';
 import AdminSessionGate from '@/app/admin/components/AdminSessionGate';

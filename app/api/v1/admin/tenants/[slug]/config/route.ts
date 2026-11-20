@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { resolveCanonicalTier } from '@/lib/subscription-tiers';
 import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
 import { recordTenantConfigAudit, redactSensitiveValues, computeChangedKeys } from '@/lib/security/tenant-config-audit';
@@ -337,68 +338,83 @@ export async function PATCH(
           : 'solo';
     }
 
-    // 5. Merge into tenant metadata
-    const updatedMetadata = {
-      ...currentMeta,
-      ...(extra_metadata || {}),
-      ...otherMetadata,
-      ...(body.pricing ? { pricing: body.pricing } : {}),
-      ...(body.pricing?.custom_packages ? { products: body.pricing.custom_packages } : {}),
-      ...(auto_replies !== undefined ? { auto_replies } : {}),
-      ...(payment_config ? { payment_config: updatedPaymentConfig } : {}),
-      ...(shipping_config ? { shipping_config: updatedShippingConfig } : {}),
-      config_updated_at: new Date().toISOString(),
-    };
+    // 5. Update tenant metadata & direct columns via OCC CAS (Pure Delta)
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      tenant.id,
+      (freshTenant) => {
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+        if (extra_metadata && typeof extra_metadata === 'object') {
+          Object.assign(freshMeta, extra_metadata);
+        }
+        if (otherMetadata && typeof otherMetadata === 'object') {
+          Object.assign(freshMeta, otherMetadata);
+        }
+        if (body.pricing) {
+          freshMeta.pricing = body.pricing;
+        }
+        if (body.pricing?.custom_packages) {
+          freshMeta.products = body.pricing.custom_packages;
+        }
+        if (auto_replies !== undefined) {
+          freshMeta.auto_replies = auto_replies;
+        }
+        if (payment_config) {
+          freshMeta.payment_config = updatedPaymentConfig;
+        }
+        if (shipping_config) {
+          freshMeta.shipping_config = updatedShippingConfig;
+        }
+        freshMeta.config_updated_at = new Date().toISOString();
 
-    const tenantUpdatePayload: Record<string, any> = {
-      metadata: updatedMetadata,
-    };
+        const patch: Record<string, any> = {
+          metadata: freshMeta,
+        };
 
-    if (canonical && planType) {
-      tenantUpdatePayload.tier = canonical.key;
-      tenantUpdatePayload.subscription_tier = canonical.key;
+        if (canonical && planType) {
+          patch.tier = canonical.key;
+          patch.subscription_tier = canonical.key;
 
-      updatedMetadata.tier = canonical.key;
-      updatedMetadata.plan_tier = canonical.key;
-      updatedMetadata.plan_type = planType;
-      updatedMetadata.subscription_tier = canonical.key;
-      updatedMetadata.features = {
-        ...(currentMeta.features || {}),
-        tier: canonical.key,
-        ...canonical.features,
-        crm: canonical.features.crm,
-        has_crm: canonical.features.crm,
-      };
-      updatedMetadata.capabilities = {
-        ...(currentMeta.capabilities || {}),
-        ...canonical.features,
-        crm: canonical.features.crm,
-      };
+          freshMeta.tier = canonical.key;
+          freshMeta.plan_tier = canonical.key;
+          freshMeta.plan_type = planType;
+          freshMeta.subscription_tier = canonical.key;
+          freshMeta.features = {
+            ...(freshMeta.features || {}),
+            tier: canonical.key,
+            ...canonical.features,
+            crm: canonical.features.crm,
+            has_crm: canonical.features.crm,
+          };
+          freshMeta.capabilities = {
+            ...(freshMeta.capabilities || {}),
+            ...canonical.features,
+            crm: canonical.features.crm,
+          };
 
-      if (updatedMetadata.subscription) {
-        updatedMetadata.subscription.plan_tier = canonical.key;
-        updatedMetadata.subscription.tier_name = canonical.name;
-      }
-    }
+          if (freshMeta.subscription) {
+            freshMeta.subscription.plan_tier = canonical.key;
+            freshMeta.subscription.tier_name = canonical.name;
+          }
+        }
 
-    if (body.pricing?.monthly_fee !== undefined || body.monthly_fee !== undefined) {
-      tenantUpdatePayload.monthly_fee = Number(body.pricing?.monthly_fee ?? body.monthly_fee);
-    }
+        if (body.pricing?.monthly_fee !== undefined || body.monthly_fee !== undefined) {
+          patch.monthly_fee = Number(body.pricing?.monthly_fee ?? body.monthly_fee);
+        }
 
-    if (body.pricing?.chat_quota !== undefined || body.max_monthly_messages !== undefined) {
-      tenantUpdatePayload.max_monthly_messages = Number(body.pricing?.chat_quota ?? body.max_monthly_messages);
-    }
+        if (body.pricing?.chat_quota !== undefined || body.max_monthly_messages !== undefined) {
+          patch.max_monthly_messages = Number(body.pricing?.chat_quota ?? body.max_monthly_messages);
+        }
 
-    tenantUpdatePayload.updated_at = new Date().toISOString();
-    const { error: updateErr } = await supabaseAdmin
-      .from('tenants')
-      .update(tenantUpdatePayload)
-      .eq('id', tenant.id);
+        return patch;
+      },
+      { allowProductsProjection: Boolean(body.pricing?.custom_packages) }
+    );
 
-    if (updateErr) {
+    if (!occResult.success) {
       return NextResponse.json(
-        { success: false, error: updateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
 
@@ -460,8 +476,12 @@ export async function PATCH(
               current_period_ends_at: endsIso,
               expires_at: endsIso,
               status: 'ACTIVE',
-              amount: tenantUpdatePayload.monthly_fee ?? 0,
-              amount_paid: tenantUpdatePayload.monthly_fee ?? 0,
+              amount: (body.pricing?.monthly_fee !== undefined || body.monthly_fee !== undefined)
+                ? Number(body.pricing?.monthly_fee ?? body.monthly_fee)
+                : (tenant.monthly_fee ?? 0),
+              amount_paid: (body.pricing?.monthly_fee !== undefined || body.monthly_fee !== undefined)
+                ? Number(body.pricing?.monthly_fee ?? body.monthly_fee)
+                : (tenant.monthly_fee ?? 0),
               grant_type: tenant.grant_type || null,
               metadata: {
                 plan_tier: canonical.key,
@@ -485,7 +505,7 @@ export async function PATCH(
         payment_config: updatedPaymentConfig,
         shipping_config: updatedShippingConfig,
         ...otherMetadata,
-        metadata: updatedMetadata,
+        metadata: occResult.updatedTenant?.metadata || {},
       },
     });
   } catch (err: any) {

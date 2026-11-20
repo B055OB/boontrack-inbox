@@ -130,31 +130,45 @@ export async function POST(
       },
     };
 
-    // 4. Update tabel tenants (Sync semua kolom tier, status, dan due_date)
-    const updatePayload: Record<string, any> = {
-      tier: canonical.key,
-      subscription_tier: canonical.key,
-      subscription_status: 'ACTIVE',
-      grant_type: 'PILOT',
-      status: 'ACTIVE',
-      is_active: true,
-      trial_ends_at: null,
-      subscription_ends_at: validUntil,
-      due_date: validUntil.split('T')[0],
-      metadata: updatedMetadata,
-      updated_at: new Date().toISOString(),
-    };
-
+    // 4. Update tabel tenants via OCC CAS (Pure Delta)
     const occResult = await updateTenantWithOccCas(
       supabaseAdmin,
       slug,
       (freshTenant) => {
         const currentMeta = freshTenant.metadata || {};
         return {
-          ...updatePayload,
+          tier: canonical.key,
+          subscription_tier: canonical.key,
+          subscription_status: 'ACTIVE',
+          grant_type: 'PILOT',
+          status: 'ACTIVE',
+          is_active: true,
+          trial_ends_at: null,
+          subscription_ends_at: validUntil,
+          due_date: validUntil.split('T')[0],
           metadata: {
             ...currentMeta,
-            ...updatedMetadata,
+            subscription_type: 'granted',
+            tier: canonical.key,
+            plan_tier: canonical.key,
+            plan_type: planType,
+            subscription_tier: canonical.key,
+            subscription_status: 'ACTIVE',
+            selected_plan: `${canonical.name} • Special Grant`,
+            is_trial: false,
+            trial_ends_at: null,
+            features: {
+              ...(currentMeta.features || {}),
+              tier: canonical.key,
+              ...canonical.features,
+              crm: canonical.features.crm,
+              has_crm: canonical.features.crm,
+            },
+            capabilities: {
+              ...(currentMeta.capabilities || {}),
+              ...canonical.features,
+              crm: canonical.features.crm,
+            },
           },
         };
       }

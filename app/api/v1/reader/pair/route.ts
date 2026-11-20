@@ -118,22 +118,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4. Token valid - Update metadata tenant dengan info perangkat terhubung
+    // 4. Token valid - Update metadata tenant dengan info perangkat terhubung via OCC CAS
     const pairedAt = new Date().toISOString();
-    const updatedMeta = {
-      ...(matchedTenant.metadata || {}),
-      reader_device: {
-        is_connected: true,
-        status: 'CONNECTED',
-        device_name: deviceName,
-        device_id: deviceUid || null,
-        platform: platform,
-        paired_at: pairedAt,
-        last_active_at: pairedAt,
-      },
-      reader_pairing_session: null, // Hapus session setelah digunakan (one-time)
-    };
-
     await updateTenantWithOccCas(
       supabase,
       matchedTenant.id,

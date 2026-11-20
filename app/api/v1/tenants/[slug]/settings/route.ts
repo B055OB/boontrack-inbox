@@ -868,157 +868,6 @@ export async function PUT(
     const effectiveLogo = logo_url || body.store_logo_url || body.avatar_url;
     const effectiveStoreName = body.store_name || name;
 
-    const updatedMetadata = {
-      ...(existing.metadata || {}),
-      ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
-      ...(body.storefront_mode !== undefined ? { storefront_mode: body.storefront_mode } : {}),
-      ...(body.onboarding_completed !== undefined ? { onboarding_completed: Boolean(body.onboarding_completed) } : {}),
-      ...(body.featured_product_ids !== undefined ? { featured_product_ids: body.featured_product_ids } : {}),
-      ...(body.microsite_featured_product_ids !== undefined ? { microsite_featured_product_ids: body.microsite_featured_product_ids } : {}),
-      ...(effectiveStoreName !== undefined ? { store_name: effectiveStoreName } : {}),
-      ...(bot_strategy ? { bot_strategy } : {}),
-      ...(bot_mode ? { bot_mode } : {}),
-      is_bot_active: is_bot_active !== undefined ? Boolean(is_bot_active) : (existing.metadata?.is_bot_active !== false),
-      bot_paused: bot_paused !== undefined ? Boolean(bot_paused) : Boolean(existing.metadata?.bot_paused === true),
-      ...(isInternalAuth && plan_tier ? { plan_tier } : {}),
-      features: updatedFeatures,
-      ...(product ? { product } : {}),
-      ...(products !== undefined ? { products } : {}),
-      ...(ai_knowledge ? { ai_knowledge } : {}),
-      ...(bank ? { bank } : {}),
-      ...(bank_settings !== undefined ? { bank_settings } : {}),
-      ...(bank_transfer !== undefined ? { bank_transfer } : {}),
-      ...(bank_accounts !== undefined ? { bank_accounts } : {}),
-      ...(body.accounts !== undefined ? { accounts: body.accounts } : {}),
-      ...(body.manual_bank_accounts !== undefined ? { manual_bank_accounts: body.manual_bank_accounts } : {}),
-      ...(body.bank_name ? { bank_name: body.bank_name } : {}),
-      ...(body.bank_account ? { bank_account: body.bank_account } : {}),
-      ...(body.bank_holder ? { bank_holder: body.bank_holder } : {}),
-      ...(is_bank_transfer_active !== undefined ? { is_bank_transfer_active: Boolean(is_bank_transfer_active) } : {}),
-      ...(enable_manual_transfer !== undefined || is_bank_transfer_active !== undefined || bank_accounts !== undefined || body.accounts !== undefined ? {
-        payment_config: {
-          ...(existing.metadata?.payment_config || {}),
-          ...(body.payment_config || {}),
-          ...(bank_accounts !== undefined ? { bank_accounts } : {}),
-          ...(body.accounts !== undefined ? { accounts: body.accounts } : {}),
-          enable_manual_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_manual_transfer !== undefined ? Boolean(enable_manual_transfer) : Boolean(existing.metadata?.payment_config?.enable_manual_transfer)),
-          enable_bank_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_bank_transfer !== undefined ? Boolean(enable_bank_transfer) : Boolean(enable_manual_transfer ?? existing.metadata?.payment_config?.enable_bank_transfer)),
-        },
-        payment_settings: {
-          ...(existing.metadata?.payment_settings || {}),
-          ...(body.payment_settings || {}),
-          ...(bank_accounts !== undefined ? { bank_accounts } : {}),
-          ...(body.accounts !== undefined ? { accounts: body.accounts } : {}),
-          enable_manual_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_manual_transfer !== undefined ? Boolean(enable_manual_transfer) : Boolean(existing.metadata?.payment_settings?.enable_manual_transfer)),
-          enable_bank_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_bank_transfer !== undefined ? Boolean(enable_bank_transfer) : Boolean(enable_manual_transfer ?? existing.metadata?.payment_settings?.enable_bank_transfer)),
-        },
-      } : {}),
-      ...(integration ? { integration } : {}),
-      ...(faqs !== undefined ? { faqs } : {}),
-      ...(interactive_menus !== undefined ? { interactive_menus } : {}),
-      ...(template !== undefined ? { template, storefront_template: template, selected_template: template } : {}),
-      ...(theme !== undefined
-        ? {
-            theme: { ...(existing.metadata?.theme || {}), ...theme, ...(template ? { template } : {}) },
-            visual_theme: theme.visual_theme || theme.theme_id || existing.metadata?.visual_theme || 'clean_minimal',
-            theme_id: theme.theme_id || theme.visual_theme || existing.metadata?.theme_id || 'clean_minimal',
-            ...(theme.template ? { template: theme.template, storefront_template: theme.template, selected_template: theme.template } : {}),
-          }
-        : (template ? { theme: { ...(existing.metadata?.theme || {}), template } } : {})),
-      ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
-      ...(qris_image_url !== undefined ? {
-        qris_image_url,
-        qris_url: qris_image_url,
-        qris_image: qris_image_url,
-        is_qris_active: Boolean(qris_image_url),
-        qris_enabled: Boolean(qris_image_url),
-        payment_settings: {
-          ...(existing.metadata?.payment_settings || {}),
-          qris: qris_image_url,
-          is_qris_active: Boolean(qris_image_url),
-        },
-        payment_config: {
-          ...(existing.metadata?.payment_config || {}),
-          enable_qris: Boolean(qris_image_url),
-          qris_image_url,
-        },
-      } : {}),
-      ...(qris_payload !== undefined || qris_static_string !== undefined ? {
-        qris_payload: qris_payload || qris_static_string,
-        qris_static_string: qris_static_string || qris_payload,
-        payment_config: {
-          ...(existing.metadata?.payment_config || {}),
-          enable_qris: true,
-          qris_payload: qris_payload || qris_static_string,
-          raw_qris_string: qris_payload || qris_static_string,
-          static_qris_payload: qris_payload || qris_static_string,
-        },
-      } : {}),
-      ...(effectiveLogo !== undefined ? { logo_url: effectiveLogo, store_logo_url: effectiveLogo, avatar_url: effectiveLogo } : {}),
-      ...(bio !== undefined ? { bio } : {}),
-      ...(sanitizedPhone !== undefined ? {
-        phone: sanitizedPhone,
-        whatsapp_number: sanitizedPhone,
-        whatsapp: sanitizedPhone,
-        wa_number: sanitizedPhone,
-      } : {}),
-      ...(greeting_message !== undefined || custom_greeting_message !== undefined ? {
-        greeting_message: greeting_message !== undefined ? greeting_message : custom_greeting_message,
-        custom_greeting_message: custom_greeting_message !== undefined ? custom_greeting_message : greeting_message,
-      } : {}),
-      ...(sales_policy !== undefined ? { sales_policy, playbook: sales_policy } : (playbook !== undefined ? { sales_policy: playbook, playbook } : {})),
-      ...(sanitizedMicrosite !== undefined ? { microsite: sanitizedMicrosite } : {}),
-      ...(rotator !== undefined ? { rotator } : {}),
-      ...(sanitizedShippingConfig !== undefined ? { shipping_config: sanitizedShippingConfig } : {}),
-      ...(sanitizedLincahConfig !== undefined ? { lincah_config: sanitizedLincahConfig } : {}),
-      ...(sanitizedShippingSettings !== undefined ? { shipping_settings: sanitizedShippingSettings } : {}),
-      ...(Array.isArray(auto_replies) ? { auto_replies } : {}),
-      ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
-      ...(telegram_group_config !== undefined || body.telegram_group_config !== undefined
-        ? { telegram_group_config: telegram_group_config ?? body.telegram_group_config }
-        : {}),
-      ...(followup_rules !== undefined || follow_up_rules !== undefined
-        ? { followup_rules: followup_rules !== undefined ? followup_rules : follow_up_rules }
-        : {}),
-      // Sinkronkan metadata tracking & WABA ke SSOT tenants
-      ...(mergedTracking ? {
-        tracking: mergedTracking,
-        ads_tracking_config: mergedTracking,
-        pixel_id: resolvedPixelId || existing.metadata?.pixel_id || null,
-        capi_token: resolvedCapiToken || existing.metadata?.capi_token || null,
-      } : {}),
-      ...(mergedWaba ? {
-        waba_config: mergedWaba,
-        waba_configured: true,
-        waba_active: true,
-        waba_phone_number_id: resolvedWabaPhoneId || existing.metadata?.waba_phone_number_id || null,
-        whatsapp_phone_number_id: resolvedWabaPhoneId || existing.metadata?.whatsapp_phone_number_id || null,
-        waba_account_id: resolvedWabaAccountId || existing.metadata?.waba_account_id || null,
-        waba_access_token: resolvedWabaToken || existing.metadata?.waba_access_token || null,
-        whatsapp_gateway_type: 'waba',
-      } : {}),
-    };
-
-    const updateFields: Record<string, any> = {
-      name: effectiveStoreName || existing.name,
-      category: category || existing.category,
-      ...(isInternalAuth ? { tier: updatedTier } : {}),
-      bot_paused: updatedMetadata.bot_paused,
-      is_bot_active: updatedMetadata.is_bot_active,
-      metadata: updatedMetadata,
-      updated_at: new Date().toISOString(),
-    };
-    if (sanitizedPhone !== undefined) {
-      updateFields.phone = sanitizedPhone || null;
-      updateFields.whatsapp_number = sanitizedPhone || null;
-    }
-    if (resolvedWabaPhoneId !== undefined) {
-      updateFields.waba_phone_number_id = resolvedWabaPhoneId;
-    }
-    if (telegram_chat_id !== undefined) {
-      updateFields.telegram_chat_id = telegram_chat_id || null;
-    }
-
     // ── UPSERT TENANT_SETTINGS DENGAN ADMIN CLIENT (BYPASS RLS) ──
     if (mergedTracking) {
       try {
@@ -1087,19 +936,214 @@ export async function PUT(
       }
     }
 
-    // ── UPDATE TABEL TENANTS (DENGAN OCC CAS GUARD) ──
+    // ── UPDATE TABEL TENANTS (DENGAN OCC CAS GUARD & PURE DELTA) ──
     const occResult = await updateTenantWithOccCas(
       supabaseAdmin,
       existing.id,
       (freshTenant) => {
-        const freshMeta = freshTenant.metadata || {};
-        return {
-          ...updateFields,
-          metadata: {
-            ...freshMeta,
-            ...updatedMetadata,
-          },
+        const freshMeta = { ...(freshTenant.metadata || {}) };
+
+        if (body.metadata && typeof body.metadata === 'object') {
+          Object.assign(freshMeta, body.metadata);
+        }
+        if (body.storefront_mode !== undefined) freshMeta.storefront_mode = body.storefront_mode;
+        if (body.onboarding_completed !== undefined) freshMeta.onboarding_completed = Boolean(body.onboarding_completed);
+        if (body.featured_product_ids !== undefined) freshMeta.featured_product_ids = body.featured_product_ids;
+        if (body.microsite_featured_product_ids !== undefined) freshMeta.microsite_featured_product_ids = body.microsite_featured_product_ids;
+        if (effectiveStoreName !== undefined) freshMeta.store_name = effectiveStoreName;
+        if (bot_strategy) freshMeta.bot_strategy = bot_strategy;
+        if (bot_mode) freshMeta.bot_mode = bot_mode;
+
+        freshMeta.is_bot_active = is_bot_active !== undefined ? Boolean(is_bot_active) : (freshMeta.is_bot_active !== false);
+        freshMeta.bot_paused = bot_paused !== undefined ? Boolean(bot_paused) : Boolean(freshMeta.bot_paused === true);
+
+        if (isInternalAuth && plan_tier) freshMeta.plan_tier = plan_tier;
+        if (updatedFeatures) freshMeta.features = { ...(freshMeta.features || {}), ...updatedFeatures };
+        if (product) freshMeta.product = product;
+        if (products !== undefined) freshMeta.products = products;
+        if (ai_knowledge) freshMeta.ai_knowledge = ai_knowledge;
+        if (bank) freshMeta.bank = bank;
+        if (bank_settings !== undefined) freshMeta.bank_settings = bank_settings;
+        if (bank_transfer !== undefined) freshMeta.bank_transfer = bank_transfer;
+        if (bank_accounts !== undefined) freshMeta.bank_accounts = bank_accounts;
+        if (body.accounts !== undefined) freshMeta.accounts = body.accounts;
+        if (body.manual_bank_accounts !== undefined) freshMeta.manual_bank_accounts = body.manual_bank_accounts;
+        if (body.bank_name) freshMeta.bank_name = body.bank_name;
+        if (body.bank_account) freshMeta.bank_account = body.bank_account;
+        if (body.bank_holder) freshMeta.bank_holder = body.bank_holder;
+        if (is_bank_transfer_active !== undefined) freshMeta.is_bank_transfer_active = Boolean(is_bank_transfer_active);
+
+        if (enable_manual_transfer !== undefined || is_bank_transfer_active !== undefined || bank_accounts !== undefined || body.accounts !== undefined) {
+          const prevPayCfg = (freshMeta.payment_config && typeof freshMeta.payment_config === 'object') ? freshMeta.payment_config : {};
+          const prevPaySet = (freshMeta.payment_settings && typeof freshMeta.payment_settings === 'object') ? freshMeta.payment_settings : {};
+          const manualEnabled = is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_manual_transfer !== undefined ? Boolean(enable_manual_transfer) : Boolean(prevPayCfg.enable_manual_transfer));
+          const bankEnabled = is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_bank_transfer !== undefined ? Boolean(enable_bank_transfer) : Boolean(enable_manual_transfer ?? prevPayCfg.enable_bank_transfer));
+
+          freshMeta.payment_config = {
+            ...prevPayCfg,
+            ...(body.payment_config || {}),
+            ...(bank_accounts !== undefined ? { bank_accounts } : {}),
+            ...(body.accounts !== undefined ? { accounts: body.accounts } : {}),
+            enable_manual_transfer: manualEnabled,
+            enable_bank_transfer: bankEnabled,
+          };
+          freshMeta.payment_settings = {
+            ...prevPaySet,
+            ...(body.payment_settings || {}),
+            ...(bank_accounts !== undefined ? { bank_accounts } : {}),
+            ...(body.accounts !== undefined ? { accounts: body.accounts } : {}),
+            enable_manual_transfer: manualEnabled,
+            enable_bank_transfer: bankEnabled,
+          };
+        }
+
+        if (integration) freshMeta.integration = integration;
+        if (faqs !== undefined) freshMeta.faqs = faqs;
+        if (interactive_menus !== undefined) freshMeta.interactive_menus = interactive_menus;
+        if (template !== undefined) {
+          freshMeta.template = template;
+          freshMeta.storefront_template = template;
+          freshMeta.selected_template = template;
+        }
+        if (theme !== undefined) {
+          const prevTheme = (freshMeta.theme && typeof freshMeta.theme === 'object') ? freshMeta.theme : {};
+          freshMeta.theme = { ...prevTheme, ...theme, ...(template ? { template } : {}) };
+          freshMeta.visual_theme = theme.visual_theme || theme.theme_id || freshMeta.visual_theme || 'clean_minimal';
+          freshMeta.theme_id = theme.theme_id || theme.visual_theme || freshMeta.theme_id || 'clean_minimal';
+          if (theme.template) {
+            freshMeta.template = theme.template;
+            freshMeta.storefront_template = theme.template;
+            freshMeta.selected_template = theme.template;
+          }
+        } else if (template) {
+          const prevTheme = (freshMeta.theme && typeof freshMeta.theme === 'object') ? freshMeta.theme : {};
+          freshMeta.theme = { ...prevTheme, template };
+        }
+
+        let freshProposal = freshMeta.boonpilot_proposal || freshMeta.boonpilot_configuration || null;
+        if (faqs !== undefined && freshProposal) {
+          const faqKnowledgeItems = (Array.isArray(faqs) ? faqs : []).map((f: any, idx: number) => ({
+            id: f.id || `faq_${Date.now()}_${idx}`,
+            category: 'FAQ',
+            title: f.question || '',
+            content: f.answer || '',
+            priority: 8,
+          }));
+          const nonFaqItems = (freshProposal.knowledge || []).filter((k: any) => k.category !== 'FAQ');
+          freshProposal = {
+            ...freshProposal,
+            knowledge: [...nonFaqItems, ...faqKnowledgeItems],
+            updated_at: new Date().toISOString(),
+          };
+          freshMeta.boonpilot_proposal = freshProposal;
+          freshMeta.boonpilot_configuration = freshProposal;
+        }
+
+        if (qris_image_url !== undefined) {
+          freshMeta.qris_image_url = qris_image_url;
+          freshMeta.qris_url = qris_image_url;
+          freshMeta.qris_image = qris_image_url;
+          freshMeta.is_qris_active = Boolean(qris_image_url);
+          freshMeta.qris_enabled = Boolean(qris_image_url);
+          freshMeta.payment_settings = {
+            ...(freshMeta.payment_settings || {}),
+            qris: qris_image_url,
+            is_qris_active: Boolean(qris_image_url),
+          };
+          freshMeta.payment_config = {
+            ...(freshMeta.payment_config || {}),
+            enable_qris: Boolean(qris_image_url),
+            qris_image_url,
+          };
+        }
+
+        if (qris_payload !== undefined || qris_static_string !== undefined) {
+          const finalQrisPayload = qris_payload || qris_static_string;
+          freshMeta.qris_payload = finalQrisPayload;
+          freshMeta.qris_static_string = finalQrisPayload;
+          freshMeta.payment_config = {
+            ...(freshMeta.payment_config || {}),
+            enable_qris: true,
+            qris_payload: finalQrisPayload,
+            raw_qris_string: finalQrisPayload,
+            static_qris_payload: finalQrisPayload,
+          };
+        }
+
+        if (effectiveLogo !== undefined) {
+          freshMeta.logo_url = effectiveLogo;
+          freshMeta.store_logo_url = effectiveLogo;
+          freshMeta.avatar_url = effectiveLogo;
+        }
+        if (bio !== undefined) freshMeta.bio = bio;
+        if (sanitizedPhone !== undefined) {
+          freshMeta.phone = sanitizedPhone;
+          freshMeta.whatsapp_number = sanitizedPhone;
+          freshMeta.whatsapp = sanitizedPhone;
+          freshMeta.wa_number = sanitizedPhone;
+        }
+        if (greeting_message !== undefined || custom_greeting_message !== undefined) {
+          const finalGreeting = greeting_message !== undefined ? greeting_message : custom_greeting_message;
+          freshMeta.greeting_message = finalGreeting;
+          freshMeta.custom_greeting_message = finalGreeting;
+        }
+        if (sales_policy !== undefined) {
+          freshMeta.sales_policy = sales_policy;
+          freshMeta.playbook = sales_policy;
+        } else if (playbook !== undefined) {
+          freshMeta.sales_policy = playbook;
+          freshMeta.playbook = playbook;
+        }
+        if (sanitizedMicrosite !== undefined) freshMeta.microsite = sanitizedMicrosite;
+        if (rotator !== undefined) freshMeta.rotator = rotator;
+        if (sanitizedShippingConfig !== undefined) freshMeta.shipping_config = sanitizedShippingConfig;
+        if (sanitizedLincahConfig !== undefined) freshMeta.lincah_config = sanitizedLincahConfig;
+        if (sanitizedShippingSettings !== undefined) freshMeta.shipping_settings = sanitizedShippingSettings;
+        if (Array.isArray(auto_replies)) freshMeta.auto_replies = auto_replies;
+        if (telegram_chat_id !== undefined) freshMeta.telegram_chat_id = telegram_chat_id || null;
+        if (telegram_group_config !== undefined || body.telegram_group_config !== undefined) {
+          freshMeta.telegram_group_config = telegram_group_config ?? body.telegram_group_config;
+        }
+        if (followup_rules !== undefined || follow_up_rules !== undefined) {
+          freshMeta.followup_rules = followup_rules !== undefined ? followup_rules : follow_up_rules;
+        }
+        if (mergedTracking) {
+          freshMeta.tracking = mergedTracking;
+          freshMeta.ads_tracking_config = mergedTracking;
+          freshMeta.pixel_id = resolvedPixelId || freshMeta.pixel_id || null;
+          freshMeta.capi_token = resolvedCapiToken || freshMeta.capi_token || null;
+        }
+        if (mergedWaba) {
+          freshMeta.waba_config = mergedWaba;
+          freshMeta.waba_configured = true;
+          freshMeta.waba_active = true;
+          freshMeta.waba_phone_number_id = resolvedWabaPhoneId || freshMeta.waba_phone_number_id || null;
+          freshMeta.whatsapp_phone_number_id = resolvedWabaPhoneId || freshMeta.whatsapp_phone_number_id || null;
+          freshMeta.waba_account_id = resolvedWabaAccountId || freshMeta.waba_account_id || null;
+          freshMeta.waba_access_token = resolvedWabaToken || freshMeta.waba_access_token || null;
+          freshMeta.whatsapp_gateway_type = 'waba';
+        }
+
+        const updateFields: Record<string, any> = {
+          name: effectiveStoreName || freshTenant.name,
+          category: category || freshTenant.category,
+          ...(isInternalAuth ? { tier: updatedTier } : {}),
+          bot_paused: freshMeta.bot_paused,
+          is_bot_active: freshMeta.is_bot_active,
+          metadata: freshMeta,
         };
+        if (sanitizedPhone !== undefined) {
+          updateFields.phone = sanitizedPhone || null;
+          updateFields.whatsapp_number = sanitizedPhone || null;
+        }
+        if (resolvedWabaPhoneId !== undefined) {
+          updateFields.waba_phone_number_id = resolvedWabaPhoneId;
+        }
+        if (telegram_chat_id !== undefined) {
+          updateFields.telegram_chat_id = telegram_chat_id || null;
+        }
+
+        return updateFields;
       }
     );
 
@@ -1115,6 +1159,8 @@ export async function PUT(
       );
     }
     const updatedTenants = occResult.data;
+    const updatedTenant = occResult.updatedTenant || updatedTenants?.[0];
+    const persistedMetadata = updatedTenant?.metadata || {};
 
     // Sync WhatsApp CS number ke tabel whatsapp_connections agar persistent across dashboard reload
     if (sanitizedPhone) {
@@ -1158,7 +1204,7 @@ export async function PUT(
     if (bot_paused !== undefined || is_bot_active !== undefined) {
       try {
         const { executeBotControl } = await import('@/lib/whatsapp/bot-control-service');
-        const targetAction = updatedMetadata.bot_paused ? 'PAUSE' : 'RESUME';
+        const targetAction = (bot_paused !== undefined ? Boolean(bot_paused) : Boolean(persistedMetadata.bot_paused)) ? 'PAUSE' : 'RESUME';
         await executeBotControl({
           action: targetAction,
           tenantId: existing.id || slug,
@@ -1226,7 +1272,7 @@ export async function PUT(
       changedKeys,
       diffSummary: {
         changed_summary: redactSensitiveValues(
-          Object.fromEntries(changedKeys.map((k) => [k, updatedMetadata[k] ?? body[k]]))
+          Object.fromEntries(changedKeys.map((k) => [k, persistedMetadata[k] ?? body[k]]))
         ),
       },
       req,
@@ -1257,12 +1303,12 @@ export async function PUT(
         products,
         ai_knowledge,
         bot_strategy,
-        bot_mode: updatedMetadata.bot_mode || 'HYBRID',
-        faqs: updatedMetadata.faqs || [],
-        auto_replies: updatedMetadata.auto_replies || [],
-        interactive_menus: updatedMetadata.interactive_menus || [],
-        theme: updatedMetadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
-        microsite: updatedMetadata.microsite || { buttons: [] },
+        bot_mode: persistedMetadata.bot_mode || 'HYBRID',
+        faqs: persistedMetadata.faqs || [],
+        auto_replies: persistedMetadata.auto_replies || [],
+        interactive_menus: persistedMetadata.interactive_menus || [],
+        theme: persistedMetadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
+        microsite: persistedMetadata.microsite || { buttons: [] },
         bank,
         integration,
         qris_image_url:
@@ -1273,8 +1319,8 @@ export async function PUT(
           logo_url !== undefined
             ? logo_url
             : (existing.metadata?.logo_url || null),
-        telegram_group_config: updatedMetadata.telegram_group_config || null,
-        telegram_chat_id: updateFields.telegram_chat_id ?? (existing.telegram_chat_id || null),
+        telegram_group_config: persistedMetadata.telegram_group_config || null,
+        telegram_chat_id: telegram_chat_id ?? (updatedTenant?.telegram_chat_id ?? existing.telegram_chat_id ?? null),
       },
     });
   } catch (err: unknown) {

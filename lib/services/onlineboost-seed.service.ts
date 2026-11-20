@@ -275,77 +275,82 @@ export class OnlineboostSeedService {
       }
     }
 
-    // 3. Upsert to `tenants.metadata.products`
-    const existingMetadata = tenant.metadata || {};
-    let currentProducts = Array.isArray(existingMetadata.products) ? [...existingMetadata.products] : [];
-
-    for (const prod of ONLINEBOOST_DIGITAL_PRODUCTS) {
-      const matchingSql = upsertedSqlProducts.find(p => p.sku === prod.sku);
-      const existingIndex = currentProducts.findIndex(p => p.sku === prod.sku || p.slug === prod.slug || p.sku === 'ACADEMY_CTWA_BATCH1_B' || p.id === prod.id);
-
-      const metadataProductItem = {
-        ...(existingIndex >= 0 ? currentProducts[existingIndex] : {}),
-        id: matchingSql?.id || prod.id,
-        sku: prod.sku,
-        name: prod.name,
-        title: prod.title,
-        slug: prod.slug,
-        price: prod.price,
-        promo_price: prod.promo_price,
-        category: prod.category,
-        product_type: prod.product_type,
-        type: prod.type,
-        is_digital: prod.is_digital,
-        description: prod.description,
-        image: prod.image,
-        image_url: prod.image_url,
-        images: [prod.image_url],
-        status: prod.status,
-        is_active: prod.is_active,
-        is_available: prod.is_available,
-        stock: prod.stock,
-        is_unlimited: prod.is_unlimited,
-        is_unlimited_stock: prod.is_unlimited_stock,
-        requires_shipping: prod.requires_shipping,
-        delivery_url: prod.link_digital,
-        link_digital: prod.link_digital,
-        download_url: prod.link_digital,
-        promo: (prod as any).promo,
-        cta_label: (prod as any).cta_label,
-        micro_copy: (prod as any).micro_copy,
-        scarcity_badge: (prod as any).scarcity_badge,
-        facilities: (prod as any).facilities,
-        features: (prod as any).features,
-        single_page_config: (prod as any).fulfillment_metadata?.single_page_config,
-        metadata: {
-          ...((existingIndex >= 0 ? currentProducts[existingIndex].metadata : {}) || {}),
-          scarcity_badge: (prod as any).scarcity_badge,
-          cta_label: (prod as any).cta_label,
-          micro_copy: (prod as any).micro_copy,
-          features: (prod as any).features,
-          facilities: (prod as any).facilities
-        },
-        fulfillment_metadata: prod.fulfillment_metadata,
-        updated_at: new Date().toISOString()
-      };
-
-      if (existingIndex >= 0) {
-        currentProducts[existingIndex] = metadataProductItem;
-      } else {
-        currentProducts.push(metadataProductItem);
-      }
-    }
-
+    // 3. Upsert to `tenants.metadata.products` via OCC CAS (Pure Delta on fresh.metadata)
+    let totalProductsCount = 0;
     const { success: occSuccess, error: metaUpdateErr } = await updateTenantWithOccCas(
       supabase,
       tenant.id,
-      (fresh) => ({
-        metadata: {
-          ...(fresh.metadata || {}),
-          products: currentProducts,
-          updated_at: new Date().toISOString(),
-        },
-      }),
+      (fresh) => {
+        const freshMeta = { ...(fresh.metadata || {}) };
+        const currentProducts = Array.isArray(freshMeta.products) ? [...freshMeta.products] : [];
+
+        for (const prod of ONLINEBOOST_DIGITAL_PRODUCTS) {
+          const matchingSql = upsertedSqlProducts.find(p => p.sku === prod.sku);
+          const existingIndex = currentProducts.findIndex(p => p.sku === prod.sku || p.slug === prod.slug || p.sku === 'ACADEMY_CTWA_BATCH1_B' || p.id === prod.id);
+
+          const metadataProductItem = {
+            ...(existingIndex >= 0 ? currentProducts[existingIndex] : {}),
+            id: matchingSql?.id || prod.id,
+            sku: prod.sku,
+            name: prod.name,
+            title: prod.title,
+            slug: prod.slug,
+            price: prod.price,
+            promo_price: prod.promo_price,
+            category: prod.category,
+            product_type: prod.product_type,
+            type: prod.type,
+            is_digital: prod.is_digital,
+            description: prod.description,
+            image: prod.image,
+            image_url: prod.image_url,
+            images: [prod.image_url],
+            status: prod.status,
+            is_active: prod.is_active,
+            is_available: prod.is_available,
+            stock: prod.stock,
+            is_unlimited: prod.is_unlimited,
+            is_unlimited_stock: prod.is_unlimited_stock,
+            requires_shipping: prod.requires_shipping,
+            delivery_url: prod.link_digital,
+            link_digital: prod.link_digital,
+            download_url: prod.link_digital,
+            promo: (prod as any).promo,
+            cta_label: (prod as any).cta_label,
+            micro_copy: (prod as any).micro_copy,
+            scarcity_badge: (prod as any).scarcity_badge,
+            facilities: (prod as any).facilities,
+            features: (prod as any).features,
+            single_page_config: (prod as any).fulfillment_metadata?.single_page_config,
+            metadata: {
+              ...((existingIndex >= 0 ? currentProducts[existingIndex].metadata : {}) || {}),
+              scarcity_badge: (prod as any).scarcity_badge,
+              cta_label: (prod as any).cta_label,
+              micro_copy: (prod as any).micro_copy,
+              features: (prod as any).features,
+              facilities: (prod as any).facilities
+            },
+            fulfillment_metadata: prod.fulfillment_metadata,
+            updated_at: new Date().toISOString()
+          };
+
+          if (existingIndex >= 0) {
+            currentProducts[existingIndex] = metadataProductItem;
+          } else {
+            currentProducts.push(metadataProductItem);
+          }
+        }
+
+        totalProductsCount = currentProducts.length;
+
+        return {
+          metadata: {
+            ...freshMeta,
+            products: currentProducts,
+            updated_at: new Date().toISOString(),
+          },
+        };
+      },
       { allowProductsProjection: true }
     );
 
@@ -361,7 +366,7 @@ export class OnlineboostSeedService {
         name: tenant.name
       },
       seededProducts: upsertedSqlProducts,
-      totalProductsInMetadata: currentProducts.length
+      totalProductsInMetadata: totalProductsCount
     };
   }
 

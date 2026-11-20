@@ -810,15 +810,7 @@ export class StudioCreditService {
     const isAlreadyPaidTier = paidTiers.includes(rawTier);
     const resolvedTier = isAlreadyPaidTier ? tenant.tier : (params.tier || 'member');
 
-    // 3. Update tenants table
-    const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? { ...tenant.metadata } : {};
-    existingMeta.is_shop_subscriber = true;
-    existingMeta.is_shop_member = true;
-    existingMeta.shop_activation_bonus_granted = true;
-    existingMeta.shop_activation_bonus_granted_at = new Date().toISOString();
-    if (params.subscriptionId) existingMeta.shop_subscription_id = params.subscriptionId;
-    if (params.invoiceId) existingMeta.shop_activation_invoice_id = params.invoiceId;
-
+    // 3. Update tenants table via OCC CAS
     try {
       await updateTenantWithOccCas(
         supabase,

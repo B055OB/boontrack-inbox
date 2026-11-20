@@ -307,24 +307,6 @@ export async function processStoreActivation(params: {
     resolvedPlanLabel.includes('Trial')
   );
 
-  const updatedMetadata = {
-    ...currentMeta,
-    ...(ctwaClid ? { last_ctwa_clid: ctwaClid } : {}),
-    wa_verification_status: 'verified',
-    wa_verified_at: verifiedAt,
-    wa_verified_phone: cleanPhone,
-    phone: cleanPhone || currentMeta.phone,
-    merchant_phone: cleanPhone || currentMeta.merchant_phone || currentMeta.phone,
-    whatsapp_number: cleanPhone || currentMeta.whatsapp_number,
-    tier: resolvedTier,
-    plan_tier: resolvedPlanTier,
-    selected_plan: resolvedPlanLabel,
-    subscription_status: isTrial ? 'trial' : 'active',
-    is_trial: isTrial,
-    trial_days: isTrial ? 7 : 0,
-    trial_ends_at: isTrial ? trialEndsAt : null,
-  };
-
   const occResult = await updateTenantWithOccCas(
     supabase,
     tenant.id,
@@ -408,7 +390,7 @@ export async function processStoreActivation(params: {
       ...tenant,
       status: 'active',
       is_active: true,
-      metadata: updatedMetadata,
+      metadata: occResult.updatedTenant?.metadata || tenant.metadata || {},
     },
     replyMessage,
   };

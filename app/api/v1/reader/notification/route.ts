@@ -415,16 +415,6 @@ export async function POST(req: NextRequest) {
       if (tenantForHeartbeat?.id) {
         const existingDevice = tenantForHeartbeat.metadata?.reader_device || {};
         const deviceName = body.device_name || body.device || existingDevice.device_name || 'BoonTrack Reader Android';
-        const updatedMeta = {
-          ...(tenantForHeartbeat.metadata || {}),
-          reader_device: {
-            ...existingDevice,
-            is_connected: true,
-            status: 'CONNECTED',
-            device_name: deviceName,
-            last_active_at: paidAt,
-          },
-        };
         await updateTenantWithOccCas(
           supabase,
           tenantForHeartbeat.id,

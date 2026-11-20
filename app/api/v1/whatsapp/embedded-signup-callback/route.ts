@@ -217,41 +217,34 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (tenantRow) {
-        const currentMeta = tenantRow.metadata || {};
-        const nextMeta = {
-          ...currentMeta,
-          waba_phone_number_id: finalPhoneId,
-          whatsapp_phone_number_id: finalPhoneId,
-          waba_account_id: finalWabaId,
-          waba_access_token: accessToken || currentMeta.waba_access_token,
-          waba_configured: true,
-          waba_active: true,
-          whatsapp_gateway_type: "waba",
-          waba_config: {
-            phone_number_id: finalPhoneId,
-            waba_id: finalWabaId,
-            access_token: accessToken || "",
-            permanent_access_token: accessToken || "",
-            status: "CONNECTED",
-            verified_name: finalVerifiedName,
-            display_phone_number: finalPhone,
-            quality_rating: resolvedQualityRating,
-            connected_via: "meta_embedded_signup_popup",
-            updated_at: nowIso,
-          },
-        };
-
         const occResult = await updateTenantWithOccCas(
           supabase,
           tenantRow.id,
           (freshTenant) => {
-            const freshMeta = freshTenant.metadata || {};
+            const freshMeta = { ...(freshTenant.metadata || {}) };
+            freshMeta.waba_phone_number_id = finalPhoneId;
+            freshMeta.whatsapp_phone_number_id = finalPhoneId;
+            freshMeta.waba_account_id = finalWabaId;
+            freshMeta.waba_access_token = accessToken || freshMeta.waba_access_token;
+            freshMeta.waba_configured = true;
+            freshMeta.waba_active = true;
+            freshMeta.whatsapp_gateway_type = "waba";
+            freshMeta.waba_config = {
+              phone_number_id: finalPhoneId,
+              waba_id: finalWabaId,
+              access_token: accessToken || "",
+              permanent_access_token: accessToken || "",
+              status: "CONNECTED",
+              verified_name: finalVerifiedName,
+              display_phone_number: finalPhone,
+              quality_rating: resolvedQualityRating,
+              connected_via: "meta_embedded_signup_popup",
+              updated_at: nowIso,
+            };
+
             return {
               waba_phone_number_id: finalPhoneId,
-              metadata: {
-                ...freshMeta,
-                ...nextMeta,
-              },
+              metadata: freshMeta,
             };
           }
         );
