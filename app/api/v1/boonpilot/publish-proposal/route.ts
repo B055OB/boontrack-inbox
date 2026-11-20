@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
 
@@ -82,21 +83,26 @@ export async function POST(req: NextRequest) {
         };
 
         if (tenantData) {
-          const updatePayload: Record<string, any> = {
-            metadata: updatedMetadata,
-            updated_at: new Date().toISOString(),
-          };
-          if (publishedProposal.business_profile?.store_name) {
-            updatePayload.name = publishedProposal.business_profile.store_name;
-          }
+          const occResult = await updateTenantWithOccCas(
+            supabase,
+            tenantSlug,
+            (freshTenant) => {
+              const freshMeta = freshTenant.metadata || {};
+              const updatePayload: Record<string, any> = {
+                metadata: {
+                  ...freshMeta,
+                  ...updatedMetadata,
+                },
+              };
+              if (publishedProposal.business_profile?.store_name) {
+                updatePayload.name = publishedProposal.business_profile.store_name;
+              }
+              return updatePayload;
+            }
+          );
 
-          const { error: updateErr } = await supabase
-            .from('tenants')
-            .update(updatePayload)
-            .eq('slug', tenantSlug);
-
-          if (updateErr) {
-            console.error('[BoonPilot Publish] Supabase update error:', updateErr);
+          if (!occResult.success) {
+            console.error('[BoonPilot Publish] Supabase update error:', occResult.error);
           }
         } else {
           // Auto-insert trial tenant if not yet in database (e.g. sandbox or new registration)

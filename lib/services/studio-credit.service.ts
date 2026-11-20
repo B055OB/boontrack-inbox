@@ -12,6 +12,7 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
 import { isTenantShopMember } from '@/lib/config/studio-pricing';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export interface TenantEntitlement {
   tenant_id: string;
@@ -819,16 +820,27 @@ export class StudioCreditService {
     if (params.invoiceId) existingMeta.shop_activation_invoice_id = params.invoiceId;
 
     try {
-      const tenantUpdatePayload: Record<string, any> = {
-        metadata: existingMeta,
-      };
-      if (!isAlreadyPaidTier) {
-        tenantUpdatePayload.tier = resolvedTier;
-      }
-      await supabase
-        .from('tenants')
-        .update(tenantUpdatePayload)
-        .eq('id', tenant.id);
+      await updateTenantWithOccCas(
+        supabase,
+        tenant.id,
+        (fresh) => {
+          const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? { ...fresh.metadata } : {};
+          freshMeta.is_shop_subscriber = true;
+          freshMeta.is_shop_member = true;
+          freshMeta.shop_activation_bonus_granted = true;
+          freshMeta.shop_activation_bonus_granted_at = new Date().toISOString();
+          if (params.subscriptionId) freshMeta.shop_subscription_id = params.subscriptionId;
+          if (params.invoiceId) freshMeta.shop_activation_invoice_id = params.invoiceId;
+
+          const patch: Record<string, any> = {
+            metadata: freshMeta,
+          };
+          if (!isAlreadyPaidTier) {
+            patch.tier = resolvedTier;
+          }
+          return patch;
+        }
+      );
     } catch (tenantUpdErr) {
       console.warn('[StudioCreditService] Tenant update warning:', tenantUpdErr);
     }

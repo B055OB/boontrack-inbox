@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
 export const dynamic = 'force-dynamic';
@@ -90,17 +91,20 @@ export async function GET(
           last_rotated_at: new Date().toISOString(),
         };
 
-        // Simpan pembaruan counter & index ke Supabase
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: {
-              ...metadata,
-              rotator: updatedRotator,
-            },
-          updated_at: new Date().toISOString(),
-          })
-          .eq('id', tenant.id);
+        // Simpan pembaruan counter & index ke Supabase via OCC CAS
+        await updateTenantWithOccCas(
+          supabase,
+          tenant.id,
+          (freshTenant) => {
+            const freshMeta = freshTenant.metadata || {};
+            return {
+              metadata: {
+                ...freshMeta,
+                rotator: updatedRotator,
+              },
+            };
+          }
+        );
 
         const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(defaultMsg)}`;
 

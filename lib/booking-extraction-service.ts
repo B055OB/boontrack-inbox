@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import {
   get7DaySlotsAvailability,
   formatAvailableSlotsForWhatsApp,
@@ -381,9 +382,20 @@ export async function processFunnelBookingMessage(
         bookings: [newBookingRecord, ...existingBookings].slice(0, 100),
       };
 
-      await supabase
-        .from('tenants')
-        .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
+      await updateTenantWithOccCas(
+        supabase,
+        tenant.id,
+        (freshTenant) => {
+          const freshMeta = freshTenant.metadata || {};
+          const currentBookings = Array.isArray(freshMeta.bookings) ? freshMeta.bookings : [];
+          return {
+            metadata: {
+              ...freshMeta,
+              bookings: [newBookingRecord, ...currentBookings].slice(0, 100),
+            },
+          };
+        }
+      );
     } catch (err) {
       console.error('[Booking Service] Error updating tenant metadata bookings:', err);
     }

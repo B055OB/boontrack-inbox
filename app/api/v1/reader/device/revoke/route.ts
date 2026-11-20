@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,24 +48,28 @@ export async function POST(req: NextRequest) {
       // ignore backend error
     }
 
-    // 2. Update Supabase tenants.metadata.reader_device
+    // 2. Update Supabase tenants.metadata.reader_device via OCC CAS
     if (supabase && tenantRow?.id) {
-      const updatedMeta = {
-        ...(tenantRow.metadata || {}),
-        reader_device: {
-          is_connected: false,
-          status: 'DISCONNECTED',
-          device_name: null,
-          device_id: null,
-          revoked_at: new Date().toISOString(),
-        },
-        reader_pairing_session: null,
-      };
-
-      await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-        .eq('id', tenantRow.id);
+      await updateTenantWithOccCas(
+        supabase,
+        tenantRow.id,
+        (freshTenant) => {
+          const freshMeta = freshTenant.metadata || {};
+          return {
+            metadata: {
+              ...freshMeta,
+              reader_device: {
+                is_connected: false,
+                status: 'DISCONNECTED',
+                device_name: null,
+                device_id: null,
+                revoked_at: new Date().toISOString(),
+              },
+              reader_pairing_session: null,
+            },
+          };
+        }
+      );
     }
 
     return NextResponse.json({

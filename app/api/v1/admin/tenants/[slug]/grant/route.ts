@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import {
   resolveCanonicalTier,
   calculateGrantValidUntil,
@@ -144,20 +145,29 @@ export async function POST(
       updated_at: new Date().toISOString(),
     };
 
-    const { data: updatedTenant, error: updateErr } = await supabaseAdmin
-      .from('tenants')
-      .update(updatePayload)
-      .eq('slug', slug)
-      .select('id, slug, name, tier, subscription_tier, subscription_status, status, is_active, subscription_ends_at, metadata')
-      .single();
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      slug,
+      (freshTenant) => {
+        const currentMeta = freshTenant.metadata || {};
+        return {
+          ...updatePayload,
+          metadata: {
+            ...currentMeta,
+            ...updatedMetadata,
+          },
+        };
+      }
+    );
 
-    if (updateErr) {
-      console.error('[Subscription Grant] Database update error:', updateErr);
+    if (!occResult.success) {
+      console.error('[Subscription Grant] Database update error:', occResult.error);
       return NextResponse.json(
-        { success: false, error: updateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
+    const updatedTenant = occResult.updatedTenant;
 
     // 5. Catat dan sinkronkan ke shop_subscriptions (SSOT Langganan Aktif)
     try {

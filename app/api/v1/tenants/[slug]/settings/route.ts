@@ -1,4 +1,5 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
@@ -1086,24 +1087,34 @@ export async function PUT(
       }
     }
 
-    // ── UPDATE TABEL TENANTS (DENGAN VERIFIKASI COUNT ROW TERPENGARUH) ──
-    const { data: updatedTenants, error: updateError } = await supabaseAdmin
-      .from('tenants')
-      .update(updateFields)
-      .eq('id', existing.id)
-      .select('id, slug, name, metadata, phone, whatsapp_number');
+    // ── UPDATE TABEL TENANTS (DENGAN OCC CAS GUARD) ──
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      existing.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          ...updateFields,
+          metadata: {
+            ...freshMeta,
+            ...updatedMetadata,
+          },
+        };
+      }
+    );
 
-    if (updateError || !updatedTenants || updatedTenants.length === 0) {
-      console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);
+    if (!occResult.success || !occResult.data || occResult.data.length === 0) {
+      console.error('[Settings Route] Update tenants failed or 0 rows affected:', occResult.error);
       return NextResponse.json(
         {
           success: false,
-          error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED',
-          message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase (0 rows affected).',
+          error: occResult.error === 'OCC_CONFLICT' ? 'OCC_CONFLICT' : 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED',
+          message: occResult.message || 'Gagal memperbarui pengaturan toko di database Supabase.',
         },
-        { status: 500 }
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
+    const updatedTenants = occResult.data;
 
     // Sync WhatsApp CS number ke tabel whatsapp_connections agar persistent across dashboard reload
     if (sanitizedPhone) {

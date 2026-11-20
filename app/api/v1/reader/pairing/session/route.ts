@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -76,15 +77,19 @@ export async function POST(req: NextRequest) {
     };
 
     if (supabase && tenantRow?.id) {
-      const updatedMeta = {
-        ...(tenantRow.metadata || {}),
-        reader_pairing_session: pairingSession,
-      };
-
-      await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-        .eq('id', tenantRow.id);
+      await updateTenantWithOccCas(
+        supabase,
+        tenantRow.id,
+        (freshTenant) => {
+          const freshMeta = freshTenant.metadata || {};
+          return {
+            metadata: {
+              ...freshMeta,
+              reader_pairing_session: pairingSession,
+            },
+          };
+        }
+      );
     }
 
     return NextResponse.json({

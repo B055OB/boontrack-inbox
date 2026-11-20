@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
 import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
@@ -88,20 +89,26 @@ export async function PATCH(
       }
     }
 
-    const { error: updateErr } = await supabaseAdmin
-      .from('tenants')
-      .update({
-        status: nextStatus,
-        is_active: nextActive,
-        metadata: nextMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('slug', slug);
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      slug,
+      (freshTenant) => {
+        const currentMeta = freshTenant.metadata || {};
+        return {
+          status: nextStatus,
+          is_active: nextActive,
+          metadata: {
+            ...currentMeta,
+            ...nextMetadata,
+          },
+        };
+      }
+    );
 
-    if (updateErr) {
+    if (!occResult.success) {
       return NextResponse.json(
-        { success: false, error: updateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
 

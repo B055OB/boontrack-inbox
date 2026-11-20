@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, isValidUuid } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getStoreShippingConfig, saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 import {
@@ -612,15 +613,24 @@ export async function POST(req: NextRequest) {
       sanitizedMeta.shipping_config = existingMetaShipping;
     }
 
-    const { error: tenantUpdateErr } = await supabaseAdmin
-      .from('tenants')
-      .update({ metadata: sanitizedMeta, updated_at: now })
-      .eq('id', tenantRow.id);
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      tenantRow.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          metadata: {
+            ...freshMeta,
+            ...sanitizedMeta,
+          },
+        };
+      }
+    );
 
-    if (tenantUpdateErr) {
+    if (!occResult.success) {
       return NextResponse.json(
-        { success: false, error: tenantUpdateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
 

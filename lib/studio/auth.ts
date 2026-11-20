@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export interface StudioRegistrationInput {
   whatsapp: string;
@@ -134,18 +135,40 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
       },
     };
 
-    await supabase
-      .from('tenants')
-      .update({
-        metadata: updatedMeta,
-        access_username: 'admin',
-        access_password: plainPassword,
-        phone: normalizedPhone,
-        whatsapp_number: normalizedPhone,
-        status: 'pending_verification',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existingTenant.id);
+    await updateTenantWithOccCas(
+      supabase,
+      existingTenant.id,
+      (fresh) => {
+        const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+        const updatedMeta = {
+          ...freshMeta,
+          whatsapp: waClean,
+          phone: normalizedPhone,
+          phone_verification_token: token,
+          token_expires_at: expiresAt,
+          phone_verified: false,
+          verification_status: 'PENDING',
+          password_hash: passwordHash,
+          studio_workspace: {
+            ...(freshMeta.studio_workspace || {}),
+            render_credits: 1,
+            max_concurrent_jobs: 1,
+            plan_tier: 'free_trial',
+            tier: 'free_trial',
+            status: 'PENDING',
+          },
+        };
+
+        return {
+          metadata: updatedMeta,
+          access_username: 'admin',
+          access_password: plainPassword,
+          phone: normalizedPhone,
+          whatsapp_number: normalizedPhone,
+          status: 'pending_verification',
+        };
+      }
+    );
 
     return {
       success: true,
@@ -443,23 +466,92 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
     updatePayload.whatsapp_number = cleanPhone;
   }
 
-  let { data: updatedTenant, error: updateError } = await supabase
-    .from('tenants')
-    .update(updatePayload)
-    .eq('id', tenant.id)
-    .select('id, slug, name, is_active, status, metadata')
-    .single();
+  const occResult = await updateTenantWithOccCas(
+    supabase,
+    tenant.id,
+    (fresh) => {
+      const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+      const updatedMeta = {
+        ...freshMeta,
+        whatsapp: cleanPhone || freshMeta.whatsapp,
+        phone: cleanPhone || freshMeta.phone,
+        phone_verified: true,
+        verification_status: 'SUCCESS',
+        verified_at: new Date().toISOString(),
+        verified_by_sender: cleanPhone,
+        password_hash: freshMeta.password_hash || defaultPasswordHash,
+        studio_workspace: {
+          ...(freshMeta.studio_workspace || {}),
+          render_credits: freshMeta.studio_workspace?.render_credits ?? 1,
+          max_concurrent_jobs: freshMeta.studio_workspace?.max_concurrent_jobs ?? 1,
+          plan_tier: freshMeta.studio_workspace?.plan_tier ?? 'free_trial',
+          tier: 'free_trial',
+          status: 'ACTIVE',
+        },
+      };
 
-  if (updateError && (updateError.message?.includes('tenant_kind') || updateError.message?.includes('business_type'))) {
-    const { tenant_kind, business_type, ...safePayload } = updatePayload;
-    const retry = await supabase
-      .from('tenants')
-      .update(safePayload)
-      .eq('id', tenant.id)
-      .select('id, slug, name, is_active, status, metadata')
-      .single();
-    updatedTenant = retry.data;
-    updateError = retry.error;
+      const payload: Record<string, any> = {
+        is_active: true,
+        status: 'active',
+        tenant_kind: 'studio',
+        business_type: 'studio',
+        access_username: fresh.access_username || 'admin',
+        access_password: fresh.access_password || defaultPassword,
+        metadata: updatedMeta,
+      };
+
+      if (cleanPhone) {
+        payload.phone = cleanPhone;
+        payload.whatsapp_number = cleanPhone;
+      }
+
+      return payload;
+    }
+  );
+
+  let updatedTenant = occResult.success ? (occResult.data?.[0] || occResult.updatedTenant) : null;
+  let updateError: any = occResult.success ? null : { message: occResult.message };
+
+  if (!occResult.success && (occResult.message?.includes('tenant_kind') || occResult.message?.includes('business_type'))) {
+    const retry = await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (fresh) => {
+        const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+        const updatedMeta = {
+          ...freshMeta,
+          whatsapp: cleanPhone || freshMeta.whatsapp,
+          phone: cleanPhone || freshMeta.phone,
+          phone_verified: true,
+          verification_status: 'SUCCESS',
+          verified_at: new Date().toISOString(),
+          verified_by_sender: cleanPhone,
+          password_hash: freshMeta.password_hash || defaultPasswordHash,
+          studio_workspace: {
+            ...(freshMeta.studio_workspace || {}),
+            render_credits: freshMeta.studio_workspace?.render_credits ?? 1,
+            max_concurrent_jobs: freshMeta.studio_workspace?.max_concurrent_jobs ?? 1,
+            plan_tier: freshMeta.studio_workspace?.plan_tier ?? 'free_trial',
+            tier: 'free_trial',
+            status: 'ACTIVE',
+          },
+        };
+        const safePayload: Record<string, any> = {
+          is_active: true,
+          status: 'active',
+          access_username: fresh.access_username || 'admin',
+          access_password: fresh.access_password || defaultPassword,
+          metadata: updatedMeta,
+        };
+        if (cleanPhone) {
+          safePayload.phone = cleanPhone;
+          safePayload.whatsapp_number = cleanPhone;
+        }
+        return safePayload;
+      }
+    );
+    updatedTenant = retry.success ? (retry.data?.[0] || retry.updatedTenant) : null;
+    updateError = retry.success ? null : { message: retry.message };
   }
 
   if (updateError || !updatedTenant) {

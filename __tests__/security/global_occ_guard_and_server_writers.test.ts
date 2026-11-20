@@ -61,9 +61,17 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
             }),
             update: jest.fn().mockImplementation((payload: any) => {
               capturedPayload = payload;
-              return {
-                eq: jest.fn().mockResolvedValue({ error: null }),
-              };
+              const updateBuilder: any = {};
+              updateBuilder.eq = jest.fn().mockReturnValue(updateBuilder);
+              updateBuilder.select = jest.fn().mockResolvedValue({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: payload.metadata, updated_at: payload.updated_at }],
+                error: null,
+              });
+              updateBuilder.then = (resolve: any) => resolve({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: payload.metadata, updated_at: payload.updated_at }],
+                error: null,
+              });
+              return updateBuilder;
             }),
           };
         }
@@ -106,14 +114,17 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
             }),
             update: jest.fn().mockImplementation((fields: any) => {
               capturedFields = fields;
-              return {
-                eq: jest.fn().mockReturnValue({
-                  select: jest.fn().mockResolvedValue({
-                    data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi' }],
-                    error: null,
-                  }),
-                }),
-              };
+              const updateBuilder: any = {};
+              updateBuilder.eq = jest.fn().mockReturnValue(updateBuilder);
+              updateBuilder.select = jest.fn().mockResolvedValue({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: fields.metadata, updated_at: fields.updated_at }],
+                error: null,
+              });
+              updateBuilder.then = (resolve: any) => resolve({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: fields.metadata, updated_at: fields.updated_at }],
+                error: null,
+              });
+              return updateBuilder;
             }),
           };
         }

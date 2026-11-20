@@ -6,6 +6,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import {
   SubscriptionTier,
   SubscriptionDurationMonths,
@@ -194,29 +195,35 @@ export async function activateShopSubscription(
     ai_session_quota: quota.baseQuota,
   };
 
-  const { error: updateTenantErr } = await supabase
-    .from('tenants')
-    .update({
-      tier,
-      subscription_tier: tier,
-      status: 'ACTIVE',
-      subscription_status: 'ACTIVE',
-      is_active: true,
-      subscription_ends_at: dates.expires_at,
-      due_date: dates.expires_at.split('T')[0],
-      metadata: updatedMetadata,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', tenant.id);
+  const occResult = await updateTenantWithOccCas(
+    supabase,
+    tenant.id,
+    (fresh) => {
+      const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+      return {
+        tier,
+        subscription_tier: tier,
+        status: 'ACTIVE',
+        subscription_status: 'ACTIVE',
+        is_active: true,
+        subscription_ends_at: dates.expires_at,
+        due_date: dates.expires_at.split('T')[0],
+        metadata: {
+          ...freshMeta,
+          ...updatedMetadata,
+        },
+      };
+    }
+  );
 
-  if (updateTenantErr) {
-    console.error('[Subscription Service] Failed to synchronize tenant table:', updateTenantErr);
+  if (!occResult.success) {
+    console.error('[Subscription Service] Failed to synchronize tenant table:', occResult.message);
     return {
       success: false,
       subscription: insertedSub as ShopSubscription,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
-      error: `Subscription recorded but tenant sync failed: ${updateTenantErr.message}`,
+      error: `Subscription recorded but tenant sync failed: ${occResult.message}`,
     };
   }
 
@@ -347,14 +354,22 @@ export async function renewPeriodQuota(
     .maybeSingle();
 
   if (tenant?.metadata?.subscription) {
-    const updatedMeta = {
-      ...tenant.metadata,
-      subscription: {
-        ...tenant.metadata.subscription,
-        current_period_ends_at: newPeriodEndsAt,
-      },
-    };
-    await supabase.from('tenants').update({ metadata: updatedMeta, updated_at: new Date().toISOString() }).eq('id', sub.tenant_id);
+    await updateTenantWithOccCas(
+      supabase,
+      sub.tenant_id,
+      (fresh) => {
+        const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+        return {
+          metadata: {
+            ...freshMeta,
+            subscription: {
+              ...(freshMeta.subscription || {}),
+              current_period_ends_at: newPeriodEndsAt,
+            },
+          },
+        };
+      }
+    );
   }
 
   return { success: true, newPeriodEndsAt };

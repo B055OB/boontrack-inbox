@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { sendBoonPilotVerificationEmail } from '@/lib/boonpilot-email';
 import { sendNewStoreReferralNotification } from '@/lib/affiliate-notification-service';
@@ -388,11 +389,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. INSERT / UPSERT ke tabel tenants di Supabase
-    const { data: upsertedTenant, error: upsertError } = await supabase
-      .from('tenants')
-      .upsert(
-        {
+    // 1. INSERT / UPDATE (OCC CAS) ke tabel tenants di Supabase
+    const tenantPayload: Record<string, any> = {
           slug: generatedSlug,
           name: storeName,
           category: resolvedBusinessType,
@@ -575,21 +573,49 @@ export async function POST(req: NextRequest) {
             },
             onboarded_at: new Date().toISOString(),
           },
-        },
-        { onConflict: 'slug' }
-      )
-      .select('id, slug, name, tier, category, created_at')
-      .maybeSingle();
+        };
 
-    if (upsertError) {
-      console.error('Supabase tenant upsert error:', upsertError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Gagal menyimpan toko ke database: ${upsertError.message || JSON.stringify(upsertError)}`,
-        },
-        { status: 500 }
+    let upsertedTenant: any = null;
+    if (existingTenant?.id) {
+      const occRes = await updateTenantWithOccCas(
+        supabase,
+        existingTenant.id,
+        (freshTenant) => {
+          const freshMeta = freshTenant.metadata || {};
+          return {
+            ...tenantPayload,
+            metadata: {
+              ...freshMeta,
+              ...tenantPayload.metadata,
+            },
+          };
+        }
       );
+      if (!occRes.success) {
+        return NextResponse.json(
+          { success: false, error: `Gagal memperbarui toko di database: ${occRes.message || occRes.error}` },
+          { status: 500 }
+        );
+      }
+      upsertedTenant = occRes.updatedTenant;
+    } else {
+      const { data: insData, error: insErr } = await supabase
+        .from('tenants')
+        .insert(tenantPayload)
+        .select('id, slug, name, tier, category, created_at')
+        .maybeSingle();
+
+      if (insErr) {
+        console.error('Supabase tenant insert error:', insErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Gagal menyimpan toko ke database: ${insErr.message || JSON.stringify(insErr)}`,
+          },
+          { status: 500 }
+        );
+      }
+      upsertedTenant = insData;
     }
 
     const effectiveTenantId = upsertedTenant?.id;

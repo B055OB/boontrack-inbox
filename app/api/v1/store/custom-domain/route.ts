@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,
@@ -45,24 +46,20 @@ export async function POST(req: NextRequest) {
     if (coreRes.ok) {
       try {
         const supabase = getSupabase();
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenant_slug)
-          .maybeSingle();
-
-        const currentMeta = tenantRow?.metadata || {};
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: {
-              ...currentMeta,
-              custom_domain: domain,
-              custom_domain_status: 'pending',
-            },
-        updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenant_slug);
+        await updateTenantWithOccCas(
+          supabase,
+          tenant_slug,
+          (freshTenant) => {
+            const currentMeta = freshTenant.metadata || {};
+            return {
+              metadata: {
+                ...currentMeta,
+                custom_domain: domain,
+                custom_domain_status: 'pending',
+              },
+            };
+          }
+        );
       } catch (err) {
         console.warn('[custom-domain/route] Supabase sync metadata warning:', err);
       }
@@ -118,25 +115,21 @@ export async function DELETE(req: NextRequest) {
     if (coreRes.ok) {
       try {
         const supabase = getSupabase();
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        const currentMeta = tenantRow?.metadata || {};
-        const { custom_domain, custom_domain_status, ...restMeta } = currentMeta;
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: {
-              ...restMeta,
-              custom_domain: null,
-              custom_domain_status: null,
-            },
-        updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
+        await updateTenantWithOccCas(
+          supabase,
+          tenantSlug,
+          (freshTenant) => {
+            const currentMeta = freshTenant.metadata || {};
+            const { custom_domain, custom_domain_status, ...restMeta } = currentMeta;
+            return {
+              metadata: {
+                ...restMeta,
+                custom_domain: null,
+                custom_domain_status: null,
+              },
+            };
+          }
+        );
       } catch (err) {
         console.warn('[custom-domain/route] Supabase clear domain warning:', err);
       }

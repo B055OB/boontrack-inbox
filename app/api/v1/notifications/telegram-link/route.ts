@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, isValidUuid } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,
@@ -119,19 +120,26 @@ export async function POST(req: NextRequest) {
       ...(body.telegram_group_config !== undefined ? { telegram_group_config: body.telegram_group_config } : {}),
     };
 
-    const { error: updateErr } = await supabase
-      .from('tenants')
-      .update({
-        telegram_chat_id: cleanChatId,
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', tenant.id);
+    const occResult = await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          telegram_chat_id: cleanChatId,
+          metadata: {
+            ...freshMeta,
+            telegram_chat_id: cleanChatId,
+            ...(body.telegram_group_config !== undefined ? { telegram_group_config: body.telegram_group_config } : {}),
+          },
+        };
+      }
+    );
 
-    if (updateErr) {
+    if (!occResult.success) {
       return NextResponse.json(
-        { success: false, error: updateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
 

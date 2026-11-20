@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,10 +74,27 @@ export async function POST(req: NextRequest) {
       reader_pairing_session: null, // One-Time Token: langsung bersihkan setelah sukses
     };
 
-    await supabase
-      .from('tenants')
-      .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-      .eq('id', tenant.id);
+    await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          metadata: {
+            ...freshMeta,
+            reader_device: {
+              is_connected: true,
+              status: 'CONNECTED',
+              device_name: deviceName,
+              device_id: deviceId || `dev_${Date.now()}`,
+              paired_at: nowStr,
+              last_active_at: nowStr,
+            },
+            reader_pairing_session: null,
+          },
+        };
+      }
+    );
 
     return NextResponse.json({
       success: true,

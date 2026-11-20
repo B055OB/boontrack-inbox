@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export const dynamic = 'force-dynamic';
 
@@ -202,15 +203,21 @@ async function handleVerify(req: NextRequest) {
       ? 'active'
       : matchedTenant.status;
 
-    await supabase
-      .from('tenants')
-      .update({
-        status: newStatus,
-        is_active: true,
-        metadata: updatedMeta,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', matchedTenant.id);
+    await updateTenantWithOccCas(
+      supabase,
+      matchedTenant.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          status: newStatus,
+          is_active: true,
+          metadata: {
+            ...freshMeta,
+            ...updatedMeta,
+          },
+        };
+      }
+    );
 
     return NextResponse.json({
       success: true,

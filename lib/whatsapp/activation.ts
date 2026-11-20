@@ -11,6 +11,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export interface ActivationCodeExtraction {
   isValid: boolean;
@@ -324,26 +325,42 @@ export async function processStoreActivation(params: {
     trial_ends_at: isTrial ? trialEndsAt : null,
   };
 
-  const { error: updateErr } = await supabase
-    .from('tenants')
-    .update({
-      status: 'active',
-      is_active: true,
-      tier: resolvedTier,
-      subscription_status: isTrial ? 'trial' : 'active',
-      subscription_tier: resolvedTier,
-      trial_ends_at: isTrial ? trialEndsAt : null,
-      subscription_ends_at: isTrial ? trialEndsAt : undefined,
-      metadata: updatedMetadata,
-      updated_at: verifiedAt,
-    })
-    .eq('id', tenant.id);
+  const occResult = await updateTenantWithOccCas(
+    supabase,
+    tenant.id,
+    (fresh) => {
+      const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+      const updatedMetadata = {
+        ...freshMeta,
+        activation_source: 'whatsapp_verification',
+        verified_at: verifiedAt,
+        verified_by_sender: senderPhone,
+        selected_plan: resolvedPlanLabel,
+        subscription_status: isTrial ? 'trial' : 'active',
+        is_trial: isTrial,
+        trial_days: isTrial ? 7 : 0,
+        trial_ends_at: isTrial ? trialEndsAt : null,
+      };
 
-  if (updateErr) {
-    console.error('[ActivationService] Failed to update tenant activation:', updateErr);
+      return {
+        status: 'active',
+        is_active: true,
+        tier: resolvedTier,
+        subscription_status: isTrial ? 'trial' : 'active',
+        subscription_tier: resolvedTier,
+        trial_ends_at: isTrial ? trialEndsAt : null,
+        subscription_ends_at: isTrial ? trialEndsAt : undefined,
+        metadata: updatedMetadata,
+      };
+    },
+    { updatedAt: verifiedAt }
+  );
+
+  if (!occResult.success) {
+    console.error('[ActivationService] Failed to update tenant activation:', occResult.message);
     return {
       success: false,
-      error: updateErr.message || 'Failed to update tenant status',
+      error: occResult.message || 'Failed to update tenant status',
       replyMessage: 'Terjadi kendala saat memperbarui status toko. Silakan hubungi tim bantuan.',
     };
   }

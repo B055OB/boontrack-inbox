@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { sendBoonPilotVerificationEmail } from '@/lib/boonpilot-email';
 import crypto from 'crypto';
 
@@ -166,10 +167,21 @@ export async function POST(req: NextRequest) {
       email_verified: false,
     };
 
-    await supabase
-      .from('tenants')
-      .update({ metadata: updatedMeta })
-      .eq('id', tenant.id);
+    await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          metadata: {
+            ...freshMeta,
+            verification_token: newToken,
+            verification_expires_at: expiresAt,
+            email_verified: false,
+          },
+        };
+      }
+    );
 
     const verificationUrl = `${baseUrl}/auth/confirm?token=${newToken}&type=merchant&slug=${tenant.slug}&id=${tenant.id}`;
 

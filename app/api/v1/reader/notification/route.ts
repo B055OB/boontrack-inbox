@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
@@ -424,10 +425,26 @@ export async function POST(req: NextRequest) {
             last_active_at: paidAt,
           },
         };
-        await supabase
-          .from('tenants')
-          .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-          .eq('id', tenantForHeartbeat.id);
+        await updateTenantWithOccCas(
+          supabase,
+          tenantForHeartbeat.id,
+          (freshTenant) => {
+            const freshMeta = freshTenant.metadata || {};
+            const existingDevice = freshMeta.reader_device || {};
+            return {
+              metadata: {
+                ...freshMeta,
+                reader_device: {
+                  ...existingDevice,
+                  is_connected: true,
+                  status: 'CONNECTED',
+                  device_name: deviceName,
+                  last_active_at: paidAt,
+                },
+              },
+            };
+          }
+        );
       }
     } catch (heartbeatErr) {
       console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export interface ScheduleSettings {
   is_enabled: boolean;
@@ -116,16 +117,18 @@ export async function saveTenantScheduleSettings(
 
     if (!tenant) return false;
 
-    const updatedMetadata = {
-      ...(tenant.metadata || {}),
-      schedule_settings: settings,
-    };
+    const { success } = await updateTenantWithOccCas(
+      sb,
+      tenant.id,
+      (fresh) => ({
+        metadata: {
+          ...(fresh.metadata || {}),
+          schedule_settings: settings,
+        },
+      })
+    );
 
-    const { error } = await sb
-      .from('tenants')
-      .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
-
-    return !error;
+    return success;
   } catch {
     return false;
   }

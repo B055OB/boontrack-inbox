@@ -5,6 +5,7 @@
  */
 
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export interface StoreShippingConfig {
   id?: string;
@@ -336,10 +337,11 @@ export async function saveStoreShippingConfig(
           updatedMeta.shipping_settings = safeShipSettings;
         }
 
-        await supabase
-          .from('tenants')
-          .update({ metadata: updatedMeta, updated_at: now })
-          .eq('slug', cleanSlug);
+        await updateTenantWithOccCas(
+          supabase,
+          cleanSlug,
+          () => ({ metadata: updatedMeta })
+        );
       }
     } catch (metaErr) {
       console.warn('[Self-Pickup Config] Note updating tenants metadata:', metaErr);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sendOrderPaidNotification, sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
@@ -406,24 +407,22 @@ export async function POST(
     // 2b. Update Langganan Tenant ke Tier jika order bertipe subscription platform DAN terverifikasi Super Admin / Internal Machine
     if (isSubscriptionOrder && canActivateSubscription) {
       try {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', slug)
-          .maybeSingle();
-        const meta = tRow?.metadata || {};
-        meta.tier = 'CHECKOUT_LITE';
-        meta.plan_tier = 'CHECKOUT_LITE';
-        meta.subscription_status = 'ACTIVE';
-
-        await supabase
-          .from('tenants')
-          .update({
-            status: 'active',
-            metadata: meta,
-                updated_at: new Date().toISOString(),
-          })
-          .eq('slug', slug);
+        await updateTenantWithOccCas(
+          supabase,
+          slug,
+          (freshTenant) => {
+            const freshMeta = freshTenant.metadata || {};
+            return {
+              status: 'active',
+              metadata: {
+                ...freshMeta,
+                tier: 'CHECKOUT_LITE',
+                plan_tier: 'CHECKOUT_LITE',
+                subscription_status: 'ACTIVE',
+              },
+            };
+          }
+        );
 
         await recordTenantConfigAudit({
           tenantId: order.tenant_id || null,

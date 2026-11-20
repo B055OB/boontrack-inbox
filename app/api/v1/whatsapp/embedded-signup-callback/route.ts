@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseClient";
+import { updateTenantWithOccCas } from "@/lib/tenants/atomic-tenant-metadata-writer";
 
 export const dynamic = "force-dynamic";
 
@@ -240,24 +241,29 @@ export async function POST(req: NextRequest) {
           },
         };
 
-        const { data: updatedTenants, error: tenantUpdateErr } = await supabase
-          .from("tenants")
-          .update({
-            waba_phone_number_id: finalPhoneId,
-            metadata: nextMeta,
-            updated_at: nowIso,
-          })
-          .eq("id", tenantRow.id)
-          .select("id, slug");
+        const occResult = await updateTenantWithOccCas(
+          supabase,
+          tenantRow.id,
+          (freshTenant) => {
+            const freshMeta = freshTenant.metadata || {};
+            return {
+              waba_phone_number_id: finalPhoneId,
+              metadata: {
+                ...freshMeta,
+                ...nextMeta,
+              },
+            };
+          }
+        );
 
-        if (tenantUpdateErr || !updatedTenants || updatedTenants.length === 0) {
-          console.error("[Meta Embedded Signup] Update tenants failed or 0 rows affected:", tenantUpdateErr);
+        if (!occResult.success) {
+          console.error("[Meta Embedded Signup] Update tenants failed:", occResult.error);
           return NextResponse.json(
             {
               success: false,
-              error: tenantUpdateErr?.message || "Gagal memperbarui konfigurasi WABA di database tenants (0 rows affected).",
+              error: occResult.message || occResult.error || "Gagal memperbarui konfigurasi WABA di database tenants.",
             },
-            { status: 500 }
+            { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
           );
         }
       }

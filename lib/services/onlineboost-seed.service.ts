@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export const ONLINEBOOST_DIGITAL_PRODUCTS = [
   {
@@ -335,18 +336,21 @@ export class OnlineboostSeedService {
       }
     }
 
-    const updatedMetadata = {
-      ...existingMetadata,
-      products: currentProducts,
-      updated_at: new Date().toISOString()
-    };
+    const { success: occSuccess, error: metaUpdateErr } = await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (fresh) => ({
+        metadata: {
+          ...(fresh.metadata || {}),
+          products: currentProducts,
+          updated_at: new Date().toISOString(),
+        },
+      }),
+      { allowProductsProjection: true }
+    );
 
-    const { error: metaUpdateErr } = await supabase
-      .from('tenants')
-      .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() }).eq('id', tenant.id);
-
-    if (metaUpdateErr) {
-      throw new Error(`Failed to update metadata: ${metaUpdateErr.message}`);
+    if (!occSuccess) {
+      throw new Error(`Failed to update metadata: ${metaUpdateErr}`);
     }
 
     return {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import {
   authorizeMerchantRequest,
@@ -66,33 +67,39 @@ export async function POST(
       compliance_notes: 'Disetujui via ResellerComplianceModal (Single-Level Direct Sales & Non-Custodial)',
     };
 
-    // 2. Update tenant record (kolom fisik + metadata)
-    const { error: updateErr } = await supabase
-      .from('tenants')
-      .update({
-        reseller_tos_accepted_at: acceptedAt,
-        reseller_enabled: true,
-        metadata: {
-          ...existingMeta,
-          reseller_settings: updatedResellerSettings,
-        },
-        updated_at: acceptedAt,
-      })
-      .eq('id', tenant.id);
-
-    if (updateErr) {
-      console.warn('[Reseller Compliance API] Note on physical column update, retrying metadata only:', updateErr.message);
-      // Fallback graceful jika kolom fisik belum dimigrasi di environment runtime
-      await supabase
-        .from('tenants')
-        .update({
+    // 2. Update tenant record (kolom fisik + metadata) via OCC CAS
+    const occRes = await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          reseller_tos_accepted_at: acceptedAt,
+          reseller_enabled: true,
           metadata: {
-            ...existingMeta,
+            ...freshMeta,
             reseller_settings: updatedResellerSettings,
           },
-          updated_at: acceptedAt,
-        })
-        .eq('id', tenant.id);
+        };
+      }
+    );
+
+    if (!occRes.success) {
+      console.warn('[Reseller Compliance API] Note on physical column update, retrying metadata only via OCC CAS:', occRes.error);
+      // Fallback graceful jika kolom fisik belum dimigrasi di environment runtime
+      await updateTenantWithOccCas(
+        supabase,
+        tenant.id,
+        (freshTenant) => {
+          const freshMeta = freshTenant.metadata || {};
+          return {
+            metadata: {
+              ...freshMeta,
+              reseller_settings: updatedResellerSettings,
+            },
+          };
+        }
+      );
     }
 
     return NextResponse.json({

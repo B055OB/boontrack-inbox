@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import {
@@ -505,18 +506,24 @@ export async function PUT(
       updatedMetadata.sections.section_10 = sec10Config;
     }
 
-    const { error: updateErr } = await supabaseAdmin
-      .from('tenants')
-      .update({
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', tenantRow.id);
+    const occResult = await updateTenantWithOccCas(
+      supabaseAdmin,
+      tenantRow.id,
+      (freshTenant) => {
+        const freshMeta = freshTenant.metadata || {};
+        return {
+          metadata: {
+            ...freshMeta,
+            ...updatedMetadata,
+          },
+        };
+      }
+    );
 
-    if (updateErr) {
+    if (!occResult.success) {
       return NextResponse.json(
-        { success: false, error: updateErr.message },
-        { status: 500 }
+        { success: false, error: occResult.error, message: occResult.message },
+        { status: occResult.error === 'OCC_CONFLICT' ? 409 : 500 }
       );
     }
 

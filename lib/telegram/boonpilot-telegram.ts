@@ -20,6 +20,7 @@ import {
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { resolveChannelBinding, hasCapability, buildGranularReferralUrl } from '@/lib/channels';
 import {
   formatToTelegramHtml,
@@ -771,19 +772,20 @@ export async function handleTelegramUpdate(
         const { data: tenant } = await tenantQuery.maybeSingle();
 
         if (tenant) {
-          const updatedMeta = {
-            ...(tenant.metadata || {}),
-            telegram_chat_id: String(chatId),
-          };
-
-          await supabase
-            .from('tenants')
-            .update({
-              telegram_chat_id: String(chatId),
-              metadata: updatedMeta,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', tenant.id);
+          await updateTenantWithOccCas(
+            supabase,
+            tenant.id,
+            (fresh) => {
+              const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? fresh.metadata : {};
+              return {
+                telegram_chat_id: String(chatId),
+                metadata: {
+                  ...freshMeta,
+                  telegram_chat_id: String(chatId),
+                },
+              };
+            }
+          );
 
           const tenantName = tenant.name || tenant.slug || 'Toko Anda';
           const replyText =
