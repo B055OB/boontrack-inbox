@@ -476,15 +476,11 @@ function SingleProductContent() {
             })
           : null;
 
-        if (isSqlExplicitlyInactive) {
+        // ADR-P0-07 & Decision O-01 Option B: SQL-First Single Product Resolution
+        // Only active relational SQL products are purchasable on storefront.
+        // Metadata-only legacy records are strictly fail-closed (product_not_found).
+        if (isSqlExplicitlyInactive || !sqlProd) {
           match = null;
-        }
-
-        if (!match && !isSqlExplicitlyInactive) {
-          const fallbackResolved = resolveSinglePageProduct(tenant, slug);
-          if (fallbackResolved?.product && (fallbackResolved.product.price > 0 || fallbackResolved.product.sku)) {
-            match = fallbackResolved.product;
-          }
         }
 
         // PERBAIKAN: Jika sqlProd ada, selalu gabungkan dan prioritaskan data tabel products (single source of truth)
