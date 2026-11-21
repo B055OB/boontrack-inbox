@@ -53,16 +53,6 @@ const AUTHORIZED_TENANT_INSERT_INITIALIZERS = new Set([
 // 3. Exact allowlist for .delete() (ZERO permitted anywhere in repo)
 const AUTHORIZED_TENANT_DELETE_WRITERS = new Set([]);
 
-// Helper: check if a node is .from('tenants')
-function isFromTenantsCall(node) {
-  if (!ts.isCallExpression(node)) return false;
-  if (!ts.isPropertyAccessExpression(node.expression)) return false;
-  if (node.expression.name.text !== 'from') return false;
-  if (node.arguments.length === 0) return false;
-  const arg0 = node.arguments[0];
-  return ts.isStringLiteral(arg0) && arg0.text === 'tenants';
-}
-
 function unwrap(expr) {
   let curr = expr;
   while (curr) {
@@ -80,10 +70,118 @@ function unwrap(expr) {
   return curr;
 }
 
-function isFromTenantsChain(expr, knownVars = new Set(), knownHelpers = new Set()) {
+function getPropertyName(nameNode, varBindings) {
+  if (!nameNode) return null;
+  if (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) {
+    return nameNode.text;
+  }
+  if (ts.isComputedPropertyName(nameNode)) {
+    const inner = unwrap(nameNode.expression);
+    if (ts.isStringLiteral(inner)) return inner.text;
+    if (ts.isNoSubstitutionTemplateLiteral(inner)) return inner.text;
+    if (ts.isIdentifier(inner) && varBindings) {
+      const bound = varBindings.get(inner.text);
+      if (bound) {
+        for (const b of bound) {
+          const u = unwrap(b);
+          if (ts.isStringLiteral(u) || ts.isNoSubstitutionTemplateLiteral(u)) return u.text;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function getFunctionReturnExpressions(fnNode) {
+  const returns = [];
+  if (ts.isArrowFunction(fnNode) || ts.isFunctionExpression(fnNode) || ts.isFunctionDeclaration(fnNode)) {
+    const body = fnNode.body;
+    if (!body) return returns;
+    if (ts.isBlock(body)) {
+      function findReturns(n) {
+        if (n !== fnNode && (ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n))) {
+          return;
+        }
+        if (ts.isReturnStatement(n) && n.expression) {
+          returns.push(n.expression);
+        }
+        ts.forEachChild(n, findReturns);
+      }
+      findReturns(body);
+    } else {
+      returns.push(body);
+    }
+  }
+  return returns;
+}
+
+function collectFileFunctions(sourceFile) {
+  const fileFunctions = new Map();
+  function scan(node) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      fileFunctions.set(node.name.text, node);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const init = unwrap(node.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        fileFunctions.set(node.name.text, init);
+      }
+    }
+    ts.forEachChild(node, scan);
+  }
+  scan(sourceFile);
+  return fileFunctions;
+}
+
+function resolveTableArgument(argNode, varBindings, fileFunctions, visited = new Set()) {
+  const unwrapped = unwrap(argNode);
+  if (!unwrapped) return { resolved: false, name: null };
+
+  if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+    return { resolved: true, name: unwrapped.text };
+  }
+  if (ts.isTemplateExpression(unwrapped) && unwrapped.templateSpans.length === 0) {
+    return { resolved: true, name: unwrapped.head.text };
+  }
+  if (ts.isIdentifier(unwrapped)) {
+    if (visited.has(unwrapped.text)) return { resolved: false, name: null };
+    visited.add(unwrapped.text);
+    const bindings = varBindings ? varBindings.get(unwrapped.text) : null;
+    if (bindings && bindings.length > 0) {
+      for (const b of bindings) {
+        const res = resolveTableArgument(b, varBindings, fileFunctions, new Set(visited));
+        if (res.resolved) return res;
+      }
+    }
+    return { resolved: false, name: null, identifier: unwrapped.text };
+  }
+  if (ts.isCallExpression(unwrapped) && ts.isIdentifier(unwrapped.expression) && fileFunctions) {
+    const fnNode = fileFunctions.get(unwrapped.expression.text);
+    if (fnNode) {
+      const returns = getFunctionReturnExpressions(fnNode);
+      for (const retExpr of returns) {
+        const res = resolveTableArgument(retExpr, varBindings, fileFunctions, new Set(visited));
+        if (res.resolved) return res;
+      }
+    }
+    return { resolved: false, name: null };
+  }
+  return { resolved: false, name: null };
+}
+
+function isFromTenantsCall(node, varBindings, fileFunctions) {
+  if (!ts.isCallExpression(node)) return false;
+  if (!ts.isPropertyAccessExpression(node.expression)) return false;
+  if (node.expression.name.text !== 'from') return false;
+  if (!node.arguments || node.arguments.length === 0) return false;
+  const tableRes = resolveTableArgument(node.arguments[0], varBindings, fileFunctions);
+  return tableRes.resolved && tableRes.name === 'tenants';
+}
+
+function isFromTenantsChain(expr, knownVars = new Set(), knownHelpers = new Set(), varBindings, fileFunctions) {
   let curr = expr;
   while (curr) {
-    if (isFromTenantsCall(curr)) return true;
+    if (isFromTenantsCall(curr, varBindings, fileFunctions)) return true;
     if (ts.isIdentifier(curr) && knownVars.has(curr.text)) return true;
     if (ts.isCallExpression(curr)) {
       if (ts.isIdentifier(curr.expression) && knownHelpers.has(curr.expression.text)) return true;
@@ -109,11 +207,21 @@ function isFromTenantsChain(expr, knownVars = new Set(), knownHelpers = new Set(
 function buildVariableBindingMap(sourceFile) {
   const varBindings = new Map();
   function scan(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const varName = node.name.text;
-      const list = varBindings.get(varName) || [];
-      list.push(node.initializer);
-      varBindings.set(varName, list);
+    if (ts.isVariableDeclaration(node)) {
+      if (ts.isIdentifier(node.name) && node.initializer) {
+        const varName = node.name.text;
+        const list = varBindings.get(varName) || [];
+        list.push(node.initializer);
+        varBindings.set(varName, list);
+      } else if (ts.isObjectBindingPattern(node.name) && node.initializer) {
+        for (const elem of node.name.elements) {
+          if (elem.dotDotDotToken && ts.isIdentifier(elem.name)) {
+            const list = varBindings.get(elem.name.text) || [];
+            list.push(node.initializer);
+            varBindings.set(elem.name.text, list);
+          }
+        }
+      }
     }
     if (
       ts.isBinaryExpression(node) &&
@@ -131,28 +239,7 @@ function buildVariableBindingMap(sourceFile) {
   return varBindings;
 }
 
-function getPropertyName(nameNode, varBindings) {
-  if (!nameNode) return null;
-  if (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) {
-    return nameNode.text;
-  }
-  if (ts.isComputedPropertyName(nameNode)) {
-    const inner = unwrap(nameNode.expression);
-    if (ts.isStringLiteral(inner)) return inner.text;
-    if (ts.isIdentifier(inner) && varBindings) {
-      const bound = varBindings.get(inner.text);
-      if (bound) {
-        for (const b of bound) {
-          const u = unwrap(b);
-          if (ts.isStringLiteral(u)) return u.text;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function doesObjectHaveProducts(expr, varBindings, visitedVars = new Set()) {
+function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = []) {
   const unwrapped = unwrap(expr);
   if (!unwrapped) return false;
 
@@ -164,7 +251,7 @@ function doesObjectHaveProducts(expr, varBindings, visitedVars = new Set()) {
         if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === 'products') return true;
       } else if (ts.isSpreadAssignment(prop)) {
         const spreadExpr = unwrap(prop.expression);
-        if (doesObjectHaveProducts(spreadExpr, varBindings, new Set(visitedVars))) return true;
+        if (doesObjectHaveProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
       }
     }
   } else if (ts.isIdentifier(unwrapped)) {
@@ -172,23 +259,42 @@ function doesObjectHaveProducts(expr, varBindings, visitedVars = new Set()) {
     visitedVars.add(unwrapped.text);
     const bindings = varBindings.get(unwrapped.text) || [];
     for (const b of bindings) {
-      if (doesObjectHaveProducts(b, varBindings, new Set(visitedVars))) return true;
+      if (doesObjectHaveProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
     }
   } else if (ts.isArrayLiteralExpression(unwrapped)) {
     for (const elem of unwrapped.elements) {
-      if (doesObjectHaveProducts(elem, varBindings, new Set(visitedVars))) return true;
+      if (doesObjectHaveProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
     }
+  } else if (ts.isCallExpression(unwrapped)) {
+    if (ts.isIdentifier(unwrapped.expression) && fileFunctions) {
+      const fnNode = fileFunctions.get(unwrapped.expression.text);
+      if (fnNode) {
+        const returns = getFunctionReturnExpressions(fnNode);
+        if (returns.length === 0) {
+          unverifiedHelperErrors.push({ helper: unwrapped.expression.text, reason: 'EMPTY_OR_VOID_HELPER' });
+          return false;
+        }
+        for (const r of returns) {
+          if (doesObjectHaveProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+        }
+        return false;
+      }
+    }
+    unverifiedHelperErrors.push({
+      helper: unwrapped.expression.getText(),
+      reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+    });
   }
   return false;
 }
 
-function doesTenantRowHaveMetadataProducts(expr, varBindings, visitedVars = new Set()) {
+function doesTenantRowHaveMetadataProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = []) {
   const unwrapped = unwrap(expr);
   if (!unwrapped) return false;
 
   if (ts.isArrayLiteralExpression(unwrapped)) {
     for (const elem of unwrapped.elements) {
-      if (doesTenantRowHaveMetadataProducts(elem, varBindings, new Set(visitedVars))) return true;
+      if (doesTenantRowHaveMetadataProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
     }
     return false;
   }
@@ -199,15 +305,15 @@ function doesTenantRowHaveMetadataProducts(expr, varBindings, visitedVars = new 
         const pName = getPropertyName(prop.name, varBindings);
         if (pName === 'metadata') {
           const metaVal = unwrap(prop.initializer);
-          if (doesObjectHaveProducts(metaVal, varBindings, new Set())) return true;
+          if (doesObjectHaveProducts(metaVal, varBindings, fileFunctions, new Set(), unverifiedHelperErrors)) return true;
         }
       } else if (ts.isShorthandPropertyAssignment(prop)) {
         if (prop.name.text === 'metadata') {
-          if (doesObjectHaveProducts(prop.name, varBindings, new Set())) return true;
+          if (doesObjectHaveProducts(prop.name, varBindings, fileFunctions, new Set(), unverifiedHelperErrors)) return true;
         }
       } else if (ts.isSpreadAssignment(prop)) {
         const spreadExpr = unwrap(prop.expression);
-        if (doesTenantRowHaveMetadataProducts(spreadExpr, varBindings, new Set(visitedVars))) return true;
+        if (doesTenantRowHaveMetadataProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
       }
     }
   } else if (ts.isIdentifier(unwrapped)) {
@@ -215,16 +321,29 @@ function doesTenantRowHaveMetadataProducts(expr, varBindings, visitedVars = new 
     visitedVars.add(unwrapped.text);
     const bindings = varBindings.get(unwrapped.text) || [];
     for (const b of bindings) {
-      if (doesTenantRowHaveMetadataProducts(b, varBindings, new Set(visitedVars))) return true;
+      if (doesTenantRowHaveMetadataProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
     }
+  } else if (ts.isCallExpression(unwrapped)) {
+    if (ts.isIdentifier(unwrapped.expression) && fileFunctions) {
+      const fnNode = fileFunctions.get(unwrapped.expression.text);
+      if (fnNode) {
+        const returns = getFunctionReturnExpressions(fnNode);
+        if (returns.length === 0) {
+          unverifiedHelperErrors.push({ helper: unwrapped.expression.text, reason: 'EMPTY_OR_VOID_HELPER' });
+          return false;
+        }
+        for (const r of returns) {
+          if (doesTenantRowHaveMetadataProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+        }
+        return false;
+      }
+    }
+    unverifiedHelperErrors.push({
+      helper: unwrapped.expression.getText(),
+      reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+    });
   }
   return false;
-}
-
-function inspectPayloadForMetadataProducts(callNode, varBindings) {
-  if (!callNode.arguments || callNode.arguments.length === 0) return false;
-  const arg = callNode.arguments[0];
-  return doesTenantRowHaveMetadataProducts(arg, varBindings);
 }
 
 // ── SELF TEST MODE ────────────────────────────────────────────────────────────
@@ -238,10 +357,11 @@ if (process.argv.includes('--self-test')) {
   `;
   const v1Sf = ts.createSourceFile('v1.ts', v1Code, ts.ScriptTarget.Latest, true);
   const v1Bindings = buildVariableBindingMap(v1Sf);
+  const v1Functions = collectFileFunctions(v1Sf);
   let v1Detected = false;
   function visitV1(n) {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'insert') {
-      if (inspectPayloadForMetadataProducts(n, v1Bindings)) v1Detected = true;
+      if (doesTenantRowHaveMetadataProducts(n.arguments[0], v1Bindings, v1Functions)) v1Detected = true;
     }
     ts.forEachChild(n, visitV1);
   }
@@ -259,10 +379,11 @@ if (process.argv.includes('--self-test')) {
   `;
   const v2Sf = ts.createSourceFile('v2.ts', v2Code, ts.ScriptTarget.Latest, true);
   const v2Bindings = buildVariableBindingMap(v2Sf);
+  const v2Functions = collectFileFunctions(v2Sf);
   let v2Detected = false;
   function visitV2(n) {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'update') {
-      if (inspectPayloadForMetadataProducts(n, v2Bindings)) v2Detected = true;
+      if (doesTenantRowHaveMetadataProducts(n.arguments[0], v2Bindings, v2Functions)) v2Detected = true;
     }
     ts.forEachChild(n, visitV2);
   }
@@ -278,10 +399,11 @@ if (process.argv.includes('--self-test')) {
   `;
   const v3Sf = ts.createSourceFile('v3.ts', v3Code, ts.ScriptTarget.Latest, true);
   const v3Bindings = buildVariableBindingMap(v3Sf);
+  const v3Functions = collectFileFunctions(v3Sf);
   let v3Detected = false;
   function visitV3(n) {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'insert') {
-      if (inspectPayloadForMetadataProducts(n, v3Bindings)) v3Detected = true;
+      if (doesTenantRowHaveMetadataProducts(n.arguments[0], v3Bindings, v3Functions)) v3Detected = true;
     }
     ts.forEachChild(n, visitV3);
   }
@@ -302,6 +424,8 @@ if (process.argv.includes('--self-test')) {
     await q.update({ name: 'unauthorized-name' });
   `;
   const v4Sf = ts.createSourceFile('v4.ts', v4Code, ts.ScriptTarget.Latest, true);
+  const v4Bindings = buildVariableBindingMap(v4Sf);
+  const v4Functions = collectFileFunctions(v4Sf);
   const v4Helpers = new Set();
   const v4BuilderVars = new Set();
   function scanV4Functions(node) {
@@ -309,7 +433,7 @@ if (process.argv.includes('--self-test')) {
       let returnsTenants = false;
       function checkReturn(n) {
         if (ts.isReturnStatement(n) && n.expression) {
-          if (isFromTenantsChain(n.expression, v4BuilderVars, v4Helpers)) returnsTenants = true;
+          if (isFromTenantsChain(n.expression, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) returnsTenants = true;
         }
         ts.forEachChild(n, checkReturn);
       }
@@ -325,12 +449,12 @@ if (process.argv.includes('--self-test')) {
     const prevSize = v4BuilderVars.size;
     function scanV4Aliases(node) {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isFromTenantsChain(node.initializer, v4BuilderVars, v4Helpers)) {
+        if (isFromTenantsChain(node.initializer, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) {
           v4BuilderVars.add(node.name.text);
         }
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
-        if (isFromTenantsChain(node.right, v4BuilderVars, v4Helpers)) {
+        if (isFromTenantsChain(node.right, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) {
           v4BuilderVars.add(node.left.text);
         }
       }
@@ -427,13 +551,15 @@ if (process.argv.includes('--self-test')) {
     await third.update({ name: 'test' });
   `;
   const multiHopSf = ts.createSourceFile('test-multihop.tsx', multiHopSnippet, ts.ScriptTarget.Latest, true);
+  const multiHopBindings = buildVariableBindingMap(multiHopSf);
+  const multiHopFunctions = collectFileFunctions(multiHopSf);
   const multiHopVars = new Set();
   let multiHopChanged = true;
   while (multiHopChanged) {
     const prevSize = multiHopVars.size;
     function scanAliases(node) {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isFromTenantsChain(node.initializer, multiHopVars)) {
+        if (isFromTenantsChain(node.initializer, multiHopVars, new Set(), multiHopBindings, multiHopFunctions)) {
           multiHopVars.add(node.name.text);
         }
       }
@@ -470,12 +596,14 @@ if (process.argv.includes('--self-test')) {
     await supabase.from('tenants').delete().eq('id', '1');
   `;
   const deleteSf = ts.createSourceFile('test-delete.ts', deleteSnippet, ts.ScriptTarget.Latest, true);
+  const deleteBindings = buildVariableBindingMap(deleteSf);
+  const deleteFunctions = collectFileFunctions(deleteSf);
   let deleteOpDetected = false;
   function visitDelete(node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       if (node.expression.name.text === 'delete') {
         let curr = node.expression.expression;
-        if (isFromTenantsCall(curr)) {
+        if (isFromTenantsCall(curr, deleteBindings, deleteFunctions)) {
           deleteOpDetected = true;
         }
       }
@@ -489,7 +617,111 @@ if (process.argv.includes('--self-test')) {
     process.exit(1);
   }
 
-  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, and browser re-export chain).');
+  // Test 8: Vector 8 — Helper Call Payload Resolution & Fail-Closed Guard
+  // 8a: Local helper returning metadata.products
+  const v8aCode = `
+    function buildTenantPayload() {
+      return { metadata: { products: [] } };
+    }
+    const payload = buildTenantPayload();
+    supabase.from('tenants').update(payload);
+  `;
+  const v8aSf = ts.createSourceFile('v8a.ts', v8aCode, ts.ScriptTarget.Latest, true);
+  const v8aBindings = buildVariableBindingMap(v8aSf);
+  const v8aFunctions = collectFileFunctions(v8aSf);
+  let v8aDetected = false;
+  function visit8a(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'update') {
+      if (doesTenantRowHaveMetadataProducts(n.arguments[0], v8aBindings, v8aFunctions)) {
+        v8aDetected = true;
+      }
+    }
+    ts.forEachChild(n, visit8a);
+  }
+  visit8a(v8aSf);
+
+  // 8b: Opaque external helper payload (must trigger unverified helper error)
+  const v8bCode = `
+    supabase.from('tenants').update(unknownExternalHelper());
+  `;
+  const v8bSf = ts.createSourceFile('v8b.ts', v8bCode, ts.ScriptTarget.Latest, true);
+  const v8bBindings = buildVariableBindingMap(v8bSf);
+  const v8bFunctions = collectFileFunctions(v8bSf);
+  const v8bUnverified = [];
+  function visit8b(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'update') {
+      doesTenantRowHaveMetadataProducts(n.arguments[0], v8bBindings, v8bFunctions, new Set(), v8bUnverified);
+    }
+    ts.forEachChild(n, visit8b);
+  }
+  visit8b(v8bSf);
+
+  if (!v8aDetected || v8bUnverified.length === 0) {
+    console.error('[SELF-TEST FAILED] Vector 8: Helper call payload resolution or fail-closed guard failed:', { v8aDetected, v8bErrors: v8bUnverified.length });
+    process.exit(1);
+  }
+
+  // Test 9: Vector 9 — Dynamic Table Alias Resolution & Fail-Closed Mutation Detection
+  // 9a: Dynamic table alias resolved to 'tenants' in unauthorized route
+  const v9aCode = `
+    const tableName = 'tenants';
+    supabase.from(tableName).update({ name: 'hacked' });
+  `;
+  const v9aSf = ts.createSourceFile('v9a.ts', v9aCode, ts.ScriptTarget.Latest, true);
+  const v9aBindings = buildVariableBindingMap(v9aSf);
+  const v9aFunctions = collectFileFunctions(v9aSf);
+  let v9aFromTenants = false;
+  function visit9a(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'update') {
+      let curr = n.expression.expression;
+      while (curr) {
+        if (isFromTenantsCall(curr, v9aBindings, v9aFunctions)) {
+          v9aFromTenants = true;
+          break;
+        }
+        if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) curr = curr.expression.expression;
+        else break;
+      }
+    }
+    ts.forEachChild(n, visit9a);
+  }
+  visit9a(v9aSf);
+
+  // 9b: Dynamic unresolvable table expression chained with mutation
+  const v9bCode = `
+    supabase.from(someOpaqueTable).update({ name: 'hacked' });
+  `;
+  const v9bSf = ts.createSourceFile('v9b.ts', v9bCode, ts.ScriptTarget.Latest, true);
+  const v9bBindings = buildVariableBindingMap(v9bSf);
+  const v9bFunctions = collectFileFunctions(v9bSf);
+  let v9bUnresolvableMutation = false;
+  function visit9b(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ['insert', 'update', 'upsert', 'delete'].includes(n.expression.name.text)) {
+      let curr = n.expression.expression;
+      while (curr) {
+        if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression) && curr.expression.name.text === 'from') {
+          if (curr.arguments.length > 0) {
+            const res = resolveTableArgument(curr.arguments[0], v9bBindings, v9bFunctions);
+            if (!res.resolved) {
+              v9bUnresolvableMutation = true;
+            }
+          }
+          break;
+        }
+        if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) curr = curr.expression.expression;
+        else break;
+      }
+    }
+    ts.forEachChild(n, visit9b);
+  }
+  visit9b(v9bSf);
+
+  if (!v9aFromTenants || !v9bUnresolvableMutation) {
+    console.error('[SELF-TEST FAILED] Vector 9: Dynamic table alias resolution or fail-closed guard failed:', { v9aFromTenants, v9bUnresolvableMutation });
+    process.exit(1);
+  }
+
+  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, browser re-export chain, helper call payload resolution, and dynamic table alias).');
   process.exit(0);
 }
 
@@ -715,6 +947,8 @@ const transitiveBrowserMutations = [];
 const browserOccHelperLeaks = [];
 const unauthorizedServerWriters = [];
 const unauthorizedMetadataProductsWrites = [];
+const unverifiedHelperPayloads = [];
+const unresolvableDynamicTableMutations = [];
 
 let occCasCallCount = 0;
 const occCasFiles = new Set();
@@ -723,8 +957,9 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
   const isDirectClient = directClientFiles.has(filePath);
   const isBrowserReachable = browserReachableFiles.has(filePath);
 
-  // Per-file variable binding map
+  // Per-file variable binding map and file-level functions
   const varBindings = buildVariableBindingMap(sourceFile);
+  const fileFunctions = collectFileFunctions(sourceFile);
 
   // Helper functions returning tenants query builder
   const tenantQueryHelpers = new Set();
@@ -733,7 +968,7 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
       let returnsTenants = false;
       function checkReturn(n) {
         if (ts.isReturnStatement(n) && n.expression) {
-          if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers)) {
+          if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
             returnsTenants = true;
           }
         }
@@ -743,13 +978,14 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
       if (returnsTenants) tenantQueryHelpers.add(node.name.text);
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
-        const body = node.initializer.body;
+      const init = unwrap(node.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        const body = init.body;
         let returnsTenants = false;
         if (ts.isBlock(body)) {
           function checkReturn(n) {
             if (ts.isReturnStatement(n) && n.expression) {
-              if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers)) {
+              if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
                 returnsTenants = true;
               }
             }
@@ -757,7 +993,7 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
           }
           checkReturn(body);
         } else {
-          if (isFromTenantsChain(body, tenantBuilderVars, tenantQueryHelpers)) {
+          if (isFromTenantsChain(body, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
             returnsTenants = true;
           }
         }
@@ -776,7 +1012,7 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
     const prevSize = tenantBuilderVars.size;
     function scanAliases(node) {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isFromTenantsChain(node.initializer, tenantBuilderVars, tenantQueryHelpers)) {
+        if (isFromTenantsChain(node.initializer, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
           tenantBuilderVars.add(node.name.text);
         }
       }
@@ -785,7 +1021,7 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         ts.isIdentifier(node.left)
       ) {
-        if (isFromTenantsChain(node.right, tenantBuilderVars, tenantQueryHelpers)) {
+        if (isFromTenantsChain(node.right, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
           tenantBuilderVars.add(node.left.text);
         }
       }
@@ -818,11 +1054,23 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
       let curr = node.expression.expression;
 
       while (curr) {
-        if (isFromTenantsCall(curr)) {
-          return methodName.toUpperCase();
+        if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression) && curr.expression.name.text === 'from') {
+          if (curr.arguments.length > 0) {
+            const tableRes = resolveTableArgument(curr.arguments[0], varBindings, fileFunctions);
+            if (tableRes.resolved) {
+              if (tableRes.name === 'tenants') {
+                return { op: methodName.toUpperCase(), fromTenants: true };
+              } else {
+                return null; // Known non-tenant table
+              }
+            } else {
+              // Non-literal dynamic table argument chained with a mutation!
+              return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.arguments[0].getText(sourceFile) };
+            }
+          }
         }
         if (ts.isIdentifier(curr) && tenantBuilderVars.has(curr.text)) {
-          return methodName.toUpperCase();
+          return { op: methodName.toUpperCase(), fromTenants: true };
         }
         if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
           curr = curr.expression.expression;
@@ -888,44 +1136,71 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
       }
     }
 
-    const op = getChainedMutationOp(node);
-    if (op) {
+    const mut = getChainedMutationOp(node);
+    if (mut) {
       const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-      const finding = {
-        file: relPath,
-        line: pos.line + 1,
-        column: pos.character + 1,
-        op,
-        isDirectClient,
-        isBrowserReachable,
-        trace: getTrace(filePath),
-      };
-      findings.push(finding);
+      if (mut.unresolvableTable) {
+        unresolvableDynamicTableMutations.push({
+          file: relPath,
+          line: pos.line + 1,
+          column: pos.character + 1,
+          op: mut.op,
+          expr: mut.exprText,
+          reason: 'UNRESOLVABLE_DYNAMIC_TABLE_MUTATION',
+        });
+      } else if (mut.fromTenants) {
+        const op = mut.op;
+        const finding = {
+          file: relPath,
+          line: pos.line + 1,
+          column: pos.character + 1,
+          op,
+          isDirectClient,
+          isBrowserReachable,
+          trace: getTrace(filePath),
+        };
+        findings.push(finding);
 
-      if (isDirectClient) {
-        directClientMutations.push(finding);
-      } else if (isBrowserReachable) {
-        transitiveBrowserMutations.push(finding);
-      } else {
-        // Full Server Operation Allowlist Enforcement
-        if ((op === 'UPDATE' || op === 'UPSERT') && !AUTHORIZED_TENANT_UPDATE_UPSERT_WRITERS.has(relPath)) {
-          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_UPDATE_UPSERT' });
-        } else if (op === 'INSERT' && !AUTHORIZED_TENANT_INSERT_INITIALIZERS.has(relPath)) {
-          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_INSERT' });
-        } else if (op === 'DELETE' && !AUTHORIZED_TENANT_DELETE_WRITERS.has(relPath)) {
-          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_DELETE' });
-        }
+        if (isDirectClient) {
+          directClientMutations.push(finding);
+        } else if (isBrowserReachable) {
+          transitiveBrowserMutations.push(finding);
+        } else {
+          // Full Server Operation Allowlist Enforcement
+          if ((op === 'UPDATE' || op === 'UPSERT') && !AUTHORIZED_TENANT_UPDATE_UPSERT_WRITERS.has(relPath)) {
+            unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_UPDATE_UPSERT' });
+          } else if (op === 'INSERT' && !AUTHORIZED_TENANT_INSERT_INITIALIZERS.has(relPath)) {
+            unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_INSERT' });
+          } else if (op === 'DELETE' && !AUTHORIZED_TENANT_DELETE_WRITERS.has(relPath)) {
+            unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_DELETE' });
+          }
 
-        // AST Payload Inspection: Check for metadata.products outside authorized projector modules
-        if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
-          if (inspectPayloadForMetadataProducts(node, varBindings)) {
-            unauthorizedMetadataProductsWrites.push({
-              file: relPath,
-              line: pos.line + 1,
-              column: pos.character + 1,
-              op,
-              reason: 'UNAUTHORIZED_METADATA_PRODUCTS_WRITE',
-            });
+          // AST Payload Inspection: Check for metadata.products outside authorized projector modules
+          if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+            const helperErrs = [];
+            if (node.arguments && node.arguments.length > 0) {
+              const hasProducts = doesTenantRowHaveMetadataProducts(node.arguments[0], varBindings, fileFunctions, new Set(), helperErrs);
+              if (hasProducts) {
+                unauthorizedMetadataProductsWrites.push({
+                  file: relPath,
+                  line: pos.line + 1,
+                  column: pos.character + 1,
+                  op,
+                  reason: 'UNAUTHORIZED_METADATA_PRODUCTS_WRITE',
+                });
+              }
+            }
+            if (helperErrs.length > 0) {
+              for (const h of helperErrs) {
+                unverifiedHelperPayloads.push({
+                  file: relPath,
+                  line: pos.line + 1,
+                  column: pos.character + 1,
+                  op,
+                  ...h,
+                });
+              }
+            }
           }
         }
       }
@@ -957,6 +1232,8 @@ console.log(`Unauthorized Projection Callers:     ${unauthorizedProjectionCaller
 console.log('\n--- SERVER WRITER & OPERATION COMPLIANCE ---');
 console.log(`Unauthorized Server Writers:         ${unauthorizedServerWriters.length}`);
 console.log(`Unauthorized Metadata.Products:      ${unauthorizedMetadataProductsWrites.length}`);
+console.log(`Unverified Helper Payloads:          ${unverifiedHelperPayloads.length}`);
+console.log(`Unresolvable Dynamic Tables:         ${unresolvableDynamicTableMutations.length}`);
 
 const hasFatalViolations =
   directClientMutations.length > 0 ||
@@ -964,7 +1241,9 @@ const hasFatalViolations =
   browserOccHelperLeaks.length > 0 ||
   unauthorizedProjectionCallers.length > 0 ||
   unauthorizedServerWriters.length > 0 ||
-  unauthorizedMetadataProductsWrites.length > 0;
+  unauthorizedMetadataProductsWrites.length > 0 ||
+  unverifiedHelperPayloads.length > 0 ||
+  unresolvableDynamicTableMutations.length > 0;
 
 if (hasFatalViolations) {
   console.error('\n[FATAL AUDIT FAILURE] Security & Single-Writer Invariant Violations:');
@@ -986,8 +1265,14 @@ if (hasFatalViolations) {
   for (const prod of unauthorizedMetadataProductsWrites) {
     console.error(`  UNAUTHORIZED METADATA.PRODUCTS WRITE: ${prod.file}:${prod.line}:${prod.column} [${prod.op}]`);
   }
+  for (const h of unverifiedHelperPayloads) {
+    console.error(`  UNVERIFIED HELPER PAYLOAD: ${h.file}:${h.line}:${h.column} [${h.op}] (${h.helper} - ${h.reason})`);
+  }
+  for (const t of unresolvableDynamicTableMutations) {
+    console.error(`  UNRESOLVABLE DYNAMIC TABLE MUTATION: ${t.file}:${t.line}:${t.column} [${t.op}] (${t.expr} - ${t.reason})`);
+  }
 } else {
-  console.log('SUCCESS: ZERO (0) browser mutations, ZERO unauthorized projection callers, ZERO unguarded server writers, and ZERO unauthorized metadata.products writes verified via AST!');
+  console.log('SUCCESS: ZERO (0) browser mutations, ZERO unauthorized projection callers, ZERO unguarded server writers, ZERO unverified helper payloads, and ZERO unauthorized metadata.products writes verified via AST!');
 }
 
 console.log('\n--- SERVER-SIDE .from("tenants") WRITERS (AST VERIFIED) ---');
