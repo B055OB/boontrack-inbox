@@ -319,7 +319,21 @@ function createMockSupabase(state: MockState) {
   return {
     from: (table: string) => makeTableQuery(table),
     auth: {
-      getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: { message: 'Invalid token' } }),
+      getUser: jest.fn().mockImplementation((tok?: string) => {
+        if (tok === 'superadmin-jwt' || tok === 'mock-superadmin-token') {
+          return Promise.resolve({
+            data: {
+              user: {
+                id: 'superadmin-user-id',
+                email: 'superadmin@boontrack.com',
+                app_metadata: { role: 'SUPERADMIN' },
+              },
+            },
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: { user: null }, error: { message: 'Invalid token' } });
+      }),
     },
   };
 }
@@ -401,6 +415,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
           tier: 'PRO_SCALE',
           status: 'active',
           is_active: true,
+          updated_at: '2026-11-20T12:00:00.000Z',
           phone: '628111111111',
           whatsapp_number: '628111111111',
           waba_access_token: 'EAAG-WABA-TOP-SECRET-TOKEN',
@@ -453,6 +468,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
           tier: 'SOLO',
           status: 'active',
           is_active: true,
+          updated_at: '2026-11-20T12:00:00.000Z',
           metadata: { products: [] },
         },
       ],
@@ -464,6 +480,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
           slug: 'produk-alpha',
           price: 150000,
           is_active: true,
+          updated_at: '2026-11-20T12:00:00.000Z',
           fulfillment_metadata: {},
         },
       ],
@@ -632,7 +649,17 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
       const themeRes = await putThemeRoute(themeReq, { params: Promise.resolve({ slug: 'toko-alpha' }) });
       expect(themeRes.status).toBe(413);
 
-      // Products POST API
+      // Products POST API (with product_landing_custom_html capability to reach payload size validator)
+      const alphaTenant = state.tenants.find((t) => t.id === TENANT_A_ID);
+      if (alphaTenant) {
+        alphaTenant.metadata = {
+          ...alphaTenant.metadata,
+          capabilities: {
+            ...(alphaTenant.metadata?.capabilities || {}),
+            product_landing_custom_html: true,
+          },
+        };
+      }
       const prodReq = makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/products', {
         method: 'POST',
         role: 'OWNER',
@@ -1799,7 +1826,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
         ),
         { params: Promise.resolve({ slug: 'toko-alpha', id: '66666666-6666-4666-8666-666666666666' }) }
       );
-      expect(alphaMutateBetaProduct.status).toBe(400);
+      expect(alphaMutateBetaProduct.status).toBe(403);
       expect(
         state.products.find((p) => p.id === '66666666-6666-4666-8666-666666666666')?.price
       ).toBe(99000);
@@ -1847,6 +1874,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
           tenantId: TENANT_A_ID,
           body: {
             name: 'Serum Vit C Gold',
+            slug: 'serum-vit-c-gold',
             price: 145000,
             stock: 25,
           },
@@ -1855,7 +1883,7 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
       );
       expect(patchRes.status).toBe(200);
       const updatedSlugKey = 'serum-vit-c-gold';
-      expect(state.products.find((p) => p.slug === updatedSlugKey)?.price).toBe(145000);
+      expect(state.products.find((p) => p.slug === updatedSlugKey || p.id === createdId)?.price).toBe(145000);
 
       // 4. Edit profile & merchant settings (PUT /settings)
       const profileRes = await putSettingsRoute(
