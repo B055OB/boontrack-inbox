@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     // Update in Supabase (Single Source of Truth)
     try {
-      const supabase = getSupabase();
+      const supabase = getSupabaseAdmin() || getSupabase();
       if (supabase) {
         // Fetch current tenant metadata to preserve existing fields
         const { data: tenantData } = await supabase
@@ -115,6 +115,17 @@ export async function POST(req: NextRequest) {
 
           if (!occResult.success) {
             console.error('[BoonPilot Publish] Supabase update error:', occResult.error);
+            const isConflict = occResult.error === 'OCC_CONFLICT' || occResult.error?.includes('OCC_CONFLICT');
+            return NextResponse.json(
+              {
+                success: false,
+                error: isConflict ? 'OCC_CONFLICT' : 'UPDATE_FAILED',
+                message: isConflict
+                  ? 'Gagal mempublikasikan proposal karena terjadi konflik konkurensi (OCC_CONFLICT).'
+                  : (occResult.message || occResult.error || 'Gagal memperbarui konfigurasi toko.'),
+              },
+              { status: isConflict ? 409 : 500 }
+            );
           }
         } else {
           // Auto-insert trial tenant if not yet in database (e.g. sandbox or new registration)
@@ -139,11 +150,27 @@ export async function POST(req: NextRequest) {
 
           if (insertErr) {
             console.error('[BoonPilot Publish] Supabase insert error:', insertErr);
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'INSERT_FAILED',
+                message: insertErr.message || 'Gagal membuat toko baru.',
+              },
+              { status: 500 }
+            );
           }
         }
       }
-    } catch (dbErr) {
+    } catch (dbErr: any) {
       console.error('[BoonPilot Publish] Supabase persistence error:', dbErr);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'DATABASE_ERROR',
+          message: dbErr?.message || 'Gagal menyimpan konfigurasi proposal.',
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

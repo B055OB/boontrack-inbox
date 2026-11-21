@@ -5,98 +5,172 @@ const ts = require('typescript');
 const rootDir = path.resolve(__dirname, '..');
 const scanDirs = ['app', 'components', 'lib', 'services', 'hooks', 'utils'];
 
+// Authorized callers strictly permitted to import or invoke canonical product projection
+const AUTHORIZED_PROJECTION_ALLOWLIST = new Set([
+  'lib/products/canonical-product-writer.ts',
+  'lib/services/onlineboost-seed.service.ts',
+  'lib/products/internal-tenant-product-projector.ts',
+]);
+
+// Authorized server-side writers allowed to perform direct .from('tenants') .update or .upsert
+const AUTHORIZED_SERVER_WRITERS = new Set([
+  'lib/tenants/atomic-tenant-metadata-writer.ts',
+  'lib/products/canonical-product-writer.ts',
+  'app/api/v1/admin/tenants/[slug]/config/route.ts',
+  'app/api/v1/domains/route.ts',
+  'lib/services/studio-credit.service.ts',
+  'app/api/auth/register-init/route.ts',
+  'app/api/creator/profile/route.ts',
+  'app/api/v1/boonpilot/publish-proposal/route.ts',
+  'app/api/v1/tenants/onboard/route.ts',
+  'lib/studio/auth.ts',
+]);
+
+// Helper: check if a node is .from('tenants')
+function isFromTenantsCall(node) {
+  if (!ts.isCallExpression(node)) return false;
+  if (!ts.isPropertyAccessExpression(node.expression)) return false;
+  if (node.expression.name.text !== 'from') return false;
+  if (node.arguments.length === 0) return false;
+  const arg0 = node.arguments[0];
+  return ts.isStringLiteral(arg0) && arg0.text === 'tenants';
+}
+
+function isFromTenantsChain(expr, knownVars = new Set()) {
+  let curr = expr;
+  while (curr) {
+    if (isFromTenantsCall(curr)) return true;
+    if (ts.isIdentifier(curr) && knownVars.has(curr.text)) return true;
+    if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
+      curr = curr.expression.expression;
+    } else if (ts.isAsExpression(curr) || ts.isNonNullExpression?.(curr) || ts.isParenthesizedExpression(curr)) {
+      curr = curr.expression;
+    } else {
+      break;
+    }
+  }
+  return false;
+}
+
 // ── SELF TEST MODE ────────────────────────────────────────────────────────────
 if (process.argv.includes('--self-test')) {
   console.log('Running AST Scanner self-test...');
 
-  // Test 1: Builder variable detection
-  const builderSnippet = `
-    const tbl = supabase.from('tenants');
-    await tbl.update({ name: 'test' });
+  // Test 1: Multi-hop builder variable alias detection
+  const multiHopSnippet = `
+    const first = supabase.from('tenants');
+    const second = first;
+    const third = second.select('*');
+    await third.update({ name: 'test' });
   `;
-  const builderSf = ts.createSourceFile('test-builder.tsx', builderSnippet, ts.ScriptTarget.Latest, true);
-  const detectedOps = [];
-  const builderVars = new Set();
+  const multiHopSf = ts.createSourceFile('test-multihop.tsx', multiHopSnippet, ts.ScriptTarget.Latest, true);
+  const multiHopVars = new Set();
 
-  function isFromTenants(node) {
-    if (!ts.isCallExpression(node)) return false;
-    if (!ts.isPropertyAccessExpression(node.expression)) return false;
-    if (node.expression.name.text !== 'from') return false;
-    if (node.arguments.length === 0) return false;
-    const arg0 = node.arguments[0];
-    return ts.isStringLiteral(arg0) && arg0.text === 'tenants';
+  let changed = true;
+  while (changed) {
+    const prevSize = multiHopVars.size;
+    function scanAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isFromTenantsChain(node.initializer, multiHopVars)) {
+          multiHopVars.add(node.name.text);
+        }
+      }
+      ts.forEachChild(node, scanAliases);
+    }
+    scanAliases(multiHopSf);
+    changed = multiHopVars.size > prevSize;
   }
 
-  function isFromTenantsChainExpr(expr) {
-    let curr = expr;
-    while (curr) {
-      if (isFromTenants(curr)) return true;
-      if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
-        curr = curr.expression.expression;
-      } else if (ts.isAsExpression(curr)) {
-        curr = curr.expression;
-      } else {
-        break;
-      }
-    }
-    return false;
-  }
-
-  function testVisit(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      if (isFromTenantsChainExpr(node.initializer)) {
-        builderVars.add(node.name.text);
-      }
-    }
+  let multiHopDetected = false;
+  function visitMultiHop(node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const methodName = node.expression.name.text;
-      if (['update', 'upsert', 'insert', 'delete'].includes(methodName)) {
+      const m = node.expression.name.text;
+      if (m === 'update') {
         let receiver = node.expression.expression;
-        if (ts.isIdentifier(receiver) && builderVars.has(receiver.text)) {
-          detectedOps.push({ op: methodName.toUpperCase(), type: 'BUILDER_VARIABLE' });
+        while (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
+          receiver = receiver.expression.expression;
+        }
+        if (ts.isIdentifier(receiver) && multiHopVars.has(receiver.text)) {
+          multiHopDetected = true;
         }
       }
     }
-    ts.forEachChild(node, testVisit);
+    ts.forEachChild(node, visitMultiHop);
   }
-  testVisit(builderSf);
+  visitMultiHop(multiHopSf);
 
-  if (detectedOps.length !== 1 || detectedOps[0].op !== 'UPDATE') {
-    console.error('[SELF-TEST FAILED] Builder variable detection failed:', detectedOps);
+  if (!multiHopDetected || !multiHopVars.has('third')) {
+    console.error('[SELF-TEST FAILED] Multi-hop builder variable alias detection failed:', Array.from(multiHopVars));
     process.exit(1);
   }
 
-  // Test 2: Dynamic import detection
-  const dynSnippet = `
-    async function load() {
-      const mod = await import('./dynamic-target');
-      return mod;
+  // Test 2: Aliased projection import and call detection
+  const aliasImportSnippet = `
+    import { projectCanonicalProductsToTenantMetadata as sneakyProject } from '@/lib/products/internal-tenant-product-projector';
+    async function test() {
+      await sneakyProject(supabase, 't1', () => ({}));
     }
   `;
-  const dynSf = ts.createSourceFile('test-dyn.tsx', dynSnippet, ts.ScriptTarget.Latest, true);
-  let foundDynamic = false;
-  function testDyn(node) {
-    if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === 'import')) &&
-      node.arguments.length > 0 &&
-      ts.isStringLiteral(node.arguments[0])
-    ) {
-      if (node.arguments[0].text === './dynamic-target') {
-        foundDynamic = true;
+  const aliasSf = ts.createSourceFile('test-alias.ts', aliasImportSnippet, ts.ScriptTarget.Latest, true);
+  let detectedImportAlias = null;
+  let detectedAliasCall = false;
+
+  function visitAlias(node) {
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (node.moduleSpecifier.text.includes('internal-tenant-product-projector')) {
+        if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+          for (const el of node.importClause.namedBindings.elements) {
+            if ((el.propertyName?.text || el.name.text) === 'projectCanonicalProductsToTenantMetadata') {
+              detectedImportAlias = el.name.text;
+            }
+          }
+        }
       }
     }
-    ts.forEachChild(node, testDyn);
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      if (detectedImportAlias && node.expression.text === detectedImportAlias) {
+        detectedAliasCall = true;
+      }
+    }
+    ts.forEachChild(node, visitAlias);
   }
-  testDyn(dynSf);
+  visitAlias(aliasSf);
 
-  if (!foundDynamic) {
-    console.error('[SELF-TEST FAILED] Dynamic import detection failed');
+  if (detectedImportAlias !== 'sneakyProject' || !detectedAliasCall) {
+    console.error('[SELF-TEST FAILED] Aliased projection import and call detection failed:', { detectedImportAlias, detectedAliasCall });
     process.exit(1);
   }
 
-  console.log('[SELF-TEST PASSED] AST scanner correctly detects builder variable aliases and dynamic imports.');
+  // Test 3: Unauthorized caller importing internal-tenant-product-projector
+  const unauthorizedCallerFile = 'app/api/v1/store/unauthorized/route.ts';
+  const isAllowlisted = AUTHORIZED_PROJECTION_ALLOWLIST.has(unauthorizedCallerFile);
+  if (isAllowlisted) {
+    console.error('[SELF-TEST FAILED] Unauthorized caller was incorrectly allowlisted');
+    process.exit(1);
+  }
+
+  // Test 4: Re-export chain reaching a browser 'use client' file
+  const reExportSnippet = `
+    export * from './re-exported-target';
+  `;
+  const reExportSf = ts.createSourceFile('test-reexport.ts', reExportSnippet, ts.ScriptTarget.Latest, true);
+  let hasReExport = false;
+  function visitReExport(node) {
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (node.moduleSpecifier.text === './re-exported-target') {
+        hasReExport = true;
+      }
+    }
+    ts.forEachChild(node, visitReExport);
+  }
+  visitReExport(reExportSf);
+
+  if (!hasReExport) {
+    console.error('[SELF-TEST FAILED] Re-export detection failed');
+    process.exit(1);
+  }
+
+  console.log('[SELF-TEST PASSED] AST scanner correctly detects multi-hop builder aliases, projection imports, unauthorized callers, and re-export chains.');
   process.exit(0);
 }
 
@@ -139,7 +213,6 @@ function resolveModulePath(importingFile, importSpecifier) {
       return target + ext;
     }
   }
-  // Check index files
   for (const ext of extensions) {
     const idx = path.join(target, 'index' + ext);
     if (fs.existsSync(idx)) {
@@ -149,12 +222,14 @@ function resolveModulePath(importingFile, importSpecifier) {
   return null;
 }
 
-// ── 3. PARSE AST & BUILD FULL DEPENDENCY GRAPH ────────────────────────────────
+// ── 3. PARSE AST & BUILD GRAPH & TRACK PROJECTION IMPORTS ─────────────────────
 const fileAstMap = new Map();
 const importGraph = new Map(); // file -> Set of imported files
 const directClientFiles = new Set();
+const unauthorizedProjectionCallers = [];
 
 for (const filePath of allFiles) {
+  const relPath = path.relative(rootDir, filePath).replace(/\\/g, '/');
   const content = fs.readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(
     filePath,
@@ -162,7 +237,7 @@ for (const filePath of allFiles) {
     ts.ScriptTarget.Latest,
     true
   );
-  fileAstMap.set(filePath, { sourceFile, content });
+  fileAstMap.set(filePath, { sourceFile, content, relPath });
 
   const imports = new Set();
   let hasUseClient = false;
@@ -190,6 +265,19 @@ for (const filePath of allFiles) {
   function visitImports(node) {
     // 1. Static Import Declaration
     if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const spec = node.moduleSpecifier.text;
+      const isProjectorImport = spec.includes('internal-tenant-product-projector');
+      if (isProjectorImport) {
+        if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+          unauthorizedProjectionCallers.push({
+            file: relPath,
+            specifier: spec,
+            line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+            type: 'IMPORT',
+          });
+        }
+      }
+
       if (node.importClause) {
         if (node.importClause.isTypeOnly) return;
         if (node.importClause.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
@@ -197,17 +285,30 @@ for (const filePath of allFiles) {
           if (nonTypeElements.length === 0 && !node.importClause.name) return;
         }
       }
-      const resolved = resolveModulePath(filePath, node.moduleSpecifier.text);
+      const resolved = resolveModulePath(filePath, spec);
       if (resolved) imports.add(resolved);
     }
     // 2. Re-export Declaration (export ... from '...')
     else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const spec = node.moduleSpecifier.text;
+      const isProjectorImport = spec.includes('internal-tenant-product-projector');
+      if (isProjectorImport) {
+        if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+          unauthorizedProjectionCallers.push({
+            file: relPath,
+            specifier: spec,
+            line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+            type: 'RE_EXPORT',
+          });
+        }
+      }
+
       if (node.isTypeOnly) return;
       if (node.exportClause && ts.isNamedExports(node.exportClause)) {
         const nonTypeElements = node.exportClause.elements.filter(e => !e.isTypeOnly);
         if (nonTypeElements.length === 0) return;
       }
-      const resolved = resolveModulePath(filePath, node.moduleSpecifier.text);
+      const resolved = resolveModulePath(filePath, spec);
       if (resolved) imports.add(resolved);
     }
     // 3. CommonJS require(...)
@@ -219,7 +320,16 @@ for (const filePath of allFiles) {
       node.arguments.length > 0 &&
       ts.isStringLiteral(node.arguments[0])
     ) {
-      const resolved = resolveModulePath(filePath, node.arguments[0].text);
+      const spec = node.arguments[0].text;
+      if (spec.includes('internal-tenant-product-projector') && !AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+        unauthorizedProjectionCallers.push({
+          file: relPath,
+          specifier: spec,
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+          type: 'REQUIRE',
+        });
+      }
+      const resolved = resolveModulePath(filePath, spec);
       if (resolved) imports.add(resolved);
     }
     // 4. Dynamic import('...')
@@ -230,7 +340,16 @@ for (const filePath of allFiles) {
       node.arguments.length > 0 &&
       ts.isStringLiteral(node.arguments[0])
     ) {
-      const resolved = resolveModulePath(filePath, node.arguments[0].text);
+      const spec = node.arguments[0].text;
+      if (spec.includes('internal-tenant-product-projector') && !AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+        unauthorizedProjectionCallers.push({
+          file: relPath,
+          specifier: spec,
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+          type: 'DYNAMIC_IMPORT',
+        });
+      }
+      const resolved = resolveModulePath(filePath, spec);
       if (resolved) imports.add(resolved);
     }
 
@@ -267,57 +386,51 @@ function getTrace(targetFile) {
   return trace.join(' -> ');
 }
 
-// ── 5. AST VISITOR FOR TENANT MUTATIONS & BUILDER VARIABLE ALIASES ────────────
+// ── 5. AST VISITOR FOR TENANT MUTATIONS & MULTI-HOP VARIABLE ALIASES ──────────
 const findings = [];
 const directClientMutations = [];
 const transitiveBrowserMutations = [];
 const browserOccHelperLeaks = [];
+const unauthorizedServerWriters = [];
 
 let occCasCallCount = 0;
 const occCasFiles = new Set();
 
-function isFromTenantsCall(node) {
-  if (!ts.isCallExpression(node)) return false;
-  if (!ts.isPropertyAccessExpression(node.expression)) return false;
-  if (node.expression.name.text !== 'from') return false;
-  if (node.arguments.length === 0) return false;
-  const arg0 = node.arguments[0];
-  if (!ts.isStringLiteral(arg0)) return false;
-  return arg0.text === 'tenants';
-}
-
-function isFromTenantsChain(expr) {
-  let curr = expr;
-  while (curr) {
-    if (isFromTenantsCall(curr)) return true;
-    if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
-      curr = curr.expression.expression;
-    } else if (ts.isAsExpression(curr)) {
-      curr = curr.expression;
-    } else {
-      break;
-    }
-  }
-  return false;
-}
-
-for (const [filePath, { sourceFile }] of fileAstMap.entries()) {
-  const relPath = path.relative(rootDir, filePath).replace(/\\/g, '/');
+for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
   const isDirectClient = directClientFiles.has(filePath);
   const isBrowserReachable = browserReachableFiles.has(filePath);
 
-  // Track builder variable aliases in this file
+  // Multi-hop builder variable alias propagation (fixed-point loop)
   const tenantBuilderVars = new Set();
+  let changed = true;
+  while (changed) {
+    const prevSize = tenantBuilderVars.size;
+    function scanAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isFromTenantsChain(node.initializer, tenantBuilderVars)) {
+          tenantBuilderVars.add(node.name.text);
+        }
+      }
+      ts.forEachChild(node, scanAliases);
+    }
+    scanAliases(sourceFile);
+    changed = tenantBuilderVars.size > prevSize;
+  }
 
-  function scanVars(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      if (isFromTenantsChain(node.initializer)) {
-        tenantBuilderVars.add(node.name.text);
+  // Track projection aliases in this file
+  const projectionAliases = new Set();
+  function scanProjectionAliases(node) {
+    if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+      for (const el of node.importClause.namedBindings.elements) {
+        const originalName = el.propertyName?.text || el.name.text;
+        if (originalName === 'projectCanonicalProductsToTenantMetadata') {
+          projectionAliases.add(el.name.text);
+        }
       }
     }
-    ts.forEachChild(node, scanVars);
+    ts.forEachChild(node, scanProjectionAliases);
   }
-  scanVars(sourceFile);
+  scanProjectionAliases(sourceFile);
 
   function getChainedMutationOp(node) {
     if (!ts.isCallExpression(node)) return null;
@@ -326,12 +439,6 @@ for (const [filePath, { sourceFile }] of fileAstMap.entries()) {
     if (['update', 'upsert', 'insert', 'delete'].includes(methodName)) {
       let curr = node.expression.expression;
 
-      // Check for builder variable alias
-      if (ts.isIdentifier(curr) && tenantBuilderVars.has(curr.text)) {
-        return methodName.toUpperCase();
-      }
-
-      // Check chained calls
       while (curr) {
         if (isFromTenantsCall(curr)) {
           return methodName.toUpperCase();
@@ -341,7 +448,7 @@ for (const [filePath, { sourceFile }] of fileAstMap.entries()) {
         }
         if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
           curr = curr.expression.expression;
-        } else if (ts.isAsExpression(curr)) {
+        } else if (ts.isAsExpression(curr) || ts.isNonNullExpression?.(curr) || ts.isParenthesizedExpression(curr)) {
           curr = curr.expression;
         } else {
           break;
@@ -361,9 +468,27 @@ for (const [filePath, { sourceFile }] of fileAstMap.entries()) {
         callName = node.expression.name.text;
       }
 
-      if (callName === 'updateTenantWithOccCas' || callName === 'projectCanonicalProductsToTenantMetadata') {
+      const isOccCall = callName === 'updateTenantWithOccCas';
+      const isProjectorCall =
+        callName === 'projectCanonicalProductsToTenantMetadata' ||
+        projectionAliases.has(callName) ||
+        callName === '_internalProjectProductsForProjector';
+
+      if (isOccCall || isProjectorCall) {
         occCasCallCount++;
         occCasFiles.add(relPath);
+
+        // Security Invariant: Projection capability restricted strictly to allowlist
+        if (isProjectorCall && !AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+          const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+          unauthorizedProjectionCallers.push({
+            file: relPath,
+            line: pos.line + 1,
+            column: pos.character + 1,
+            helper: callName,
+            type: 'CALL',
+          });
+        }
 
         // Security Invariant: These mutation helpers must NEVER be reachable from browser modules
         if (isBrowserReachable) {
@@ -398,6 +523,8 @@ for (const [filePath, { sourceFile }] of fileAstMap.entries()) {
         directClientMutations.push(finding);
       } else if (isBrowserReachable) {
         transitiveBrowserMutations.push(finding);
+      } else if (!AUTHORIZED_SERVER_WRITERS.has(relPath) && (op === 'UPDATE' || op === 'UPSERT')) {
+        unauthorizedServerWriters.push(finding);
       }
     }
     ts.forEachChild(node, visit);
@@ -419,13 +546,21 @@ console.log(`Direct Client Mutations:             ${directClientMutations.length
 console.log(`Transitive Browser Mutations:        ${transitiveBrowserMutations.length}`);
 console.log(`Browser-Reachable OCC Helper Leaks:  ${browserOccHelperLeaks.length}`);
 
-const hasBrowserViolations =
+console.log('\n--- PROJECTION CAPABILITY ALLOWLIST ---');
+console.log(`Unauthorized Projection Callers:     ${unauthorizedProjectionCallers.length}`);
+
+console.log('\n--- SERVER WRITER COMPLIANCE ---');
+console.log(`Unauthorized Server Writers:         ${unauthorizedServerWriters.length}`);
+
+const hasFatalViolations =
   directClientMutations.length > 0 ||
   transitiveBrowserMutations.length > 0 ||
-  browserOccHelperLeaks.length > 0;
+  browserOccHelperLeaks.length > 0 ||
+  unauthorizedProjectionCallers.length > 0 ||
+  unauthorizedServerWriters.length > 0;
 
-if (hasBrowserViolations) {
-  console.error('\n[FATAL AUDIT FAILURE] Found browser-reachable .from("tenants") mutations:');
+if (hasFatalViolations) {
+  console.error('\n[FATAL AUDIT FAILURE] Security & Single-Writer Invariant Violations:');
   for (const m of directClientMutations) {
     console.error(`  DIRECT CLIENT: ${m.file}:${m.line}:${m.column} [${m.op}]`);
   }
@@ -435,8 +570,14 @@ if (hasBrowserViolations) {
   for (const m of browserOccHelperLeaks) {
     console.error(`  BROWSER OCC HELPER LEAK: ${m.file}:${m.line}:${m.column} [${m.helper}]\n    Trace: ${m.trace}`);
   }
+  for (const p of unauthorizedProjectionCallers) {
+    console.error(`  UNAUTHORIZED PROJECTION CALLER: ${p.file}:${p.line} [${p.type}]`);
+  }
+  for (const w of unauthorizedServerWriters) {
+    console.error(`  UNAUTHORIZED SERVER WRITER: ${w.file}:${w.line}:${w.column} [${w.op}]`);
+  }
 } else {
-  console.log('SUCCESS: ZERO (0) browser-reachable .from("tenants") mutations verified via AST!');
+  console.log('SUCCESS: ZERO (0) browser-reachable mutations, ZERO unauthorized projection callers, and ZERO unguarded server writers verified via AST!');
 }
 
 console.log('\n--- SERVER-SIDE .from("tenants") WRITERS (AST VERIFIED) ---');
@@ -455,7 +596,7 @@ console.log(`Total OCC CAS calls: ${occCasCallCount} across ${occCasFiles.size} 
 console.log('Files:');
 Array.from(occCasFiles).sort().forEach(f => console.log(`  - ${f}`));
 
-if (hasBrowserViolations) {
+if (hasFatalViolations) {
   process.exit(1);
 } else {
   process.exit(0);

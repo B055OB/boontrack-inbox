@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
-import { projectCanonicalProductsToTenantMetadata } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { projectCanonicalProductsToTenantMetadata } from '@/lib/products/internal-tenant-product-projector';
 
 export const ONLINEBOOST_DIGITAL_PRODUCTS = [
   {
@@ -350,7 +350,8 @@ export class OnlineboostSeedService {
             updated_at: new Date().toISOString(),
           },
         };
-      }
+      },
+      { callerModule: 'onlineboost-seed-service' }
     );
 
     if (!occSuccess) {

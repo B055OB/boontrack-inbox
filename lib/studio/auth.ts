@@ -150,7 +150,7 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
 
     if (!occRes.success) {
       console.error('[Studio Auth] Failed to refresh pending tenant token:', occRes.error);
-      return null;
+      throw new Error(`STUDIO_AUTH_OCC_FAILURE: Failed to refresh pending tenant token: ${occRes.error || 'OCC conflict'}`);
     }
 
     return {

@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "audit:tenant-writers": "node scripts/audit-tenant-writers.js --self-test && node scripts/audit-tenant-writers.js",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:payment": "jest payment_boundary --no-coverage",

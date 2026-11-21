@@ -72,7 +72,21 @@ export {
   type BaileysSocketLike,
 };
 
-export * from './evolution-sender';
+import {
+  EVOLUTION_API_URL,
+  getRequiredEvolutionApiKey,
+  getEvolutionApiKey,
+  sendEvolutionTextMessage,
+  sendEvolutionPresence,
+} from './evolution-sender';
+
+export {
+  EVOLUTION_API_URL,
+  getRequiredEvolutionApiKey,
+  getEvolutionApiKey,
+  sendEvolutionTextMessage,
+  sendEvolutionPresence,
+};
 
 /**
  * Resolves token balance for a tenant from tenant row or metadata.

@@ -49,6 +49,9 @@ jobs:
           npm ci || npm install --legacy-peer-deps
           npm install -D ts-node
 
+      - name: Tenant Writers & AST Concurrency Audit Gate
+        run: npm run audit:tenant-writers
+
       - name: Typecheck
         run: npm run typecheck || npx tsc --noEmit
 

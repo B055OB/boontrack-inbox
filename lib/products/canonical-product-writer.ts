@@ -30,7 +30,7 @@ import {
 } from '@/lib/security/html-sanitizer';
 import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 import { hasTierAccess } from '@/lib/subscription-tiers';
-import { projectCanonicalProductsToTenantMetadata } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { projectCanonicalProductsToTenantMetadata } from '@/lib/products/internal-tenant-product-projector';
 import type { NextRequest } from 'next/server';
 
 export const SAFE_PRODUCT_KEY_RE = /^[a-zA-Z0-9_-]{1,128}$/;

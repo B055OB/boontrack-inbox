@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { updateTenantWithOccCas, projectCanonicalProductsToTenantMetadata, TenantOccRecord } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { updateTenantWithOccCas, TenantOccRecord } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { projectCanonicalProductsToTenantMetadata } from '@/lib/products/internal-tenant-product-projector';
 
 describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD', () => {
   let mockDbState: {
@@ -217,7 +218,7 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
             },
           };
         },
-        { initialBackoffMs: 5 }
+        { initialBackoffMs: 5, callerModule: 'canonical-product-writer' }
       );
 
       expect(projectionResult.success).toBe(true);
@@ -269,7 +270,8 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
             ...freshTenant.metadata,
             products: [P1, P2],
           },
-        })
+        }),
+        { callerModule: 'onlineboost-seed-service' }
       );
 
       expect(seedResult.success).toBe(true);
@@ -277,6 +279,24 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
       const finalTenant = mockDbState.tenants[TENANT_ID];
       expect(finalTenant.metadata?.products).toEqual([P1, P2]);
       expect(finalTenant.metadata?.products).toHaveLength(2);
+    });
+
+    it('rejects projection call when callerModule is missing or unauthorized', async () => {
+      const supabaseAdmin = createMockSupabaseAdmin();
+
+      await expect(
+        projectCanonicalProductsToTenantMetadata(
+          supabaseAdmin,
+          TENANT_ID,
+          (freshTenant) => ({
+            metadata: {
+              ...freshTenant.metadata,
+              products: [P1, P2],
+            },
+          }),
+          { callerModule: 'unauthorized-merchant-route' as any }
+        )
+      ).rejects.toThrow('[SECURITY FATAL] Unauthorized callerModule');
     });
   });
 

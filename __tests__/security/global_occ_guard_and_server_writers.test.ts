@@ -10,7 +10,8 @@ import { POST as handleResendVerification } from '@/app/api/v1/auth/resend-verif
 import * as merchantSessionModule from '@/lib/auth/merchant-session';
 import * as subscriptionGuardModule from '@/lib/subscription-guard';
 import * as supabaseClientModule from '@/lib/supabaseClient';
-import * as emailModule from '@/lib/email/boonpilot-service-emails';
+import * as emailModule from '@/lib/boonpilot-email';
+import { POST as handlePublishProposal } from '@/app/api/v1/boonpilot/publish-proposal/route';
 
 describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
   let mockSupabase: any;
@@ -27,11 +28,13 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       or: jest.fn().mockReturnThis(),
+      ilike: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
       single: jest.fn().mockResolvedValue({ data: null, error: null }),
     };
 
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase);
+    jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockSupabase);
     jest.spyOn(subscriptionGuardModule, 'checkTenantMutationPermission').mockResolvedValue({ allowed: true });
     jest.spyOn(merchantSessionModule, 'isInternalMachineAuthorized').mockReturnValue(true);
     jest.spyOn(merchantSessionModule, 'authorizeMerchantRequest').mockReturnValue({
@@ -54,6 +57,8 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
+            or: jest.fn().mockReturnThis(),
+            ilike: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
               data: {
                 id: 'tenant-uuid-1',
@@ -107,6 +112,8 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
+            or: jest.fn().mockReturnThis(),
+            ilike: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
               data: {
                 id: 'tenant-uuid-1',
@@ -231,6 +238,8 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
+            or: jest.fn().mockReturnThis(),
+            ilike: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
               data: {
                 id: 'tenant-uuid-1',
@@ -298,6 +307,8 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
+            or: jest.fn().mockReturnThis(),
+            ilike: jest.fn().mockReturnThis(),
             maybeSingle: jest.fn().mockResolvedValue({
               data: {
                 id: 'tenant-uuid-1',
@@ -342,7 +353,69 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
       expect(emailSent).toBe(false);
     });
 
-    it('7. audit-tenant-writers.js AST scanner exits 0 on self-test clean run', () => {
+    it('7. publish-proposal returns 409 and aborts without publishing when updateTenantWithOccCas hits OCC conflict', async () => {
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            or: jest.fn().mockReturnThis(),
+            ilike: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: {
+                id: 'tenant-proposal-1',
+                slug: 'shabu-ajhi',
+                name: 'Shabu Ajhi',
+                updated_at: '2026-11-20T10:00:00.000Z',
+                metadata: {
+                  plan_tier: 'SOLO_TRIAL',
+                },
+              },
+              error: null,
+            }),
+            update: jest.fn().mockImplementation(() => {
+              // Simulate OCC conflict: 0 rows affected
+              const updateBuilder: any = {};
+              updateBuilder.eq = jest.fn().mockReturnValue(updateBuilder);
+              updateBuilder.select = jest.fn().mockResolvedValue({
+                data: [], // 0 rows affected = conflict
+                error: null,
+              });
+              updateBuilder.then = (resolve: any) => resolve({
+                data: [],
+                error: null,
+              });
+              return updateBuilder;
+            }),
+          };
+        }
+        return mockSupabase;
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/boonpilot/publish-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: 'shabu-ajhi',
+          proposal: {
+            id: 'prop-1',
+            tenant_slug: 'shabu-ajhi',
+            business_profile: {
+              store_name: 'Shabu Ajhi',
+            },
+            status: 'DRAFT',
+          },
+        }),
+      });
+
+      const res = await handlePublishProposal(req);
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('OCC_CONFLICT');
+    });
+
+    it('8. audit-tenant-writers.js AST scanner exits 0 on self-test clean run', () => {
       const output = execSync('node scripts/audit-tenant-writers.js --self-test', {
         cwd: process.cwd(),
         encoding: 'utf8',

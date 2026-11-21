@@ -274,17 +274,11 @@ export async function updateTenantWithOccCas(
 }
 
 /**
- * Dedicated internal capability function for canonical product projection (ADR-P0-07).
- *
- * RESTRICTED ACCESS:
- * Imported ONLY by:
- * - lib/products/canonical-product-writer.ts
- * - lib/services/onlineboost-seed.service.ts
- *
- * General routes, merchant settings, theme, shipping, and admin config endpoints
- * MUST NOT import or call this function.
+ * Internal projection bridge helper.
+ * Strictly for consumption by lib/products/internal-tenant-product-projector.ts.
+ * General application modules MUST NOT call this directly.
  */
-export async function projectCanonicalProductsToTenantMetadata(
+export async function _internalProjectProductsForProjector(
   supabaseAdmin: any,
   tenantIdOrSlug: string,
   buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
@@ -292,6 +286,6 @@ export async function projectCanonicalProductsToTenantMetadata(
 ): Promise<TenantOccResult> {
   return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, {
     ...options,
-    allowProductsProjection: true, // RESTRICTED CAPABILITY
+    allowProductsProjection: true, // RESTRICTED CAPABILITY (bridged via internal-tenant-product-projector.ts)
   });
 }
