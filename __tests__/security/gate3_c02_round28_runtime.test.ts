@@ -1121,16 +1121,11 @@ describe('SEC-G2-C02 Round 28 Phase C — Runtime Verification Suite (40 Cases)'
     ) as { dependencies?: Record<string, string> };
     expect(pkgJson.dependencies?.parse5).toBe('7.3.0');
 
-    let resolvedUndiciVersion: string | undefined = pkgJson.dependencies?.undici;
-    if (!resolvedUndiciVersion) {
-      try {
-        resolvedUndiciVersion = (require('undici/package.json') as { version?: string }).version;
-      } catch {
-        resolvedUndiciVersion = (process.versions as Record<string, string>).undici;
-      }
+    let installedUndiciVersion: string | undefined = pkgJson.dependencies?.undici;
+    if (!installedUndiciVersion) {
+      installedUndiciVersion = (require('undici/package.json') as { version?: string }).version;
     }
-    expect(resolvedUndiciVersion).toBeDefined();
-    expect(typeof resolvedUndiciVersion).toBe('string');
+    expect(installedUndiciVersion).toBe('6.21.1');
 
     // 3. UD-01 & CURRENCY_EXPONENT_CONTRACT sanity
     expect(CURRENCY_EXPONENT_CONTRACT.IDR).toBe(0);
