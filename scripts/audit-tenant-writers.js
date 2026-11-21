@@ -239,7 +239,81 @@ function buildVariableBindingMap(sourceFile) {
   return varBindings;
 }
 
-function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = []) {
+function collectParameterIdentifiers(sourceFile) {
+  const params = new Set();
+  function collectNames(nameNode) {
+    if (!nameNode) return;
+    if (ts.isIdentifier(nameNode)) {
+      params.add(nameNode.text);
+    } else if (ts.isObjectBindingPattern(nameNode) || ts.isArrayBindingPattern(nameNode)) {
+      for (const elem of nameNode.elements) {
+        if (!ts.isOmittedExpression?.(elem) && elem.name) {
+          collectNames(elem.name);
+        }
+      }
+    }
+  }
+
+  function scan(node) {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node)
+    ) {
+      if (node.parameters) {
+        for (const p of node.parameters) {
+          collectNames(p.name);
+        }
+      }
+    }
+    ts.forEachChild(node, scan);
+  }
+  scan(sourceFile);
+  return params;
+}
+
+function isUnresolvedDynamicFromCall(node, varBindings, fileFunctions) {
+  if (!ts.isCallExpression(node)) return false;
+  if (!ts.isPropertyAccessExpression(node.expression)) return false;
+  if (node.expression.name.text !== 'from') return false;
+  const receiver = unwrap(node.expression.expression);
+  if (ts.isIdentifier(receiver)) {
+    const builtinTypes = new Set(['Array', 'Buffer', 'Promise', 'Object', 'Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array', 'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array']);
+    if (builtinTypes.has(receiver.text)) return false;
+  }
+  if (!node.arguments || node.arguments.length === 0) return true;
+  const tableRes = resolveTableArgument(node.arguments[0], varBindings, fileFunctions);
+  return !tableRes.resolved;
+}
+
+function isUnresolvedDynamicChain(expr, unresolvedBuilderVars = new Set(), unresolvedHelpers = new Set(), varBindings, fileFunctions) {
+  let curr = expr;
+  while (curr) {
+    if (isUnresolvedDynamicFromCall(curr, varBindings, fileFunctions)) return true;
+    if (ts.isIdentifier(curr) && unresolvedBuilderVars.has(curr.text)) return true;
+    if (ts.isCallExpression(curr)) {
+      if (ts.isIdentifier(curr.expression) && unresolvedHelpers.has(curr.expression.text)) return true;
+      if (ts.isPropertyAccessExpression(curr.expression)) {
+        curr = curr.expression.expression;
+        continue;
+      }
+    } else if (
+      ts.isAsExpression(curr) ||
+      ts.isNonNullExpression?.(curr) ||
+      ts.isParenthesizedExpression(curr) ||
+      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr))
+    ) {
+      curr = curr.expression;
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
+function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = [], parameterIdentifiers = null) {
   const unwrapped = unwrap(expr);
   if (!unwrapped) return false;
 
@@ -251,19 +325,50 @@ function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = 
         if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === 'products') return true;
       } else if (ts.isSpreadAssignment(prop)) {
         const spreadExpr = unwrap(prop.expression);
-        if (doesObjectHaveProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+        if (ts.isIdentifier(spreadExpr)) {
+          if (parameterIdentifiers && parameterIdentifiers.has(spreadExpr.text)) {
+            unverifiedHelperErrors.push({
+              helper: spreadExpr.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+          const bindings = varBindings ? varBindings.get(spreadExpr.text) : null;
+          if (!bindings || bindings.length === 0) {
+            unverifiedHelperErrors.push({
+              helper: spreadExpr.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+        }
+        if (doesObjectHaveProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
       }
     }
   } else if (ts.isIdentifier(unwrapped)) {
+    if (parameterIdentifiers && parameterIdentifiers.has(unwrapped.text)) {
+      unverifiedHelperErrors.push({
+        helper: unwrapped.text,
+        reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+      });
+      return false;
+    }
     if (visitedVars.has(unwrapped.text)) return false;
     visitedVars.add(unwrapped.text);
-    const bindings = varBindings.get(unwrapped.text) || [];
+    const bindings = varBindings ? varBindings.get(unwrapped.text) : null;
+    if (!bindings || bindings.length === 0) {
+      unverifiedHelperErrors.push({
+        helper: unwrapped.text,
+        reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+      });
+      return false;
+    }
     for (const b of bindings) {
-      if (doesObjectHaveProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+      if (doesObjectHaveProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
     }
   } else if (ts.isArrayLiteralExpression(unwrapped)) {
     for (const elem of unwrapped.elements) {
-      if (doesObjectHaveProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+      if (doesObjectHaveProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
     }
   } else if (ts.isCallExpression(unwrapped)) {
     if (ts.isIdentifier(unwrapped.expression) && fileFunctions) {
@@ -275,7 +380,7 @@ function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = 
           return false;
         }
         for (const r of returns) {
-          if (doesObjectHaveProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+          if (doesObjectHaveProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
         }
         return false;
       }
@@ -288,13 +393,13 @@ function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = 
   return false;
 }
 
-function doesTenantRowHaveMetadataProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = []) {
+function doesTenantRowHaveMetadataProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = [], parameterIdentifiers = null) {
   const unwrapped = unwrap(expr);
   if (!unwrapped) return false;
 
   if (ts.isArrayLiteralExpression(unwrapped)) {
     for (const elem of unwrapped.elements) {
-      if (doesTenantRowHaveMetadataProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+      if (doesTenantRowHaveMetadataProducts(elem, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
     }
     return false;
   }
@@ -305,23 +410,86 @@ function doesTenantRowHaveMetadataProducts(expr, varBindings, fileFunctions, vis
         const pName = getPropertyName(prop.name, varBindings);
         if (pName === 'metadata') {
           const metaVal = unwrap(prop.initializer);
-          if (doesObjectHaveProducts(metaVal, varBindings, fileFunctions, new Set(), unverifiedHelperErrors)) return true;
+          if (ts.isIdentifier(metaVal)) {
+            if (parameterIdentifiers && parameterIdentifiers.has(metaVal.text)) {
+              unverifiedHelperErrors.push({
+                helper: metaVal.text,
+                reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+              });
+              return false;
+            }
+            const mBindings = varBindings ? varBindings.get(metaVal.text) : null;
+            if (!mBindings || mBindings.length === 0) {
+              unverifiedHelperErrors.push({
+                helper: metaVal.text,
+                reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+              });
+              return false;
+            }
+          }
+          if (doesObjectHaveProducts(metaVal, varBindings, fileFunctions, new Set(), unverifiedHelperErrors, parameterIdentifiers)) return true;
         }
       } else if (ts.isShorthandPropertyAssignment(prop)) {
         if (prop.name.text === 'metadata') {
-          if (doesObjectHaveProducts(prop.name, varBindings, fileFunctions, new Set(), unverifiedHelperErrors)) return true;
+          if (parameterIdentifiers && parameterIdentifiers.has(prop.name.text)) {
+            unverifiedHelperErrors.push({
+              helper: prop.name.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+          const mBindings = varBindings ? varBindings.get(prop.name.text) : null;
+          if (!mBindings || mBindings.length === 0) {
+            unverifiedHelperErrors.push({
+              helper: prop.name.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+          if (doesObjectHaveProducts(prop.name, varBindings, fileFunctions, new Set(), unverifiedHelperErrors, parameterIdentifiers)) return true;
         }
       } else if (ts.isSpreadAssignment(prop)) {
         const spreadExpr = unwrap(prop.expression);
-        if (doesTenantRowHaveMetadataProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+        if (ts.isIdentifier(spreadExpr)) {
+          if (parameterIdentifiers && parameterIdentifiers.has(spreadExpr.text)) {
+            unverifiedHelperErrors.push({
+              helper: spreadExpr.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+          const sBindings = varBindings ? varBindings.get(spreadExpr.text) : null;
+          if (!sBindings || sBindings.length === 0) {
+            unverifiedHelperErrors.push({
+              helper: spreadExpr.text,
+              reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+            });
+            return false;
+          }
+        }
+        if (doesTenantRowHaveMetadataProducts(spreadExpr, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
       }
     }
   } else if (ts.isIdentifier(unwrapped)) {
+    if (parameterIdentifiers && parameterIdentifiers.has(unwrapped.text)) {
+      unverifiedHelperErrors.push({
+        helper: unwrapped.text,
+        reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+      });
+      return false;
+    }
     if (visitedVars.has(unwrapped.text)) return false;
     visitedVars.add(unwrapped.text);
-    const bindings = varBindings.get(unwrapped.text) || [];
+    const bindings = varBindings ? varBindings.get(unwrapped.text) : null;
+    if (!bindings || bindings.length === 0) {
+      unverifiedHelperErrors.push({
+        helper: unwrapped.text,
+        reason: 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION'
+      });
+      return false;
+    }
     for (const b of bindings) {
-      if (doesTenantRowHaveMetadataProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+      if (doesTenantRowHaveMetadataProducts(b, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
     }
   } else if (ts.isCallExpression(unwrapped)) {
     if (ts.isIdentifier(unwrapped.expression) && fileFunctions) {
@@ -333,7 +501,7 @@ function doesTenantRowHaveMetadataProducts(expr, varBindings, fileFunctions, vis
           return false;
         }
         for (const r of returns) {
-          if (doesTenantRowHaveMetadataProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors)) return true;
+          if (doesTenantRowHaveMetadataProducts(r, varBindings, fileFunctions, new Set(visitedVars), unverifiedHelperErrors, parameterIdentifiers)) return true;
         }
         return false;
       }
@@ -721,7 +889,126 @@ if (process.argv.includes('--self-test')) {
     process.exit(1);
   }
 
-  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, browser re-export chain, helper call payload resolution, and dynamic table alias).');
+  // Test 10: Vector 10 (Kasus A — Function Parameter Payload)
+  const v10Code = `
+    async function updateConfig(payload: any, supabase: any) {
+      await supabase.from('tenants').update(payload).eq('id', 't1');
+    }
+  `;
+  const v10Sf = ts.createSourceFile('v10.ts', v10Code, ts.ScriptTarget.Latest, true);
+  const v10Bindings = buildVariableBindingMap(v10Sf);
+  const v10Functions = collectFileFunctions(v10Sf);
+  const v10Params = collectParameterIdentifiers(v10Sf);
+  const v10Errors = [];
+
+  function visitV10(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'update') {
+      doesTenantRowHaveMetadataProducts(n.arguments[0], v10Bindings, v10Functions, new Set(), v10Errors, v10Params);
+    }
+    ts.forEachChild(n, visitV10);
+  }
+  visitV10(v10Sf);
+
+  if (v10Errors.length === 0 || v10Errors[0].reason !== 'UNVERIFIED_HELPER_PAYLOAD_IN_TENANT_MUTATION') {
+    console.error('[SELF-TEST FAILED] Vector 10: Function parameter payload fail-closed detection failed:', v10Errors);
+    process.exit(1);
+  }
+
+  // Test 11: Vector 11 (Kasus B — Unresolved Dynamic Table Stored in Builder Variable)
+  const v11Code = `
+    async function mutate(supabase: any, tableName: string, payload: any) {
+      const builder = supabase.from(tableName);
+      await builder.update(payload);
+    }
+  `;
+  const v11Sf = ts.createSourceFile('v11.ts', v11Code, ts.ScriptTarget.Latest, true);
+  const v11Bindings = buildVariableBindingMap(v11Sf);
+  const v11Functions = collectFileFunctions(v11Sf);
+  const v11DynamicHelpers = new Set();
+  const v11DynamicBuilders = new Set();
+
+  function scanV11Functions(node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      let returnsDynamic = false;
+      function checkReturn(n) {
+        if (ts.isReturnStatement(n) && n.expression) {
+          if (isUnresolvedDynamicChain(n.expression, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
+            returnsDynamic = true;
+          }
+        }
+        ts.forEachChild(n, checkReturn);
+      }
+      checkReturn(node.body);
+      if (returnsDynamic) v11DynamicHelpers.add(node.name.text);
+    }
+    ts.forEachChild(node, scanV11Functions);
+  }
+  scanV11Functions(v11Sf);
+
+  let v11DynChanged = true;
+  while (v11DynChanged) {
+    const prevSize = v11DynamicBuilders.size;
+    function scanV11DynAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isUnresolvedDynamicChain(node.initializer, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
+          v11DynamicBuilders.add(node.name.text);
+        }
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        if (isUnresolvedDynamicChain(node.right, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
+          v11DynamicBuilders.add(node.left.text);
+        }
+      }
+      ts.forEachChild(node, scanV11DynAliases);
+    }
+    scanV11DynAliases(v11Sf);
+    v11DynChanged = v11DynamicBuilders.size > prevSize;
+  }
+
+  let v11UnresolvableMutation = false;
+  function visitV11(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
+      const methodName = n.expression.name.text;
+      if (['insert', 'update', 'upsert', 'delete'].includes(methodName)) {
+        let curr = n.expression.expression;
+        while (curr) {
+          if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression) && curr.expression.name.text === 'from') {
+            if (curr.arguments.length > 0) {
+              const tableRes = resolveTableArgument(curr.arguments[0], v11Bindings, v11Functions);
+              if (!tableRes.resolved) {
+                v11UnresolvableMutation = true;
+              }
+            }
+            break;
+          }
+          if (ts.isIdentifier(curr) && v11DynamicBuilders.has(curr.text)) {
+            v11UnresolvableMutation = true;
+            break;
+          }
+          if (ts.isCallExpression(curr) && ts.isIdentifier(curr.expression) && v11DynamicHelpers.has(curr.expression.text)) {
+            v11UnresolvableMutation = true;
+            break;
+          }
+          if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
+            curr = curr.expression.expression;
+          } else break;
+        }
+      }
+    }
+    ts.forEachChild(n, visitV11);
+  }
+  visitV11(v11Sf);
+
+  if (!v11UnresolvableMutation || !v11DynamicBuilders.has('builder')) {
+    console.error('[SELF-TEST FAILED] Vector 11: Unresolved dynamic table in builder variable failed:', { v11UnresolvableMutation, builders: Array.from(v11DynamicBuilders) });
+    process.exit(1);
+  }
+
+  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all 11 negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, browser re-export chain, helper call payload resolution, dynamic table alias, function parameter payload, and dynamic builder variable).');
   process.exit(0);
 }
 
@@ -957,9 +1244,10 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
   const isDirectClient = directClientFiles.has(filePath);
   const isBrowserReachable = browserReachableFiles.has(filePath);
 
-  // Per-file variable binding map and file-level functions
+  // Per-file variable binding map, parameter identifiers, and file-level functions
   const varBindings = buildVariableBindingMap(sourceFile);
   const fileFunctions = collectFileFunctions(sourceFile);
+  const parameterIdentifiers = collectParameterIdentifiers(sourceFile);
 
   // Helper functions returning tenants query builder
   const tenantQueryHelpers = new Set();
@@ -1031,6 +1319,76 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
     changed = tenantBuilderVars.size > prevSize;
   }
 
+  // Helper functions returning unresolved dynamic table query builder
+  const unresolvedDynamicHelpers = new Set();
+  function scanDynamicFunctions(node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      let returnsDynamic = false;
+      function checkReturn(n) {
+        if (ts.isReturnStatement(n) && n.expression) {
+          if (isUnresolvedDynamicChain(n.expression, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+            returnsDynamic = true;
+          }
+        }
+        ts.forEachChild(n, checkReturn);
+      }
+      checkReturn(node.body);
+      if (returnsDynamic) unresolvedDynamicHelpers.add(node.name.text);
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const init = unwrap(node.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        const body = init.body;
+        let returnsDynamic = false;
+        if (ts.isBlock(body)) {
+          function checkReturn(n) {
+            if (ts.isReturnStatement(n) && n.expression) {
+              if (isUnresolvedDynamicChain(n.expression, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+                returnsDynamic = true;
+              }
+            }
+            ts.forEachChild(n, checkReturn);
+          }
+          checkReturn(body);
+        } else {
+          if (isUnresolvedDynamicChain(body, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+            returnsDynamic = true;
+          }
+        }
+        if (returnsDynamic) unresolvedDynamicHelpers.add(node.name.text);
+      }
+    }
+    ts.forEachChild(node, scanDynamicFunctions);
+  }
+
+  // Multi-hop unresolved dynamic builder variable alias propagation (fixed-point loop)
+  const unresolvedDynamicBuilders = new Set();
+  scanDynamicFunctions(sourceFile);
+
+  let dynChanged = true;
+  while (dynChanged) {
+    const prevSize = unresolvedDynamicBuilders.size;
+    function scanDynAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isUnresolvedDynamicChain(node.initializer, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+          unresolvedDynamicBuilders.add(node.name.text);
+        }
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        if (isUnresolvedDynamicChain(node.right, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+          unresolvedDynamicBuilders.add(node.left.text);
+        }
+      }
+      ts.forEachChild(node, scanDynAliases);
+    }
+    scanDynAliases(sourceFile);
+    dynChanged = unresolvedDynamicBuilders.size > prevSize;
+  }
+
   // Track projection aliases in this file
   const projectionAliases = new Set();
   function scanProjectionAliases(node) {
@@ -1069,8 +1427,21 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
             }
           }
         }
-        if (ts.isIdentifier(curr) && tenantBuilderVars.has(curr.text)) {
-          return { op: methodName.toUpperCase(), fromTenants: true };
+        if (ts.isIdentifier(curr)) {
+          if (tenantBuilderVars.has(curr.text)) {
+            return { op: methodName.toUpperCase(), fromTenants: true };
+          }
+          if (unresolvedDynamicBuilders.has(curr.text)) {
+            return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.text };
+          }
+        }
+        if (ts.isCallExpression(curr) && ts.isIdentifier(curr.expression)) {
+          if (tenantQueryHelpers.has(curr.expression.text)) {
+            return { op: methodName.toUpperCase(), fromTenants: true };
+          }
+          if (unresolvedDynamicHelpers.has(curr.expression.text)) {
+            return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.expression.text };
+          }
         }
         if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
           curr = curr.expression.expression;
@@ -1175,11 +1546,12 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
             unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_DELETE' });
           }
 
-          // AST Payload Inspection: Check for metadata.products outside authorized projector modules
-          if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+          // AST Payload Inspection: Check for metadata.products outside authorized projector modules and atomic tenant writer
+          const isCoreSystemModule = AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath) || relPath === 'lib/tenants/atomic-tenant-metadata-writer.ts';
+          if (!isCoreSystemModule) {
             const helperErrs = [];
             if (node.arguments && node.arguments.length > 0) {
-              const hasProducts = doesTenantRowHaveMetadataProducts(node.arguments[0], varBindings, fileFunctions, new Set(), helperErrs);
+              const hasProducts = doesTenantRowHaveMetadataProducts(node.arguments[0], varBindings, fileFunctions, new Set(), helperErrs, parameterIdentifiers);
               if (hasProducts) {
                 unauthorizedMetadataProductsWrites.push({
                   file: relPath,
