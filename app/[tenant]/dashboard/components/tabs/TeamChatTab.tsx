@@ -1720,7 +1720,7 @@ export default function TeamChatTab({
             .maybeSingle();
 
           if (conn?.instance_name) {
-            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-sender');
             await sendEvolutionTextMessage(conn.instance_name, targetCustomerPhone, qrisChatText, conn.credential_ref);
           }
         } catch (waErr) {
@@ -1817,7 +1817,7 @@ export default function TeamChatTab({
             .maybeSingle();
 
           if (conn?.instance_name) {
-            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-sender');
             await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, bankText, conn.credential_ref);
           }
         } catch (waErr) {
@@ -2071,7 +2071,7 @@ export default function TeamChatTab({
             .maybeSingle();
 
           if (conn?.instance_name) {
-            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-sender');
             await sendEvolutionTextMessage(conn.instance_name, targetCustomerPhone, bankText, conn.credential_ref);
           }
         } catch (waErr) {
@@ -2289,7 +2289,7 @@ export default function TeamChatTab({
             .maybeSingle();
 
           if (conn?.instance_name && custPhone && !custPhone.startsWith('webchat_')) {
-            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-sender');
             await sendEvolutionTextMessage(conn.instance_name, custPhone, confirmationText, conn.credential_ref);
           }
         } catch (waErr) {

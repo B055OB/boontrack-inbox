@@ -190,7 +190,7 @@ async function handleVerify(req: NextRequest) {
     }
 
     // Activate tenant status via OCC CAS (Pure Delta)
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       matchedTenant.id,
       (freshTenant) => {
@@ -211,6 +211,14 @@ async function handleVerify(req: NextRequest) {
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[AuthVerify] OCC CAS activation failed:', occRes.error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal mengaktifkan toko online.', detail: occRes.message || occRes.error },
+        { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

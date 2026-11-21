@@ -82,7 +82,7 @@ export async function POST(
     if (!occRes.success) {
       console.warn('[Reseller Compliance API] Note on physical column update, retrying metadata only via OCC CAS:', occRes.error);
       // Fallback graceful jika kolom fisik belum dimigrasi di environment runtime
-      await updateTenantWithOccCas(
+      const fallbackOcc = await updateTenantWithOccCas(
         supabase,
         tenant.id,
         (freshTenant) => {
@@ -100,6 +100,14 @@ export async function POST(
           };
         }
       );
+
+      if (!fallbackOcc.success) {
+        console.error('[Reseller Compliance API] Fallback metadata OCC update failed:', fallbackOcc.error);
+        return NextResponse.json(
+          { success: false, error: 'Gagal memperbarui kepatuhan legal reseller.', detail: fallbackOcc.message || fallbackOcc.error },
+          { status: fallbackOcc.error === 'OCC_CONFLICT' ? 409 : 500 }
+        );
+      }
     }
 
     return NextResponse.json({

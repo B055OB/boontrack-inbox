@@ -2,11 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { PUT as handleSettingsPut } from '@/app/api/v1/tenants/[slug]/settings/route';
 import { PUT as handleThemePut } from '@/app/api/v1/tenants/[slug]/theme/route';
+import { PATCH as handleAdminConfigPatch } from '@/app/api/v1/admin/tenants/[slug]/config/route';
+import { POST as handleResendVerification } from '@/app/api/v1/auth/resend-verification/route';
 import * as merchantSessionModule from '@/lib/auth/merchant-session';
 import * as subscriptionGuardModule from '@/lib/subscription-guard';
 import * as supabaseClientModule from '@/lib/supabaseClient';
+import * as emailModule from '@/lib/email/boonpilot-service-emails';
 
 describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
   let mockSupabase: any;
@@ -214,6 +218,136 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
       for (const d of dirs) scanDir(d);
 
       expect(clientFilesDirectlyUpdatingTenants).toEqual([]);
+    });
+  });
+
+  describe('Layer 4: Blocker WS02-C & WS02-D Regression Guards', () => {
+    it('5. admin/tenants/[slug]/config with body.pricing.custom_packages writes to pricing_custom_packages and NEVER mutates metadata.products', async () => {
+      let capturedPayload: any = null;
+      const initialProducts = [{ id: 'canon-p1', name: 'Canonical Product 1' }];
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: {
+                id: 'tenant-uuid-1',
+                slug: 'shabu-ajhi',
+                tier: 'STARTER',
+                metadata: {
+                  products: initialProducts,
+                },
+                updated_at: '2026-11-20T10:00:00.000Z',
+              },
+              error: null,
+            }),
+            update: jest.fn().mockImplementation((payload: any) => {
+              capturedPayload = payload;
+              const updateBuilder: any = {};
+              updateBuilder.eq = jest.fn().mockReturnValue(updateBuilder);
+              updateBuilder.select = jest.fn().mockResolvedValue({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: payload.metadata, updated_at: payload.updated_at }],
+                error: null,
+              });
+              updateBuilder.then = (resolve: any) => resolve({
+                data: [{ id: 'tenant-uuid-1', slug: 'shabu-ajhi', metadata: payload.metadata, updated_at: payload.updated_at }],
+                error: null,
+              });
+              return updateBuilder;
+            }),
+          };
+        }
+        if (table === 'tenant_config_audit_logs') {
+          return {
+            insert: jest.fn().mockResolvedValue({ error: null }),
+          };
+        }
+        return mockSupabase;
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/admin/tenants/shabu-ajhi/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pricing: {
+            custom_packages: [{ id: 'pkg-1', name: 'Custom Catering Package' }],
+          },
+        }),
+      });
+
+      const res = await handleAdminConfigPatch(req, { params: Promise.resolve({ slug: 'shabu-ajhi' }) });
+      expect(res.status).toBe(200);
+      expect(capturedPayload).not.toBeNull();
+      // Must be saved under pricing_custom_packages
+      expect(capturedPayload.metadata.pricing_custom_packages).toEqual([{ id: 'pkg-1', name: 'Custom Catering Package' }]);
+      // MUST NOT touch or overwrite metadata.products!
+      expect(capturedPayload.metadata.products).toEqual(initialProducts);
+    });
+
+    it('6. resend-verification aborts and does NOT send email when updateTenantWithOccCas returns failure', async () => {
+      let emailSent = false;
+      jest.spyOn(emailModule, 'sendBoonPilotVerificationEmail').mockImplementation(async () => {
+        emailSent = true;
+        return { success: true } as any;
+      });
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: {
+                id: 'tenant-uuid-1',
+                slug: 'shabu-ajhi',
+                name: 'Shabu Ajhi',
+                updated_at: '2026-11-20T10:00:00.000Z',
+                metadata: {
+                  email: 'test@merchant.com',
+                },
+              },
+              error: null,
+            }),
+            update: jest.fn().mockImplementation(() => {
+              // Return error / 0 matched rows to simulate OCC conflict
+              const updateBuilder: any = {};
+              updateBuilder.eq = jest.fn().mockReturnValue(updateBuilder);
+              updateBuilder.select = jest.fn().mockResolvedValue({
+                data: [], // 0 rows affected = conflict
+                error: null,
+              });
+              updateBuilder.then = (resolve: any) => resolve({
+                data: [],
+                error: null,
+              });
+              return updateBuilder;
+            }),
+          };
+        }
+        return mockSupabase;
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'test@merchant.com',
+        }),
+      });
+
+      const res = await handleResendVerification(req);
+      expect(res.status).toBe(409);
+      expect(emailSent).toBe(false);
+    });
+
+    it('7. audit-tenant-writers.js AST scanner exits 0 on self-test clean run', () => {
+      const output = execSync('node scripts/audit-tenant-writers.js --self-test', {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+      expect(output).toContain('[SELF-TEST PASSED]');
     });
   });
 });

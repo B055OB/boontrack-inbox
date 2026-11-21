@@ -407,7 +407,7 @@ export async function POST(
     // 2b. Update Langganan Tenant ke Tier jika order bertipe subscription platform DAN terverifikasi Super Admin / Internal Machine
     if (isSubscriptionOrder && canActivateSubscription) {
       try {
-        await updateTenantWithOccCas(
+        const occRes = await updateTenantWithOccCas(
           supabase,
           slug,
           (freshTenant) => {
@@ -423,6 +423,14 @@ export async function POST(
             };
           }
         );
+
+        if (!occRes.success) {
+          console.error('[QUICK_PAID_OCC_FAILURE] Subscription tenant status update failed:', {
+            slug,
+            error: occRes.error,
+            message: occRes.message,
+          });
+        }
 
         await recordTenantConfigAudit({
           tenantId: order.tenant_id || null,

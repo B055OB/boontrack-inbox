@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
-import { updateTenantWithOccCas } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { projectCanonicalProductsToTenantMetadata } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 export const ONLINEBOOST_DIGITAL_PRODUCTS = [
   {
@@ -275,9 +275,9 @@ export class OnlineboostSeedService {
       }
     }
 
-    // 3. Upsert to `tenants.metadata.products` via OCC CAS (Pure Delta on fresh.metadata)
+    // 3. Upsert to `tenants.metadata.products` via Canonical Projection capability (Pure Delta on fresh.metadata)
     let totalProductsCount = 0;
-    const { success: occSuccess, error: metaUpdateErr } = await updateTenantWithOccCas(
+    const { success: occSuccess, error: metaUpdateErr } = await projectCanonicalProductsToTenantMetadata(
       supabase,
       tenant.id,
       (fresh) => {
@@ -350,8 +350,7 @@ export class OnlineboostSeedService {
             updated_at: new Date().toISOString(),
           },
         };
-      },
-      { allowProductsProjection: true }
+      }
     );
 
     if (!occSuccess) {

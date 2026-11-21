@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { updateTenantWithOccCas, TenantOccRecord } from '@/lib/tenants/atomic-tenant-metadata-writer';
+import { updateTenantWithOccCas, projectCanonicalProductsToTenantMetadata, TenantOccRecord } from '@/lib/tenants/atomic-tenant-metadata-writer';
 
 describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD', () => {
   let mockDbState: {
@@ -204,8 +204,8 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
         },
       });
 
-      // Product projection CAS writer (allowProductsProjection: true)
-      const projectionResult = await updateTenantWithOccCas(
+      // Product projection CAS writer via dedicated capability
+      const projectionResult = await projectCanonicalProductsToTenantMetadata(
         supabaseAdmin,
         TENANT_ID,
         (freshTenant) => {
@@ -217,7 +217,7 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
             },
           };
         },
-        { allowProductsProjection: true, initialBackoffMs: 5 }
+        { initialBackoffMs: 5 }
       );
 
       expect(projectionResult.success).toBe(true);
@@ -233,7 +233,7 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
   });
 
   describe('Scenario 3: ADR-P0-07 Single-Writer Clobber Guard Invariant', () => {
-    it('strictly preserves freshTenant.metadata.products when non-canonical writer passes rogue products', async () => {
+    it('strictly preserves freshTenant.metadata.products unconditionally when general writer passes rogue products', async () => {
       const supabaseAdmin = createMockSupabaseAdmin();
 
       // Rogue / non-canonical writer tries to overwrite products with empty array
@@ -246,8 +246,7 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
             settings_saved: true,
             products: [], // Rogue attempt to wipe products!
           },
-        }),
-        { allowProductsProjection: false } // Default / non-canonical
+        })
       );
 
       expect(rogueResult.success).toBe(true);
@@ -259,10 +258,10 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
       expect(finalTenant.metadata?.products).toHaveLength(1);
     });
 
-    it('allows product mutations only when allowProductsProjection === true (canonical product writer / seed service)', async () => {
+    it('allows product mutations only via projectCanonicalProductsToTenantMetadata (canonical product writer / seed service)', async () => {
       const supabaseAdmin = createMockSupabaseAdmin();
 
-      const seedResult = await updateTenantWithOccCas(
+      const seedResult = await projectCanonicalProductsToTenantMetadata(
         supabaseAdmin,
         TENANT_ID,
         (freshTenant) => ({
@@ -270,8 +269,7 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
             ...freshTenant.metadata,
             products: [P1, P2],
           },
-        }),
-        { allowProductsProjection: true }
+        })
       );
 
       expect(seedResult.success).toBe(true);
@@ -484,6 +482,31 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
       expect(finalTenant.metadata?.shipping_config?.delivery_mode).toBe('instant_only');
       // Product projection [P1, P2] must be 100% intact!
       expect(finalTenant.metadata?.products).toEqual([P1, P2]);
+    });
+  });
+
+  describe('Scenario 6: Blocker WS02-C & WS02-D Invariant Verification', () => {
+    it('verifies updateTenantWithOccCas unconditionally preserves products even when caller attempts to pass products in metadata', async () => {
+      const supabaseAdmin = createMockSupabaseAdmin();
+
+      const result = await updateTenantWithOccCas(
+        supabaseAdmin,
+        TENANT_ID,
+        (freshTenant) => ({
+          metadata: {
+            ...freshTenant.metadata,
+            products: [{ id: 'rogue-id', name: 'Rogue Product', slug: 'rogue' }],
+            theme: 'dark',
+          },
+        })
+      );
+
+      expect(result.success).toBe(true);
+      const finalTenant = mockDbState.tenants[TENANT_ID];
+      expect(finalTenant.metadata?.theme).toBe('dark');
+      // Must preserve canonical P1 verbatim — rogue product MUST NOT leak into products
+      expect(finalTenant.metadata?.products).toEqual([P1]);
+      expect(finalTenant.metadata?.products[0].id).toBe('prod-uuid-1');
     });
   });
 });

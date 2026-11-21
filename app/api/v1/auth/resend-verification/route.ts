@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       tenant.id,
       (freshTenant) => {
@@ -174,6 +174,14 @@ export async function POST(req: NextRequest) {
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[ResendVerification] OCC CAS update failed:', occRes.error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal memperbarui token verifikasi.', detail: occRes.message || occRes.error },
+        { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+      );
+    }
 
     const verificationUrl = `${baseUrl}/auth/confirm?token=${newToken}&type=merchant&slug=${tenant.slug}&id=${tenant.id}`;
 

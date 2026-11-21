@@ -588,7 +588,7 @@ export default function CustomerDatabaseTab({
           .maybeSingle();
 
         if (conn?.instance_name) {
-          const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+          const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-sender');
           await sendEvolutionTextMessage(
             conn.instance_name,
             activeFollowUpCustomer.customerPhone,

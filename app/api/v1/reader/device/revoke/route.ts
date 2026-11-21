@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Update Supabase tenants.metadata.reader_device via OCC CAS
     if (supabase && tenantRow?.id) {
-      await updateTenantWithOccCas(
+      const occRes = await updateTenantWithOccCas(
         supabase,
         tenantRow.id,
         (freshTenant) => {
@@ -70,6 +70,14 @@ export async function POST(req: NextRequest) {
           };
         }
       );
+
+      if (!occRes.success) {
+        console.error('[Reader Device Revoke] OCC CAS update failed:', occRes.error);
+        return NextResponse.json(
+          { success: false, error: 'Gagal memutuskan akses perangkat.', detail: occRes.message || occRes.error },
+          { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+        );
+      }
     }
 
     return NextResponse.json({

@@ -25,15 +25,14 @@ export interface TenantOccPatch {
 }
 
 export interface TenantOccOptions {
-  /**
-   * Only lib/products/canonical-product-writer.ts may pass true.
-   * If false/omitted, freshTenant.metadata.products is strictly preserved verbatim.
-   */
-  allowProductsProjection?: boolean;
   maxAttempts?: number;
   initialBackoffMs?: number;
   updatedAt?: string;
   selectColumns?: string;
+}
+
+interface InternalOccOptions extends TenantOccOptions {
+  allowProductsProjection?: boolean;
 }
 
 export interface TenantOccResult<T = any> {
@@ -48,14 +47,14 @@ export interface TenantOccResult<T = any> {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Executes a Compare-And-Swap (CAS) update on public.tenants with bounded exponential
- * backoff retry and Single-Writer projection protection (ADR-P0-07).
+ * Internal OCC engine implementing Compare-And-Swap (CAS) update on public.tenants
+ * with bounded exponential backoff retry and ADR-P0-07 Single-Writer projection guard.
  */
-export async function updateTenantWithOccCas(
+async function executeTenantOccInternal(
   supabaseAdmin: any,
   tenantIdOrSlug: string,
   buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
-  options: TenantOccOptions = {}
+  options: InternalOccOptions = {}
 ): Promise<TenantOccResult> {
   const maxAttempts = options.maxAttempts ?? 4;
   const initialBackoffMs = options.initialBackoffMs ?? 25;
@@ -251,4 +250,48 @@ export async function updateTenantWithOccCas(
     message: `Exhausted ${maxAttempts} OCC CAS retry attempts: ${lastError}`,
     attempts: maxAttempts,
   };
+}
+
+/**
+ * Executes a Compare-And-Swap (CAS) update on public.tenants with bounded exponential
+ * backoff retry.
+ *
+ * ADR-P0-07 SINGLE-WRITER GUARANTEE:
+ * Unconditionally preserves freshTenant.metadata.products verbatim.
+ * General callers (settings, theme, shipping, admin config) CANNOT mutate or project
+ * catalog products through this function under any circumstances.
+ */
+export async function updateTenantWithOccCas(
+  supabaseAdmin: any,
+  tenantIdOrSlug: string,
+  buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
+  options: TenantOccOptions = {}
+): Promise<TenantOccResult> {
+  return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, {
+    ...options,
+    allowProductsProjection: false, // UNCONDITIONALLY FORBIDDEN
+  });
+}
+
+/**
+ * Dedicated internal capability function for canonical product projection (ADR-P0-07).
+ *
+ * RESTRICTED ACCESS:
+ * Imported ONLY by:
+ * - lib/products/canonical-product-writer.ts
+ * - lib/services/onlineboost-seed.service.ts
+ *
+ * General routes, merchant settings, theme, shipping, and admin config endpoints
+ * MUST NOT import or call this function.
+ */
+export async function projectCanonicalProductsToTenantMetadata(
+  supabaseAdmin: any,
+  tenantIdOrSlug: string,
+  buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
+  options: TenantOccOptions = {}
+): Promise<TenantOccResult> {
+  return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, {
+    ...options,
+    allowProductsProjection: true, // RESTRICTED CAPABILITY
+  });
 }

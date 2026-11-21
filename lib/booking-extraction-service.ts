@@ -377,7 +377,7 @@ export async function processFunnelBookingMessage(
         created_at: new Date().toISOString(),
       };
 
-      await updateTenantWithOccCas(
+      const occRes = await updateTenantWithOccCas(
         supabase,
         tenant.id,
         (freshTenant) => {
@@ -391,6 +391,14 @@ export async function processFunnelBookingMessage(
           };
         }
       );
+
+      if (!occRes.success) {
+        console.error('[BOOKING_EXTRACTION_OCC_FAILURE] Failed to record booking in tenant metadata:', {
+          tenantId: tenant.id,
+          error: occRes.error,
+          message: occRes.message,
+        });
+      }
     } catch (err) {
       console.error('[Booking Service] Error updating tenant metadata bookings:', err);
     }

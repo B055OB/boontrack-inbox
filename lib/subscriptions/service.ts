@@ -347,7 +347,7 @@ export async function renewPeriodQuota(
     .maybeSingle();
 
   if (tenant?.metadata?.subscription) {
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       sub.tenant_id,
       (fresh) => {
@@ -363,6 +363,11 @@ export async function renewPeriodQuota(
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[Subscription Service] Failed to update tenant subscription metadata:', occRes.error);
+      return { success: false, error: occRes.message || occRes.error };
+    }
   }
 
   return { success: true, newPeriodEndsAt };

@@ -44,9 +44,9 @@ export async function POST(req: NextRequest) {
 
     // Sinkronkan ke Supabase metadata jika registrasi domain berhasil
     if (coreRes.ok) {
-      try {
-        const supabase = getSupabase();
-        await updateTenantWithOccCas(
+      const supabase = getSupabase();
+      if (supabase) {
+        const occRes = await updateTenantWithOccCas(
           supabase,
           tenant_slug,
           (freshTenant) => {
@@ -60,8 +60,13 @@ export async function POST(req: NextRequest) {
             };
           }
         );
-      } catch (err) {
-        console.warn('[custom-domain/route] Supabase sync metadata warning:', err);
+        if (!occRes.success) {
+          console.error('[custom-domain/route] Supabase sync metadata failed:', occRes.error);
+          return NextResponse.json(
+            { status: 'error', detail: 'Domain berhasil didaftarkan namun gagal memperbarui status tenant.', error: occRes.message || occRes.error },
+            { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+          );
+        }
       }
     }
 
@@ -113,9 +118,9 @@ export async function DELETE(req: NextRequest) {
 
     // Hapus domain dari metadata Supabase
     if (coreRes.ok) {
-      try {
-        const supabase = getSupabase();
-        await updateTenantWithOccCas(
+      const supabase = getSupabase();
+      if (supabase) {
+        const occRes = await updateTenantWithOccCas(
           supabase,
           tenantSlug,
           (freshTenant) => {
@@ -130,8 +135,13 @@ export async function DELETE(req: NextRequest) {
             };
           }
         );
-      } catch (err) {
-        console.warn('[custom-domain/route] Supabase clear domain warning:', err);
+        if (!occRes.success) {
+          console.error('[custom-domain/route] Supabase clear domain failed:', occRes.error);
+          return NextResponse.json(
+            { status: 'error', detail: 'Domain dihapus namun gagal memperbarui status tenant.', error: occRes.message || occRes.error },
+            { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+          );
+        }
       }
     }
 

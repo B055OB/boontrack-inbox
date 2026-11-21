@@ -74,7 +74,7 @@ export async function GET(
         }
 
         // Simpan pembaruan counter & index ke Supabase via OCC CAS (Pure Delta)
-        await updateTenantWithOccCas(
+        const occRes = await updateTenantWithOccCas(
           supabase,
           tenant.id,
           (freshTenant) => {
@@ -108,6 +108,14 @@ export async function GET(
             };
           }
         );
+
+        if (!occRes.success) {
+          console.error('[SHORTLINK_ROTATOR_OCC_FAILURE] Failed to update CS rotator count:', {
+            tenantId: tenant.id,
+            error: occRes.error,
+            message: occRes.message,
+          });
+        }
 
         const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(defaultMsg)}`;
 

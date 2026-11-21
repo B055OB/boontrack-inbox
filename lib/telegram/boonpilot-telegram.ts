@@ -772,7 +772,7 @@ export async function handleTelegramUpdate(
         const { data: tenant } = await tenantQuery.maybeSingle();
 
         if (tenant) {
-          await updateTenantWithOccCas(
+          const occRes = await updateTenantWithOccCas(
             supabase,
             tenant.id,
             (fresh) => {
@@ -786,6 +786,14 @@ export async function handleTelegramUpdate(
               };
             }
           );
+
+          if (!occRes.success) {
+            console.error('[BOONPILOT_TELEGRAM_OCC_FAILURE] Failed to save telegram_chat_id to tenant metadata:', {
+              tenantId: tenant.id,
+              error: occRes.error,
+              message: occRes.message,
+            });
+          }
 
           const tenantName = tenant.name || tenant.slug || 'Toko Anda';
           const replyText =

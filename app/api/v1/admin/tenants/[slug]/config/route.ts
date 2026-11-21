@@ -354,7 +354,7 @@ export async function PATCH(
           freshMeta.pricing = body.pricing;
         }
         if (body.pricing?.custom_packages) {
-          freshMeta.products = body.pricing.custom_packages;
+          freshMeta.pricing_custom_packages = body.pricing.custom_packages;
         }
         if (auto_replies !== undefined) {
           freshMeta.auto_replies = auto_replies;
@@ -407,8 +407,7 @@ export async function PATCH(
         }
 
         return patch;
-      },
-      { allowProductsProjection: Boolean(body.pricing?.custom_packages) }
+      }
     );
 
     if (!occResult.success) {

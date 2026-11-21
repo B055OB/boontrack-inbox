@@ -415,7 +415,7 @@ export async function POST(req: NextRequest) {
       if (tenantForHeartbeat?.id) {
         const existingDevice = tenantForHeartbeat.metadata?.reader_device || {};
         const deviceName = body.device_name || body.device || existingDevice.device_name || 'BoonTrack Reader Android';
-        await updateTenantWithOccCas(
+        const occRes = await updateTenantWithOccCas(
           supabase,
           tenantForHeartbeat.id,
           (freshTenant) => {
@@ -435,6 +435,14 @@ export async function POST(req: NextRequest) {
             };
           }
         );
+
+        if (!occRes.success) {
+          console.error('[READER_NOTIFICATION_OCC_FAILURE] Heartbeat OCC update failed:', {
+            tenantId: tenantForHeartbeat.id,
+            error: occRes.error,
+            message: occRes.message,
+          });
+        }
       }
     } catch (heartbeatErr) {
       console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);

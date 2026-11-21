@@ -103,7 +103,7 @@ export async function saveStoreShippingConfig(
         .maybeSingle();
 
       if (tenantRow) {
-        await updateTenantWithOccCas(
+        const occRes = await updateTenantWithOccCas(
           supabase,
           cleanSlug,
           (freshTenant) => {
@@ -158,6 +158,11 @@ export async function saveStoreShippingConfig(
             return { metadata: freshMeta };
           }
         );
+
+        if (!occRes.success) {
+          console.error('[Self-Pickup Config] OCC CAS update failed:', occRes.error);
+          return { success: false, error: occRes.message || occRes.error };
+        }
       }
     } catch (metaErr) {
       console.warn('[Self-Pickup Config] Note updating tenants metadata:', metaErr);

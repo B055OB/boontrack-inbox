@@ -811,30 +811,31 @@ export class StudioCreditService {
     const resolvedTier = isAlreadyPaidTier ? tenant.tier : (params.tier || 'member');
 
     // 3. Update tenants table via OCC CAS
-    try {
-      await updateTenantWithOccCas(
-        supabase,
-        tenant.id,
-        (fresh) => {
-          const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? { ...fresh.metadata } : {};
-          freshMeta.is_shop_subscriber = true;
-          freshMeta.is_shop_member = true;
-          freshMeta.shop_activation_bonus_granted = true;
-          freshMeta.shop_activation_bonus_granted_at = new Date().toISOString();
-          if (params.subscriptionId) freshMeta.shop_subscription_id = params.subscriptionId;
-          if (params.invoiceId) freshMeta.shop_activation_invoice_id = params.invoiceId;
+    const occRes = await updateTenantWithOccCas(
+      supabase,
+      tenant.id,
+      (fresh) => {
+        const freshMeta = (fresh.metadata && typeof fresh.metadata === 'object') ? { ...fresh.metadata } : {};
+        freshMeta.is_shop_subscriber = true;
+        freshMeta.is_shop_member = true;
+        freshMeta.shop_activation_bonus_granted = true;
+        freshMeta.shop_activation_bonus_granted_at = new Date().toISOString();
+        if (params.subscriptionId) freshMeta.shop_subscription_id = params.subscriptionId;
+        if (params.invoiceId) freshMeta.shop_activation_invoice_id = params.invoiceId;
 
-          const patch: Record<string, any> = {
-            metadata: freshMeta,
-          };
-          if (!isAlreadyPaidTier) {
-            patch.tier = resolvedTier;
-          }
-          return patch;
+        const patch: Record<string, any> = {
+          metadata: freshMeta,
+        };
+        if (!isAlreadyPaidTier) {
+          patch.tier = resolvedTier;
         }
-      );
-    } catch (tenantUpdErr) {
-      console.warn('[StudioCreditService] Tenant update warning:', tenantUpdErr);
+        return patch;
+      }
+    );
+
+    if (!occRes.success) {
+      console.error('[StudioCreditService] Tenant OCC update failed:', occRes.error);
+      throw new Error(`STUDIO_CREDIT_OCC_FAILURE: ${occRes.message || occRes.error}`);
     }
 
     // 4. Update tenant_entitlements

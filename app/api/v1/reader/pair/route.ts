@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Token valid - Update metadata tenant dengan info perangkat terhubung via OCC CAS
     const pairedAt = new Date().toISOString();
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       matchedTenant.id,
       (freshTenant) => {
@@ -142,6 +142,14 @@ export async function POST(req: NextRequest) {
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[Reader Pair] OCC CAS pairing update failed:', occRes.error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal menghubungkan perangkat.', detail: occRes.message || occRes.error },
+        { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+      );
+    }
 
     const credential = `bt_${matchedTenant.slug}_${Date.now()}`;
 

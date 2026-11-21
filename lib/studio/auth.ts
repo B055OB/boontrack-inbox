@@ -113,7 +113,7 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
     }
 
     // Refresh pending tenant with new/current token via OCC CAS
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       existingTenant.id,
       (fresh) => {
@@ -147,6 +147,11 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[Studio Auth] Failed to refresh pending tenant token:', occRes.error);
+      return null;
+    }
 
     return {
       success: true,

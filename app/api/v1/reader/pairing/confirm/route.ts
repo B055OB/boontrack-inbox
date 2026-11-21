@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Simpan status perangkat terhubung via OCC CAS
     const nowStr = new Date().toISOString();
-    await updateTenantWithOccCas(
+    const occRes = await updateTenantWithOccCas(
       supabase,
       tenant.id,
       (freshTenant) => {
@@ -82,6 +82,14 @@ export async function POST(req: NextRequest) {
         };
       }
     );
+
+    if (!occRes.success) {
+      console.error('[Reader Pairing Confirm] OCC CAS update failed:', occRes.error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal mengonfirmasi sesi pairing perangkat.', detail: occRes.message || occRes.error },
+        { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

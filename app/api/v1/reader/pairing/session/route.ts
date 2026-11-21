@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (supabase && tenantRow?.id) {
-      await updateTenantWithOccCas(
+      const occRes = await updateTenantWithOccCas(
         supabase,
         tenantRow.id,
         (freshTenant) => {
@@ -90,6 +90,14 @@ export async function POST(req: NextRequest) {
           };
         }
       );
+
+      if (!occRes.success) {
+        console.error('[Reader Pairing Session] OCC CAS update failed:', occRes.error);
+        return NextResponse.json(
+          { success: false, error: 'Gagal menyimpan sesi pairing.', detail: occRes.message || occRes.error },
+          { status: occRes.error === 'OCC_CONFLICT' ? 409 : 500 }
+        );
+      }
     }
 
     return NextResponse.json({
