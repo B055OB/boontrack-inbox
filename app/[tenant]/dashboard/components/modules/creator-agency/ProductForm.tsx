@@ -3,6 +3,7 @@
 import React from 'react';
 import { Sparkles, Video, FileText, Link as LinkIcon } from 'lucide-react';
 import { ProductItem, FulfillmentMetadata, normalizeBriefingUrl } from '@/lib/product-catalog';
+import PaymentOptionsConfigSection from '../PaymentOptionsConfigSection';
 
 export interface ModularProductFormProps {
   productForm: ProductItem;
@@ -115,6 +116,12 @@ export default function CreatorAgencyProductForm({
           />
         </div>
       </div>
+
+      {/* Skema & Opsi Pembayaran (Stage B1 Shell) */}
+      <PaymentOptionsConfigSection
+        productForm={safeForm}
+        setProductForm={setProductForm}
+      />
     </div>
   );
 }

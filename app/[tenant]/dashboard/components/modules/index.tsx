@@ -27,6 +27,13 @@ import PhysicalRetailShippingTab from './physical-retail/ShippingTab';
 import FnbCulinaryProductForm from './fnb-culinary/ProductForm';
 import FnbInstantCourier from './fnb-culinary/InstantCourier';
 
+// 7. Payment Options Configuration Section (Stage B1)
+import PaymentOptionsConfigSection, {
+  PaymentOptionsConfigSectionProps,
+  STAGE_B1_ALLOWED_SCHEMES,
+  STAGE_B1_PREVIEW_TRIGGERS,
+} from './PaymentOptionsConfigSection';
+
 export type DomainVerticalKey =
   | 'field-service'
   | 'digital-product'
@@ -125,4 +132,8 @@ export {
   PhysicalRetailShippingTab,
   FnbCulinaryProductForm,
   FnbInstantCourier,
+  PaymentOptionsConfigSection,
+  STAGE_B1_ALLOWED_SCHEMES,
+  STAGE_B1_PREVIEW_TRIGGERS,
 };
+export type { PaymentOptionsConfigSectionProps };

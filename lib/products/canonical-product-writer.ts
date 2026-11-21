@@ -165,6 +165,198 @@ export function isCustomHtmlCleanup(body: any): boolean {
   return hasExplicitDisable;
 }
 
+export interface PaymentSchemeValidationResult {
+  valid: boolean;
+  status: number;
+  code?: string;
+  error?: string;
+  scheme?: 'FULL_PREPAID';
+}
+
+/**
+ * Extracts candidate scheme values and allowed_schemes from a payment_options object/value.
+ */
+function collectFromPaymentOptionObject(opt: any, collected: any[]): void {
+  if (opt === undefined || opt === null) return;
+  if (typeof opt === 'string' || typeof opt === 'number') {
+    collected.push(opt);
+    return;
+  }
+  if (Array.isArray(opt)) {
+    collected.push(...opt);
+    return;
+  }
+  if (typeof opt === 'object') {
+    if (opt.scheme !== undefined) collected.push(opt.scheme);
+    if (opt.payment_scheme !== undefined) collected.push(opt.payment_scheme);
+    if (opt.paymentScheme !== undefined) collected.push(opt.paymentScheme);
+
+    if (Array.isArray(opt.allowed_schemes)) {
+      collected.push(...opt.allowed_schemes);
+    } else if (opt.allowed_schemes !== undefined) {
+      collected.push(opt.allowed_schemes);
+    }
+    if (Array.isArray(opt.allowedSchemes)) {
+      collected.push(...opt.allowedSchemes);
+    } else if (opt.allowedSchemes !== undefined) {
+      collected.push(opt.allowedSchemes);
+    }
+  }
+}
+
+/**
+ * Extracts all candidate payment schemes and allowed_schemes entries from a location container.
+ * Inspects snake_case and camelCase aliases independently without short-circuiting.
+ */
+function collectSchemeValuesFromContainer(container: any, collected: any[]): void {
+  if (!container || typeof container !== 'object') return;
+
+  // 1. Direct scheme keys (independent inspection)
+  if (container.payment_scheme !== undefined) collected.push(container.payment_scheme);
+  if (container.paymentScheme !== undefined) collected.push(container.paymentScheme);
+
+  // 2. allowed_schemes / allowedSchemes (independent inspection)
+  if (Array.isArray(container.allowed_schemes)) {
+    collected.push(...container.allowed_schemes);
+  } else if (container.allowed_schemes !== undefined) {
+    collected.push(container.allowed_schemes);
+  }
+  if (Array.isArray(container.allowedSchemes)) {
+    collected.push(...container.allowedSchemes);
+  } else if (container.allowedSchemes !== undefined) {
+    collected.push(container.allowedSchemes);
+  }
+
+  // 3. payment_options AND paymentOptions (independent dual inspection - NO short-circuit!)
+  if (container.payment_options !== undefined && container.payment_options !== null) {
+    collectFromPaymentOptionObject(container.payment_options, collected);
+  }
+  if (container.paymentOptions !== undefined && container.paymentOptions !== null) {
+    collectFromPaymentOptionObject(container.paymentOptions, collected);
+  }
+}
+
+/**
+ * Strips unratified payment scheme and payment option keys from objects
+ * to guarantee zero unratified persistence into SQL columns or metadata.
+ */
+export function stripPaymentSchemeHints(target: any): void {
+  if (!target || typeof target !== 'object') return;
+  delete target.payment_scheme;
+  delete target.paymentScheme;
+  delete target.payment_options;
+  delete target.paymentOptions;
+  delete target.allowed_schemes;
+  delete target.allowedSchemes;
+}
+
+/**
+ * Stage B1 Independent Multi-Location Payment Scheme Tamper Validator (CTO Stage B1 Section 4)
+ *
+ * Mandate:
+ * 1. Independently inspects ALL locations and aliases simultaneously (NO short-circuit || or ternary):
+ *    - Top-level (body)
+ *    - body.metadata
+ *    - body.fulfillment_metadata AND body.fulfillmentMetadata
+ *    - body.single_page_config AND body.singlePageConfig
+ *    - Nested single_page_config / singlePageConfig under fulfillment_metadata / fulfillmentMetadata
+ * 2. Inspects payment_options AND paymentOptions independently within each container.
+ * 3. Collects EVERY scheme value and EVERY entry in EVERY allowed_schemes / allowedSchemes array across ALL locations.
+ * 4. If ANY collected value in ANY location/alias is DP_PREPAID or COD_FULL (even if another alias says FULL_PREPAID!),
+ *    immediately rejects with HTTP 403 (PAYMENT_SCHEME_GATED).
+ * 5. If ANY collected value in ANY location/alias is not 'FULL_PREPAID' (and not empty/null/undefined),
+ *    immediately rejects with HTTP 400 (INVALID_PAYMENT_SCHEME).
+ * 6. Returns HTTP 200 with scheme: 'FULL_PREPAID' only when all collected values are valid FULL_PREPAID (or omitted).
+ */
+export function validatePaymentSchemePayload(body: any): PaymentSchemeValidationResult {
+  if (!body || typeof body !== 'object') {
+    return { valid: true, status: 200, scheme: 'FULL_PREPAID' };
+  }
+
+  const collected: any[] = [];
+
+  // Location 1: Top-level body
+  collectSchemeValuesFromContainer(body, collected);
+
+  // Location 2: body.metadata
+  if (body.metadata && typeof body.metadata === 'object') {
+    collectSchemeValuesFromContainer(body.metadata, collected);
+  }
+
+  // Location 3: body.fulfillment_metadata AND body.fulfillmentMetadata
+  if (body.fulfillment_metadata && typeof body.fulfillment_metadata === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillment_metadata, collected);
+  }
+  if (body.fulfillmentMetadata && typeof body.fulfillmentMetadata === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillmentMetadata, collected);
+  }
+
+  // Location 4: body.single_page_config AND body.singlePageConfig
+  if (body.single_page_config && typeof body.single_page_config === 'object') {
+    collectSchemeValuesFromContainer(body.single_page_config, collected);
+  }
+  if (body.singlePageConfig && typeof body.singlePageConfig === 'object') {
+    collectSchemeValuesFromContainer(body.singlePageConfig, collected);
+  }
+
+  // Nested single_page_config / singlePageConfig under fulfillment_metadata / fulfillmentMetadata
+  if (body.fulfillment_metadata?.single_page_config && typeof body.fulfillment_metadata.single_page_config === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillment_metadata.single_page_config, collected);
+  }
+  if (body.fulfillment_metadata?.singlePageConfig && typeof body.fulfillment_metadata.singlePageConfig === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillment_metadata.singlePageConfig, collected);
+  }
+  if (body.fulfillmentMetadata?.single_page_config && typeof body.fulfillmentMetadata.single_page_config === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillmentMetadata.single_page_config, collected);
+  }
+  if (body.fulfillmentMetadata?.singlePageConfig && typeof body.fulfillmentMetadata.singlePageConfig === 'object') {
+    collectSchemeValuesFromContainer(body.fulfillmentMetadata.singlePageConfig, collected);
+  }
+
+  // Normalize entries: filter empty/null/undefined
+  const normalizedEntries = collected
+    .filter((raw) => raw !== undefined && raw !== null && String(raw).trim() !== '')
+    .map((raw) => ({ raw, str: String(raw).trim().toUpperCase() }));
+
+  // Priority 1: Check for gated DP_PREPAID across ANY location
+  for (const { str } of normalizedEntries) {
+    if (str === 'DP_PREPAID' || str === 'CORE-PAY-DP' || str === 'DP') {
+      return {
+        valid: false,
+        status: 403,
+        code: 'PAYMENT_SCHEME_GATED',
+        error: "Skema pembayaran 'DP_PREPAID' terkunci pada Stage B1 (Gated by CORE-PAY-DP). Hanya skema 'FULL_PREPAID' yang diizinkan.",
+      };
+    }
+  }
+
+  // Priority 2: Check for gated COD_FULL across ANY location
+  for (const { str } of normalizedEntries) {
+    if (str === 'COD_FULL' || str === 'CORE-COD' || str === 'COD') {
+      return {
+        valid: false,
+        status: 403,
+        code: 'PAYMENT_SCHEME_GATED',
+        error: "Skema pembayaran 'COD_FULL' terkunci pada Stage B1 (Gated by CORE-COD). Hanya skema 'FULL_PREPAID' yang diizinkan.",
+      };
+    }
+  }
+
+  // Priority 3: Check for any unrecognized/invalid scheme
+  for (const { raw, str } of normalizedEntries) {
+    if (str !== 'FULL_PREPAID') {
+      return {
+        valid: false,
+        status: 400,
+        code: 'INVALID_PAYMENT_SCHEME',
+        error: `Skema pembayaran '${String(raw)}' tidak valid. Hanya skema 'FULL_PREPAID' yang diizinkan pada Stage B1.`,
+      };
+    }
+  }
+
+  return { valid: true, status: 200, scheme: 'FULL_PREPAID' };
+}
+
 /**
  * Derives a clean metadata projection item from a canonical SQL product row.
  * Bulky custom_html is stripped to maintain lightweight metadata storage.
@@ -175,11 +367,15 @@ export function projectSqlRowToMetadataItem(sqlRow: any): any {
   const fulfillmentMeta = typeof sqlRow.fulfillment_metadata === 'object' && sqlRow.fulfillment_metadata !== null
     ? { ...sqlRow.fulfillment_metadata }
     : {};
+  stripPaymentSchemeHints(fulfillmentMeta);
 
   let spc = fulfillmentMeta.single_page_config ? { ...fulfillmentMeta.single_page_config } : undefined;
-  if (spc && spc.custom_html) {
-    const { custom_html: _, ...restSpc } = spc;
-    spc = restSpc;
+  if (spc) {
+    stripPaymentSchemeHints(spc);
+    if (spc.custom_html) {
+      const { custom_html: _, ...restSpc } = spc;
+      spc = restSpc;
+    }
   }
 
   const name = sqlRow.title || sqlRow.name || 'Produk';
@@ -187,7 +383,7 @@ export function projectSqlRowToMetadataItem(sqlRow: any): any {
   const price = Number(sqlRow.price) || 0;
   const promoPrice = sqlRow.promo_price ? Number(sqlRow.promo_price) : 0;
 
-  return {
+  const projectedItem = {
     id: sqlRow.id,
     name,
     title: name,
@@ -212,6 +408,8 @@ export function projectSqlRowToMetadataItem(sqlRow: any): any {
     variants: Array.isArray(sqlRow.variants) ? sqlRow.variants : undefined,
     updated_at: sqlRow.updated_at || new Date().toISOString(),
   };
+  stripPaymentSchemeHints(projectedItem);
+  return projectedItem;
 }
 
 /**
@@ -490,6 +688,36 @@ export async function upsertCanonicalProduct(options: {
   }
 
   const body = sanitizeProductPayload(rawInput);
+
+  // ── 0. STAGE B1 PAYMENT SCHEME VALIDATION (FULL_PREPAID ONLY) ──
+  const paymentValidation = validatePaymentSchemePayload(body);
+  if (!paymentValidation.valid) {
+    return {
+      success: false,
+      statusCode: paymentValidation.status,
+      code: paymentValidation.code,
+      error: paymentValidation.error,
+      message: paymentValidation.error,
+    };
+  }
+
+  // ── STRIP UNRATIFIED PAYMENT POLICY PERSISTENCE (STAGE B1-A) ──
+  stripPaymentSchemeHints(body);
+  if (body.metadata && typeof body.metadata === 'object') {
+    stripPaymentSchemeHints(body.metadata);
+  }
+  if (body.fulfillment_metadata && typeof body.fulfillment_metadata === 'object') {
+    stripPaymentSchemeHints(body.fulfillment_metadata);
+  }
+  if (body.fulfillmentMetadata && typeof body.fulfillmentMetadata === 'object') {
+    stripPaymentSchemeHints(body.fulfillmentMetadata);
+  }
+  if (body.single_page_config && typeof body.single_page_config === 'object') {
+    stripPaymentSchemeHints(body.single_page_config);
+  }
+  if (body.singlePageConfig && typeof body.singlePageConfig === 'object') {
+    stripPaymentSchemeHints(body.singlePageConfig);
+  }
 
   // ── 1. SECTION 10 CUSTOM HTML ENTITLEMENT GATE (WP2) ──
   if (isCustomHtmlRequested(body) && !isCustomHtmlCleanup(body)) {
@@ -796,6 +1024,10 @@ export async function upsertCanonicalProduct(options: {
     }
   }
 
+  if (cleanSinglePageConfig) {
+    stripPaymentSchemeHints(cleanSinglePageConfig);
+  }
+
   const fulfillmentMetadata: Record<string, any> = {
     ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
     ...(cleanSinglePageConfig ? { single_page_config: cleanSinglePageConfig } : {}),
@@ -803,6 +1035,7 @@ export async function upsertCanonicalProduct(options: {
     ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
     ...(Array.isArray(body?.features) ? { features: body.features } : {}),
   };
+  stripPaymentSchemeHints(fulfillmentMetadata);
 
   const cleanVariants = Array.isArray(body.variants)
     ? body.variants.map((v: any) => ({
@@ -920,6 +1153,12 @@ export async function upsertCanonicalProduct(options: {
     };
   }
 
+  // Ensure SQL payload contains zero unratified payment scheme or payment options keys
+  stripPaymentSchemeHints(productDbPayload);
+  if (productDbPayload.fulfillment_metadata) {
+    stripPaymentSchemeHints(productDbPayload.fulfillment_metadata);
+  }
+
   // ── 6. PRIMARY SQL WRITE FIRST (FAILURE ATOMICITY PROOF) ──
   // Step 6 executes SQL mutation FIRST. If this fails, we return error IMMEDIATELY.
   // tenants.metadata.products is NEVER touched when SQL fails.
@@ -985,6 +1224,13 @@ export async function upsertCanonicalProduct(options: {
   }
 
   const committedProduct = committedRows[0];
+  stripPaymentSchemeHints(committedProduct);
+  if (committedProduct?.fulfillment_metadata) {
+    stripPaymentSchemeHints(committedProduct.fulfillment_metadata);
+  }
+  if (committedProduct?.metadata) {
+    stripPaymentSchemeHints(committedProduct.metadata);
+  }
 
   // ── 7. CONTROLLED ONE-WAY DERIVED PROJECTION (O-03 Option A) ──
   // Only reached after SQL write successfully committed.
