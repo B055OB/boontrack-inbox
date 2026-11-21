@@ -556,7 +556,6 @@ export async function POST(req: NextRequest) {
               } : {}),
             },
             // Clean state: Katalog toko baru harus 100% kosong (tanpa produk tiruan / mock)
-            products: [],
             product: (productName && productName.trim() !== storeName.trim() && Number(productPrice) > 0) ? {
               type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
               name: productName,

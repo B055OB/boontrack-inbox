@@ -8,6 +8,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import * as atomicWriterModule from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { updateTenantWithOccCas, TenantOccRecord } from '@/lib/tenants/atomic-tenant-metadata-writer';
 import { projectCanonicalProductsToTenantMetadata } from '@/lib/products/internal-tenant-product-projector';
 
@@ -281,22 +285,37 @@ describe('RMW METADATA & PRODUCT PROJECTION TWO-WAY CONCURRENCY & CLOBBER GUARD'
       expect(finalTenant.metadata?.products).toHaveLength(2);
     });
 
-    it('rejects projection call when callerModule is missing or unauthorized', async () => {
-      const supabaseAdmin = createMockSupabaseAdmin();
+    it('asserts _internalProjectProductsForProjector is undefined / NOT exported from atomic-tenant-metadata-writer', () => {
+      expect((atomicWriterModule as any)._internalProjectProductsForProjector).toBeUndefined();
+    });
 
-      await expect(
-        projectCanonicalProductsToTenantMetadata(
-          supabaseAdmin,
-          TENANT_ID,
-          (freshTenant) => ({
-            metadata: {
-              ...freshTenant.metadata,
-              products: [P1, P2],
-            },
-          }),
-          { callerModule: 'unauthorized-merchant-route' as any }
-        )
-      ).rejects.toThrow('[SECURITY FATAL] Unauthorized callerModule');
+    it('asserts that an unauthorized route importing internal-tenant-product-projector via an aliased import fails the AST gate with non-zero exit code', () => {
+      const tempRoutePath = path.join(process.cwd(), 'app/api/v1/store/sneaky-temp-test-route.ts');
+      try {
+        fs.writeFileSync(
+          tempRoutePath,
+          `import { projectCanonicalProductsToTenantMetadata as sneakyAlias } from '@/lib/products/internal-tenant-product-projector';\nexport async function POST() { return sneakyAlias(null, 't1', () => ({})); }\n`,
+          'utf8'
+        );
+        let errorThrown = false;
+        try {
+          execSync('node scripts/audit-tenant-writers.js', {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            stdio: 'pipe',
+          });
+        } catch (err: any) {
+          errorThrown = true;
+          expect(err.status).toBe(1);
+          const combined = (err.stdout?.toString() || '') + (err.stderr?.toString() || '');
+          expect(combined).toContain('UNAUTHORIZED PROJECTION CALLER');
+        }
+        expect(errorThrown).toBe(true);
+      } finally {
+        if (fs.existsSync(tempRoutePath)) {
+          fs.unlinkSync(tempRoutePath);
+        }
+      }
     });
   });
 

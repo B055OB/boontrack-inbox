@@ -314,14 +314,13 @@ export async function POST(req: NextRequest) {
           allow_instant_delivery: true,
           allow_pickup: true,
         } : undefined,
-        products: [],
         product: null,
       },
     };
 
     const { data: upsertedTenant, error: upsertErr } = await supabase
       .from('tenants')
-      .upsert(tenantPayload, { onConflict: 'slug' })
+      .insert(tenantPayload)
       .select('id, slug, name, status')
       .single();
 

@@ -39,126 +39,141 @@ export async function POST(req: NextRequest) {
     // Update in Supabase (Single Source of Truth)
     try {
       const supabase = getSupabaseAdmin() || getSupabase();
-      if (supabase) {
-        // Fetch current tenant metadata to preserve existing fields
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
+      if (!supabase) {
+        return NextResponse.json(
+          { error: 'Database client unavailable' },
+          { status: 500 }
+        );
+      }
 
-        const currentMetadata = tenantData?.metadata || {};
-        const faqKnowledge = (publishedProposal.knowledge || [])
-          .filter(k => k.category === 'FAQ')
-          .map((k, idx) => ({
-            id: k.id || `faq_${Date.now()}_${idx}`,
-            question: k.title,
-            answer: k.content,
-          }));
+      // Fetch current tenant metadata to preserve existing fields
+      const { data: existingTenant, error: tenantReadError } = await supabase
+        .from('tenants')
+        .select('id, metadata')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
 
-        const proposalMetadata = {
-          boonpilot_proposal: publishedProposal,
-          boonpilot_configuration: publishedProposal,
-          faqs: faqKnowledge.length > 0 ? faqKnowledge : [],
-          business_category: publishedProposal.business_profile?.business_category || 'FIELD_SERVICE',
-          business_type: publishedProposal.template_code,
-          vertical_type: publishedProposal.template_code,
-          last_configured_at: new Date().toISOString(),
-          onboarding_completed: true,
-          proposal: publishedProposal,
-          ai_knowledge: {
-            ...mappedAi,
-            assistant_name: mappedAi.ai_name,
+      if (tenantReadError) {
+        return NextResponse.json(
+          {
+            error: 'Failed to query tenant record',
+            details: tenantReadError.message,
           },
-          persona: {
-            ...mappedAi,
-            assistant_name: mappedAi.ai_name,
+          { status: 500 }
+        );
+      }
+
+      const currentMetadata = existingTenant?.metadata || {};
+      const faqKnowledge = (publishedProposal.knowledge || [])
+        .filter(k => k.category === 'FAQ')
+        .map((k, idx) => ({
+          id: k.id || `faq_${Date.now()}_${idx}`,
+          question: k.title,
+          answer: k.content,
+        }));
+
+      const proposalMetadata = {
+        boonpilot_proposal: publishedProposal,
+        boonpilot_configuration: publishedProposal,
+        faqs: faqKnowledge.length > 0 ? faqKnowledge : [],
+        business_category: publishedProposal.business_profile?.business_category || 'FIELD_SERVICE',
+        business_type: publishedProposal.template_code,
+        vertical_type: publishedProposal.template_code,
+        last_configured_at: new Date().toISOString(),
+        onboarding_completed: true,
+        proposal: publishedProposal,
+        ai_knowledge: {
+          ...mappedAi,
+          assistant_name: mappedAi.ai_name,
+        },
+        persona: {
+          ...mappedAi,
+          assistant_name: mappedAi.ai_name,
+        },
+        playbook: mappedPlaybook,
+        seller_playbook: mappedPlaybook,
+      };
+
+      if (existingTenant) {
+        const occResult = await updateTenantWithOccCas(
+          supabase,
+          tenantSlug,
+          (freshTenant) => {
+            const freshMeta = { ...(freshTenant.metadata || {}) };
+            Object.assign(freshMeta, proposalMetadata);
+            freshMeta.faqs = faqKnowledge.length > 0 ? faqKnowledge : (freshMeta.faqs || []);
+            freshMeta.ai_knowledge = {
+              ...(freshMeta.ai_knowledge || {}),
+              ...mappedAi,
+              assistant_name: mappedAi.ai_name,
+            };
+            freshMeta.persona = {
+              ...(freshMeta.persona || {}),
+              ...mappedAi,
+              assistant_name: mappedAi.ai_name,
+            };
+            if (freshMeta.is_bot_active === undefined) {
+              freshMeta.is_bot_active = true;
+            }
+            if (freshMeta.bot_paused === undefined) {
+              freshMeta.bot_paused = false;
+            }
+
+            const updatePayload: Record<string, any> = {
+              metadata: freshMeta,
+            };
+            if (publishedProposal.business_profile?.store_name) {
+              updatePayload.name = publishedProposal.business_profile.store_name;
+            }
+            return updatePayload;
+          }
+        );
+
+        if (!occResult.success) {
+          console.error('[BoonPilot Publish] Supabase update error:', occResult.error);
+          const isConflict = occResult.error === 'OCC_CONFLICT' || occResult.error?.includes('OCC_CONFLICT');
+          return NextResponse.json(
+            {
+              success: false,
+              error: isConflict ? 'OCC_CONFLICT' : 'UPDATE_FAILED',
+              message: isConflict
+                ? 'Gagal mempublikasikan proposal karena terjadi konflik konkurensi (OCC_CONFLICT).'
+                : (occResult.message || occResult.error || 'Gagal memperbarui konfigurasi toko.'),
+            },
+            { status: isConflict ? 409 : 500 }
+          );
+        }
+      } else {
+        // Auto-insert trial tenant ONLY when query succeeded and returned empty (!tenantReadError && !existingTenant)
+        const insertPayload = {
+          slug: tenantSlug,
+          name: publishedProposal.business_profile?.store_name || `${tenantSlug.toUpperCase()} Store`,
+          tier: 'STARTER',
+          is_active: true,
+          category: 'service',
+          metadata: {
+            plan_tier: 'SOLO_TRIAL',
+            is_bot_active: true,
+            bot_paused: false,
+            ...proposalMetadata,
           },
-          playbook: mappedPlaybook,
-          seller_playbook: mappedPlaybook,
+          updated_at: new Date().toISOString(),
         };
 
-        if (tenantData) {
-          const occResult = await updateTenantWithOccCas(
-            supabase,
-            tenantSlug,
-            (freshTenant) => {
-              const freshMeta = { ...(freshTenant.metadata || {}) };
-              Object.assign(freshMeta, proposalMetadata);
-              freshMeta.faqs = faqKnowledge.length > 0 ? faqKnowledge : (freshMeta.faqs || []);
-              freshMeta.ai_knowledge = {
-                ...(freshMeta.ai_knowledge || {}),
-                ...mappedAi,
-                assistant_name: mappedAi.ai_name,
-              };
-              freshMeta.persona = {
-                ...(freshMeta.persona || {}),
-                ...mappedAi,
-                assistant_name: mappedAi.ai_name,
-              };
-              if (freshMeta.is_bot_active === undefined) {
-                freshMeta.is_bot_active = true;
-              }
-              if (freshMeta.bot_paused === undefined) {
-                freshMeta.bot_paused = false;
-              }
+        const { error: insertErr } = await supabase
+          .from('tenants')
+          .insert(insertPayload);
 
-              const updatePayload: Record<string, any> = {
-                metadata: freshMeta,
-              };
-              if (publishedProposal.business_profile?.store_name) {
-                updatePayload.name = publishedProposal.business_profile.store_name;
-              }
-              return updatePayload;
-            }
-          );
-
-          if (!occResult.success) {
-            console.error('[BoonPilot Publish] Supabase update error:', occResult.error);
-            const isConflict = occResult.error === 'OCC_CONFLICT' || occResult.error?.includes('OCC_CONFLICT');
-            return NextResponse.json(
-              {
-                success: false,
-                error: isConflict ? 'OCC_CONFLICT' : 'UPDATE_FAILED',
-                message: isConflict
-                  ? 'Gagal mempublikasikan proposal karena terjadi konflik konkurensi (OCC_CONFLICT).'
-                  : (occResult.message || occResult.error || 'Gagal memperbarui konfigurasi toko.'),
-              },
-              { status: isConflict ? 409 : 500 }
-            );
-          }
-        } else {
-          // Auto-insert trial tenant if not yet in database (e.g. sandbox or new registration)
-          const insertPayload = {
-            slug: tenantSlug,
-            name: publishedProposal.business_profile?.store_name || `${tenantSlug.toUpperCase()} Store`,
-            tier: 'STARTER',
-            is_active: true,
-            category: 'service',
-            metadata: {
-              plan_tier: 'SOLO_TRIAL',
-              is_bot_active: true,
-              bot_paused: false,
-              ...proposalMetadata,
+        if (insertErr) {
+          console.error('[BoonPilot Publish] Supabase insert error:', insertErr);
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'INSERT_FAILED',
+              message: insertErr.message || 'Gagal membuat toko baru.',
             },
-            updated_at: new Date().toISOString(),
-          };
-
-          const { error: insertErr } = await supabase
-            .from('tenants')
-            .insert(insertPayload);
-
-          if (insertErr) {
-            console.error('[BoonPilot Publish] Supabase insert error:', insertErr);
-            return NextResponse.json(
-              {
-                success: false,
-                error: 'INSERT_FAILED',
-                message: insertErr.message || 'Gagal membuat toko baru.',
-              },
-              { status: 500 }
-            );
-          }
+            { status: 500 }
+          );
         }
       }
     } catch (dbErr: any) {

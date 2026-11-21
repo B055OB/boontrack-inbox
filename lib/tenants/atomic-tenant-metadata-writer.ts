@@ -31,10 +31,6 @@ export interface TenantOccOptions {
   selectColumns?: string;
 }
 
-interface InternalOccOptions extends TenantOccOptions {
-  allowProductsProjection?: boolean;
-}
-
 export interface TenantOccResult<T = any> {
   success: boolean;
   data?: T;
@@ -54,7 +50,7 @@ async function executeTenantOccInternal(
   supabaseAdmin: any,
   tenantIdOrSlug: string,
   buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
-  options: InternalOccOptions = {}
+  options: TenantOccOptions = {}
 ): Promise<TenantOccResult> {
   const maxAttempts = options.maxAttempts ?? 4;
   const initialBackoffMs = options.initialBackoffMs ?? 25;
@@ -150,7 +146,7 @@ async function executeTenantOccInternal(
     }
 
     // 3. ADR-P0-07 Single-Writer Projection Guard:
-    // Strictly preserve freshTenant.metadata?.products unless options.allowProductsProjection === true
+    // Unconditionally preserve freshTenant.metadata?.products verbatim with ZERO projection escape hatches
     const currentMeta =
       freshTenant.metadata && typeof freshTenant.metadata === 'object'
         ? { ...freshTenant.metadata }
@@ -161,12 +157,10 @@ async function executeTenantOccInternal(
         ? { ...patch.metadata }
         : { ...currentMeta };
 
-    if (!options.allowProductsProjection) {
-      if ('products' in currentMeta) {
-        incomingMeta.products = currentMeta.products;
-      } else {
-        delete incomingMeta.products;
-      }
+    if ('products' in currentMeta) {
+      incomingMeta.products = currentMeta.products;
+    } else {
+      delete incomingMeta.products;
     }
 
     const newUpdatedAt = options.updatedAt || new Date().toISOString();
@@ -267,25 +261,5 @@ export async function updateTenantWithOccCas(
   buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
   options: TenantOccOptions = {}
 ): Promise<TenantOccResult> {
-  return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, {
-    ...options,
-    allowProductsProjection: false, // UNCONDITIONALLY FORBIDDEN
-  });
-}
-
-/**
- * Internal projection bridge helper.
- * Strictly for consumption by lib/products/internal-tenant-product-projector.ts.
- * General application modules MUST NOT call this directly.
- */
-export async function _internalProjectProductsForProjector(
-  supabaseAdmin: any,
-  tenantIdOrSlug: string,
-  buildPatchFn: (freshTenant: TenantOccRecord) => Promise<TenantOccPatch | null> | TenantOccPatch | null,
-  options: TenantOccOptions = {}
-): Promise<TenantOccResult> {
-  return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, {
-    ...options,
-    allowProductsProjection: true, // RESTRICTED CAPABILITY (bridged via internal-tenant-product-projector.ts)
-  });
+  return executeTenantOccInternal(supabaseAdmin, tenantIdOrSlug, buildPatchFn, options);
 }

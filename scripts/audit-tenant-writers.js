@@ -12,19 +12,28 @@ const AUTHORIZED_PROJECTION_ALLOWLIST = new Set([
   'lib/products/internal-tenant-product-projector.ts',
 ]);
 
-// Authorized server-side writers allowed to perform direct .from('tenants') .update or .upsert
-const AUTHORIZED_SERVER_WRITERS = new Set([
+// 1. Exact allowlist for .update() / .upsert()
+const AUTHORIZED_TENANT_UPDATE_UPSERT_WRITERS = new Set([
   'lib/tenants/atomic-tenant-metadata-writer.ts',
   'lib/products/canonical-product-writer.ts',
+  'lib/products/internal-tenant-product-projector.ts',
   'app/api/v1/admin/tenants/[slug]/config/route.ts',
   'app/api/v1/domains/route.ts',
   'lib/services/studio-credit.service.ts',
+  'app/api/auth/register-init/route.ts',
+]);
+
+// 2. Exact allowlist for .insert()
+const AUTHORIZED_TENANT_INSERT_INITIALIZERS = new Set([
   'app/api/auth/register-init/route.ts',
   'app/api/creator/profile/route.ts',
   'app/api/v1/boonpilot/publish-proposal/route.ts',
   'app/api/v1/tenants/onboard/route.ts',
   'lib/studio/auth.ts',
 ]);
+
+// 3. Exact allowlist for .delete() (ZERO permitted anywhere in repo)
+const AUTHORIZED_TENANT_DELETE_WRITERS = new Set([]);
 
 // Helper: check if a node is .from('tenants')
 function isFromTenantsCall(node) {
@@ -52,11 +61,94 @@ function isFromTenantsChain(expr, knownVars = new Set()) {
   return false;
 }
 
+// AST Payload Inspection: inspects arguments to .insert, .update, .upsert for metadata.products
+function inspectPayloadForMetadataProducts(callNode, sf) {
+  if (!callNode.arguments || callNode.arguments.length === 0) return false;
+  const arg = callNode.arguments[0];
+
+  function objHasMetadataProducts(objLit) {
+    if (!ts.isObjectLiteralExpression(objLit)) return false;
+    for (const prop of objLit.properties) {
+      let propName = null;
+      if (prop.name && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))) {
+        propName = prop.name.text;
+      }
+      if (propName === 'metadata' && ts.isPropertyAssignment(prop) && prop.initializer) {
+        let metaVal = prop.initializer;
+        while (ts.isAsExpression(metaVal) || ts.isParenthesizedExpression(metaVal) || ts.isNonNullExpression?.(metaVal)) {
+          metaVal = metaVal.expression;
+        }
+        if (ts.isObjectLiteralExpression(metaVal)) {
+          for (const mProp of metaVal.properties) {
+            let mPropName = null;
+            if (mProp.name && (ts.isIdentifier(mProp.name) || ts.isStringLiteral(mProp.name))) {
+              mPropName = mProp.name.text;
+            }
+            if (mPropName === 'products') {
+              return true;
+            }
+          }
+        } else if (ts.isIdentifier(metaVal)) {
+          if (findVarWithProductsProperty(metaVal.text, sf)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  function findVarWithProductsProperty(varName, rootNode) {
+    let hasProd = false;
+    function scan(n) {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === varName && n.initializer) {
+        let init = n.initializer;
+        while (ts.isAsExpression(init) || ts.isParenthesizedExpression(init) || ts.isNonNullExpression?.(init)) {
+          init = init.expression;
+        }
+        if (ts.isObjectLiteralExpression(init)) {
+          for (const p of init.properties) {
+            let pName = null;
+            if (p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) {
+              pName = p.name.text;
+            }
+            if (pName === 'products') hasProd = true;
+          }
+        }
+      }
+      ts.forEachChild(n, scan);
+    }
+    scan(rootNode);
+    return hasProd;
+  }
+
+  if (ts.isObjectLiteralExpression(arg)) {
+    return objHasMetadataProducts(arg);
+  } else if (ts.isIdentifier(arg)) {
+    let hasProd = false;
+    function scanVar(n) {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === arg.text && n.initializer) {
+        let init = n.initializer;
+        while (ts.isAsExpression(init) || ts.isParenthesizedExpression(init) || ts.isNonNullExpression?.(init)) {
+          init = init.expression;
+        }
+        if (ts.isObjectLiteralExpression(init)) {
+          if (objHasMetadataProducts(init)) hasProd = true;
+        }
+      }
+      ts.forEachChild(n, scanVar);
+    }
+    scanVar(sf);
+    return hasProd;
+  }
+  return false;
+}
+
 // ── SELF TEST MODE ────────────────────────────────────────────────────────────
 if (process.argv.includes('--self-test')) {
-  console.log('Running AST Scanner self-test...');
+  console.log('Running AST Scanner self-test across all negative vectors...');
 
-  // Test 1: Multi-hop builder variable alias detection
+  // Test 1: Multi-hop builder variable alias detection + chained mutation
   const multiHopSnippet = `
     const first = supabase.from('tenants');
     const second = first;
@@ -100,15 +192,15 @@ if (process.argv.includes('--self-test')) {
   visitMultiHop(multiHopSf);
 
   if (!multiHopDetected || !multiHopVars.has('third')) {
-    console.error('[SELF-TEST FAILED] Multi-hop builder variable alias detection failed:', Array.from(multiHopVars));
+    console.error('[SELF-TEST FAILED] Vector 1: Multi-hop builder variable alias detection failed:', Array.from(multiHopVars));
     process.exit(1);
   }
 
-  // Test 2: Aliased projection import and call detection
+  // Test 2: Aliased import of internal-tenant-product-projector in an unauthorized route
   const aliasImportSnippet = `
-    import { projectCanonicalProductsToTenantMetadata as sneakyProject } from '@/lib/products/internal-tenant-product-projector';
+    import { projectCanonicalProductsToTenantMetadata as sneakyAlias } from '@/lib/products/internal-tenant-product-projector';
     async function test() {
-      await sneakyProject(supabase, 't1', () => ({}));
+      await sneakyAlias(supabase, 't1', () => ({}));
     }
   `;
   const aliasSf = ts.createSourceFile('test-alias.ts', aliasImportSnippet, ts.ScriptTarget.Latest, true);
@@ -136,20 +228,68 @@ if (process.argv.includes('--self-test')) {
   }
   visitAlias(aliasSf);
 
-  if (detectedImportAlias !== 'sneakyProject' || !detectedAliasCall) {
-    console.error('[SELF-TEST FAILED] Aliased projection import and call detection failed:', { detectedImportAlias, detectedAliasCall });
-    process.exit(1);
-  }
-
-  // Test 3: Unauthorized caller importing internal-tenant-product-projector
-  const unauthorizedCallerFile = 'app/api/v1/store/unauthorized/route.ts';
+  const unauthorizedCallerFile = 'app/api/v1/store/sneaky/route.ts';
   const isAllowlisted = AUTHORIZED_PROJECTION_ALLOWLIST.has(unauthorizedCallerFile);
-  if (isAllowlisted) {
-    console.error('[SELF-TEST FAILED] Unauthorized caller was incorrectly allowlisted');
+  if (detectedImportAlias !== 'sneakyAlias' || !detectedAliasCall || isAllowlisted) {
+    console.error('[SELF-TEST FAILED] Vector 2: Aliased projection import and call detection failed:', { detectedImportAlias, detectedAliasCall, isAllowlisted });
     process.exit(1);
   }
 
-  // Test 4: Re-export chain reaching a browser 'use client' file
+  // Test 3: Unauthorized .from('tenants').insert({ metadata: { products: [] } }) payload inspection
+  const unauthInsertSnippet = `
+    await supabase.from('tenants').insert({
+      slug: 'test',
+      metadata: {
+        theme: 'dark',
+        products: [],
+      }
+    });
+  `;
+  const unauthInsertSf = ts.createSourceFile('test-insert.ts', unauthInsertSnippet, ts.ScriptTarget.Latest, true);
+  let payloadProductsDetected = false;
+  function visitInsert(node) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      if (node.expression.name.text === 'insert') {
+        if (inspectPayloadForMetadataProducts(node, unauthInsertSf)) {
+          payloadProductsDetected = true;
+        }
+      }
+    }
+    ts.forEachChild(node, visitInsert);
+  }
+  visitInsert(unauthInsertSf);
+
+  if (!payloadProductsDetected) {
+    console.error('[SELF-TEST FAILED] Vector 3: Unauthorized metadata.products payload inspection failed');
+    process.exit(1);
+  }
+
+  // Test 4: Unauthorized .from('tenants').delete()
+  const deleteSnippet = `
+    await supabase.from('tenants').delete().eq('id', '1');
+  `;
+  const deleteSf = ts.createSourceFile('test-delete.ts', deleteSnippet, ts.ScriptTarget.Latest, true);
+  let deleteOpDetected = false;
+  function visitDelete(node) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      if (node.expression.name.text === 'delete') {
+        let curr = node.expression.expression;
+        if (isFromTenantsCall(curr)) {
+          deleteOpDetected = true;
+        }
+      }
+    }
+    ts.forEachChild(node, visitDelete);
+  }
+  visitDelete(deleteSf);
+
+  const isDeleteAllowed = AUTHORIZED_TENANT_DELETE_WRITERS.size > 0;
+  if (!deleteOpDetected || isDeleteAllowed) {
+    console.error('[SELF-TEST FAILED] Vector 4: Unauthorized .from("tenants").delete() detection failed');
+    process.exit(1);
+  }
+
+  // Test 5: Re-export chain reaching a browser 'use client' file
   const reExportSnippet = `
     export * from './re-exported-target';
   `;
@@ -166,11 +306,11 @@ if (process.argv.includes('--self-test')) {
   visitReExport(reExportSf);
 
   if (!hasReExport) {
-    console.error('[SELF-TEST FAILED] Re-export detection failed');
+    console.error('[SELF-TEST FAILED] Vector 5: Re-export detection failed');
     process.exit(1);
   }
 
-  console.log('[SELF-TEST PASSED] AST scanner correctly detects multi-hop builder aliases, projection imports, unauthorized callers, and re-export chains.');
+  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all 5 negative vectors (multi-hop alias, aliased projection import, metadata.products payload inspection, delete prohibition, and re-export chains).');
   process.exit(0);
 }
 
@@ -392,6 +532,7 @@ const directClientMutations = [];
 const transitiveBrowserMutations = [];
 const browserOccHelperLeaks = [];
 const unauthorizedServerWriters = [];
+const unauthorizedMetadataProductsWrites = [];
 
 let occCasCallCount = 0;
 const occCasFiles = new Set();
@@ -523,8 +664,28 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
         directClientMutations.push(finding);
       } else if (isBrowserReachable) {
         transitiveBrowserMutations.push(finding);
-      } else if (!AUTHORIZED_SERVER_WRITERS.has(relPath) && (op === 'UPDATE' || op === 'UPSERT')) {
-        unauthorizedServerWriters.push(finding);
+      } else {
+        // Full Server Operation Allowlist Enforcement
+        if ((op === 'UPDATE' || op === 'UPSERT') && !AUTHORIZED_TENANT_UPDATE_UPSERT_WRITERS.has(relPath)) {
+          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_UPDATE_UPSERT' });
+        } else if (op === 'INSERT' && !AUTHORIZED_TENANT_INSERT_INITIALIZERS.has(relPath)) {
+          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_INSERT' });
+        } else if (op === 'DELETE' && !AUTHORIZED_TENANT_DELETE_WRITERS.has(relPath)) {
+          unauthorizedServerWriters.push({ ...finding, reason: 'UNAUTHORIZED_DELETE' });
+        }
+
+        // AST Payload Inspection: Check for metadata.products outside authorized projector modules
+        if (!AUTHORIZED_PROJECTION_ALLOWLIST.has(relPath)) {
+          if (inspectPayloadForMetadataProducts(node, sourceFile)) {
+            unauthorizedMetadataProductsWrites.push({
+              file: relPath,
+              line: pos.line + 1,
+              column: pos.character + 1,
+              op,
+              reason: 'UNAUTHORIZED_METADATA_PRODUCTS_WRITE',
+            });
+          }
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -549,15 +710,17 @@ console.log(`Browser-Reachable OCC Helper Leaks:  ${browserOccHelperLeaks.length
 console.log('\n--- PROJECTION CAPABILITY ALLOWLIST ---');
 console.log(`Unauthorized Projection Callers:     ${unauthorizedProjectionCallers.length}`);
 
-console.log('\n--- SERVER WRITER COMPLIANCE ---');
+console.log('\n--- SERVER WRITER & OPERATION COMPLIANCE ---');
 console.log(`Unauthorized Server Writers:         ${unauthorizedServerWriters.length}`);
+console.log(`Unauthorized Metadata.Products:      ${unauthorizedMetadataProductsWrites.length}`);
 
 const hasFatalViolations =
   directClientMutations.length > 0 ||
   transitiveBrowserMutations.length > 0 ||
   browserOccHelperLeaks.length > 0 ||
   unauthorizedProjectionCallers.length > 0 ||
-  unauthorizedServerWriters.length > 0;
+  unauthorizedServerWriters.length > 0 ||
+  unauthorizedMetadataProductsWrites.length > 0;
 
 if (hasFatalViolations) {
   console.error('\n[FATAL AUDIT FAILURE] Security & Single-Writer Invariant Violations:');
@@ -574,10 +737,13 @@ if (hasFatalViolations) {
     console.error(`  UNAUTHORIZED PROJECTION CALLER: ${p.file}:${p.line} [${p.type}]`);
   }
   for (const w of unauthorizedServerWriters) {
-    console.error(`  UNAUTHORIZED SERVER WRITER: ${w.file}:${w.line}:${w.column} [${w.op}]`);
+    console.error(`  UNAUTHORIZED SERVER WRITER: ${w.file}:${w.line}:${w.column} [${w.op}] (${w.reason})`);
+  }
+  for (const prod of unauthorizedMetadataProductsWrites) {
+    console.error(`  UNAUTHORIZED METADATA.PRODUCTS WRITE: ${prod.file}:${prod.line}:${prod.column} [${prod.op}]`);
   }
 } else {
-  console.log('SUCCESS: ZERO (0) browser-reachable mutations, ZERO unauthorized projection callers, and ZERO unguarded server writers verified via AST!');
+  console.log('SUCCESS: ZERO (0) browser mutations, ZERO unauthorized projection callers, ZERO unguarded server writers, and ZERO unauthorized metadata.products writes verified via AST!');
 }
 
 console.log('\n--- SERVER-SIDE .from("tenants") WRITERS (AST VERIFIED) ---');

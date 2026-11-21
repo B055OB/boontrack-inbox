@@ -422,5 +422,125 @@ describe('GLOBAL OCC GUARD & SERVER-ROUTED TENANT WRITERS', () => {
       });
       expect(output).toContain('[SELF-TEST PASSED]');
     });
+
+    it('9. publish-proposal fails closed with 500 when database client is unavailable', async () => {
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(null as any);
+      jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(null as any);
+
+      const req = new NextRequest('http://localhost:3000/api/v1/boonpilot/publish-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: 'shabu-ajhi',
+          proposal: {
+            id: 'prop-1',
+            tenant_slug: 'shabu-ajhi',
+            business_profile: { store_name: 'Shabu Ajhi' },
+            status: 'DRAFT',
+          },
+        }),
+      });
+
+      const res = await handlePublishProposal(req);
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.error).toBe('Database client unavailable');
+    });
+
+    it('10. publish-proposal aborts and returns 500 when tenant lookup query errors (zero insert attempted)', async () => {
+      let insertAttempted = false;
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: null,
+              error: { message: 'DB timeout' },
+            }),
+            insert: jest.fn().mockImplementation(() => {
+              insertAttempted = true;
+              return Promise.resolve({ error: null });
+            }),
+          };
+        }
+        return mockSupabase;
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/boonpilot/publish-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: 'shabu-ajhi',
+          proposal: {
+            id: 'prop-1',
+            tenant_slug: 'shabu-ajhi',
+            business_profile: { store_name: 'Shabu Ajhi' },
+            status: 'DRAFT',
+          },
+        }),
+      });
+
+      const res = await handlePublishProposal(req);
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.error).toBe('Failed to query tenant record');
+      expect(json.details).toBe('DB timeout');
+      expect(insertAttempted).toBe(false);
+    });
+
+    it('11. publish-proposal executes initial insert when tenant lookup succeeds with null record (and fails closed on insert error)', async () => {
+      let insertedPayload: any = null;
+      let shouldSimulateInsertError = false;
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: null,
+              error: null,
+            }),
+            insert: jest.fn().mockImplementation((payload: any) => {
+              insertedPayload = payload;
+              if (shouldSimulateInsertError) {
+                return Promise.resolve({ error: { message: 'Unique constraint violation' } });
+              }
+              return Promise.resolve({ error: null });
+            }),
+          };
+        }
+        return mockSupabase;
+      });
+
+      const makeReq = () => new NextRequest('http://localhost:3000/api/v1/boonpilot/publish-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: 'shabu-ajhi',
+          proposal: {
+            id: 'prop-1',
+            tenant_slug: 'shabu-ajhi',
+            business_profile: { store_name: 'Shabu Ajhi Store' },
+            status: 'DRAFT',
+          },
+        }),
+      });
+
+      // 1. Success case
+      const resSuccess = await handlePublishProposal(makeReq());
+      expect(resSuccess.status).toBe(200);
+      expect(insertedPayload).not.toBeNull();
+      expect(insertedPayload.slug).toBe('shabu-ajhi');
+
+      // 2. Failure case: insert error fails closed with 500
+      shouldSimulateInsertError = true;
+      const resFail = await handlePublishProposal(makeReq());
+      expect(resFail.status).toBe(500);
+      const failJson = await resFail.json();
+      expect(failJson.error).toBe('INSERT_FAILED');
+      expect(failJson.message).toBe('Unique constraint violation');
+    });
   });
 });
