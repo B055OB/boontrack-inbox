@@ -738,6 +738,32 @@ export default function ProductFormModal({
       },
     };
 
+    // Strip unratified payment scheme and payment option keys to prevent unratified persistence
+    delete (cleanForm as any).payment_scheme;
+    delete (cleanForm as any).paymentScheme;
+    delete (cleanForm as any).payment_options;
+    delete (cleanForm as any).paymentOptions;
+    delete (cleanForm as any).allowed_schemes;
+    delete (cleanForm as any).allowedSchemes;
+
+    if (cleanForm.fulfillment_metadata) {
+      delete cleanForm.fulfillment_metadata.payment_scheme;
+      delete cleanForm.fulfillment_metadata.paymentScheme;
+      delete cleanForm.fulfillment_metadata.payment_options;
+      delete cleanForm.fulfillment_metadata.paymentOptions;
+      delete cleanForm.fulfillment_metadata.allowed_schemes;
+      delete cleanForm.fulfillment_metadata.allowedSchemes;
+    }
+
+    if (cleanForm.metadata) {
+      delete cleanForm.metadata.payment_scheme;
+      delete cleanForm.metadata.paymentScheme;
+      delete cleanForm.metadata.payment_options;
+      delete cleanForm.metadata.paymentOptions;
+      delete cleanForm.metadata.allowed_schemes;
+      delete cleanForm.metadata.allowedSchemes;
+    }
+
     // Defensive Sanitization: Clean any circular references, DOM elements, or SyntheticEvents
     const sanitizedCleanForm = sanitizeProductPayload(cleanForm);
     setProductForm(sanitizedCleanForm);

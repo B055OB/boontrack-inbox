@@ -763,6 +763,15 @@ export function isDigitalProduct(product?: Partial<ProductItem> | null): boolean
   return false;
 }
 
+export type ProductPaymentScheme = 'FULL_PREPAID' | 'DP_PREPAID' | 'COD_FULL';
+export type PaymentSettlementTrigger = 'FULFILLMENT_HANDOVER' | 'EVENT_RELATIVE_24H';
+
+export interface PaymentOptionsConfig {
+  scheme: ProductPaymentScheme;
+  allowed_schemes?: ProductPaymentScheme[];
+  settlement_trigger?: PaymentSettlementTrigger;
+}
+
 export interface ProductItem {
   id: number | string;
   name: string;
@@ -808,6 +817,8 @@ export interface ProductItem {
   meta_pixel_id_override?: string;
   tiktok_pixel_id_override?: string;
   order_bumps?: OrderBumpConfig | OrderBumpItem[];
+  payment_scheme?: ProductPaymentScheme;
+  payment_options?: PaymentOptionsConfig;
   modules?: any[];
   metadata?: Record<string, any>;
 }

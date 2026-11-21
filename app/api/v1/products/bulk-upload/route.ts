@@ -11,6 +11,8 @@ import {
 import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 import {
   upsertCanonicalProduct,
+  validatePaymentSchemePayload,
+  stripPaymentSchemeHints,
   CanonicalTenantContext,
   CanonicalWriterActor,
 } from '@/lib/products/canonical-product-writer';
@@ -226,6 +228,29 @@ export async function POST(req: NextRequest) {
       actorRole,
       isInternalMachine: isInternalAuth,
     };
+
+    // ── STAGE B1 PAYMENT SCHEME VALIDATION & HINT STRIPPING (FULL_PREPAID ONLY) ──
+    for (const item of itemsToProcess) {
+      const paymentValidation = validatePaymentSchemePayload(item);
+      if (!paymentValidation.valid) {
+        return NextResponse.json(
+          {
+            status: 'error',
+            code: paymentValidation.code,
+            error: paymentValidation.error,
+            detail: paymentValidation.error,
+            message: paymentValidation.error,
+          },
+          { status: paymentValidation.status }
+        );
+      }
+      stripPaymentSchemeHints(item);
+      if (item.metadata) stripPaymentSchemeHints(item.metadata);
+      if (item.fulfillment_metadata) stripPaymentSchemeHints(item.fulfillment_metadata);
+      if (item.fulfillmentMetadata) stripPaymentSchemeHints(item.fulfillmentMetadata);
+      if (item.single_page_config) stripPaymentSchemeHints(item.single_page_config);
+      if (item.singlePageConfig) stripPaymentSchemeHints(item.singlePageConfig);
+    }
 
     // ── PERSIST EACH ITEM AUTHORITATIVELY VIA CANONICAL WRITER (BLOCKER 5) ──
     const results: Array<{

@@ -17,6 +17,8 @@ import {
 import {
   upsertCanonicalProduct,
   deleteCanonicalProduct,
+  validatePaymentSchemePayload,
+  stripPaymentSchemeHints,
   CanonicalTenantContext,
   CanonicalWriterActor,
 } from '@/lib/products/canonical-product-writer';
@@ -127,6 +129,28 @@ export async function POST(
     }
 
     const rawBody = await req.json();
+
+    // ── STAGE B1 PAYMENT SCHEME VALIDATION (FULL_PREPAID ONLY) ──
+    const paymentValidation = validatePaymentSchemePayload(rawBody);
+    if (!paymentValidation.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: paymentValidation.code,
+          error: paymentValidation.error,
+          message: paymentValidation.error,
+        },
+        { status: paymentValidation.status }
+      );
+    }
+
+    // Strip incoming FULL_PREPAID UI hint before persistence so products default naturally
+    stripPaymentSchemeHints(rawBody);
+    if (rawBody.metadata) stripPaymentSchemeHints(rawBody.metadata);
+    if (rawBody.fulfillment_metadata) stripPaymentSchemeHints(rawBody.fulfillment_metadata);
+    if (rawBody.fulfillmentMetadata) stripPaymentSchemeHints(rawBody.fulfillmentMetadata);
+    if (rawBody.single_page_config) stripPaymentSchemeHints(rawBody.single_page_config);
+    if (rawBody.singlePageConfig) stripPaymentSchemeHints(rawBody.singlePageConfig);
 
     const actor: CanonicalWriterActor = {
       actorId,
