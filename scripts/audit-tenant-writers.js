@@ -94,12 +94,23 @@ function getPropertyName(nameNode, varBindings) {
 
 function getFunctionReturnExpressions(fnNode) {
   const returns = [];
-  if (ts.isArrowFunction(fnNode) || ts.isFunctionExpression(fnNode) || ts.isFunctionDeclaration(fnNode)) {
+  if (
+    ts.isArrowFunction(fnNode) ||
+    ts.isFunctionExpression(fnNode) ||
+    ts.isFunctionDeclaration(fnNode) ||
+    ts.isMethodDeclaration(fnNode)
+  ) {
     const body = fnNode.body;
     if (!body) return returns;
     if (ts.isBlock(body)) {
       function findReturns(n) {
-        if (n !== fnNode && (ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n))) {
+        if (
+          n !== fnNode &&
+          (ts.isFunctionDeclaration(n) ||
+            ts.isArrowFunction(n) ||
+            ts.isFunctionExpression(n) ||
+            ts.isMethodDeclaration(n))
+        ) {
           return;
         }
         if (ts.isReturnStatement(n) && n.expression) {
@@ -126,6 +137,9 @@ function collectFileFunctions(sourceFile) {
       if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
         fileFunctions.set(node.name.text, init);
       }
+    }
+    if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+      fileFunctions.set(node.name.text, node);
     }
     ts.forEachChild(node, scan);
   }
@@ -186,6 +200,7 @@ function isFromTenantsChain(expr, knownVars = new Set(), knownHelpers = new Set(
     if (ts.isCallExpression(curr)) {
       if (ts.isIdentifier(curr.expression) && knownHelpers.has(curr.expression.text)) return true;
       if (ts.isPropertyAccessExpression(curr.expression)) {
+        if (knownHelpers.has(curr.expression.name.text)) return true;
         curr = curr.expression.expression;
         continue;
       }
@@ -193,7 +208,8 @@ function isFromTenantsChain(expr, knownVars = new Set(), knownHelpers = new Set(
       ts.isAsExpression(curr) ||
       ts.isNonNullExpression?.(curr) ||
       ts.isParenthesizedExpression(curr) ||
-      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr))
+      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr)) ||
+      (ts.isAwaitExpression && ts.isAwaitExpression(curr))
     ) {
       curr = curr.expression;
       continue;
@@ -296,6 +312,7 @@ function isUnresolvedDynamicChain(expr, unresolvedBuilderVars = new Set(), unres
     if (ts.isCallExpression(curr)) {
       if (ts.isIdentifier(curr.expression) && unresolvedHelpers.has(curr.expression.text)) return true;
       if (ts.isPropertyAccessExpression(curr.expression)) {
+        if (unresolvedHelpers.has(curr.expression.name.text)) return true;
         curr = curr.expression.expression;
         continue;
       }
@@ -303,7 +320,8 @@ function isUnresolvedDynamicChain(expr, unresolvedBuilderVars = new Set(), unres
       ts.isAsExpression(curr) ||
       ts.isNonNullExpression?.(curr) ||
       ts.isParenthesizedExpression(curr) ||
-      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr))
+      (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr)) ||
+      (ts.isAwaitExpression && ts.isAwaitExpression(curr))
     ) {
       curr = curr.expression;
       continue;
@@ -311,6 +329,146 @@ function isUnresolvedDynamicChain(expr, unresolvedBuilderVars = new Set(), unres
     break;
   }
   return false;
+}
+
+function resolveUnifiedTenantBuildersAndHelpers(sourceFile, varBindings, fileFunctions) {
+  const tenantBuilderVars = new Set();
+  const tenantQueryHelpers = new Set();
+
+  let changed = true;
+  while (changed) {
+    const prevVars = tenantBuilderVars.size;
+    const prevHelpers = tenantQueryHelpers.size;
+
+    function scanTenantAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isFromTenantsChain(node.initializer, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
+          tenantBuilderVars.add(node.name.text);
+        }
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        if (isFromTenantsChain(node.right, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
+          tenantBuilderVars.add(node.left.text);
+        }
+      }
+      ts.forEachChild(node, scanTenantAliases);
+    }
+    scanTenantAliases(sourceFile);
+
+    function scanTenantFunctions(node) {
+      function checkAndAddTenant(fnName, fnNode) {
+        if (!fnName || !fnNode) return;
+        const returns = getFunctionReturnExpressions(fnNode);
+        for (const ret of returns) {
+          if (isFromTenantsChain(ret, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
+            tenantQueryHelpers.add(fnName);
+            break;
+          }
+        }
+      }
+
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        checkAndAddTenant(node.name.text, node);
+      } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+        checkAndAddTenant(node.name.text, node);
+      } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const init = unwrap(node.initializer);
+        if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+          checkAndAddTenant(node.name.text, init);
+        }
+      } else if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) &&
+        node.right
+      ) {
+        const rightInit = unwrap(node.right);
+        if (ts.isArrowFunction(rightInit) || ts.isFunctionExpression(rightInit)) {
+          checkAndAddTenant(node.left.text, rightInit);
+        }
+      }
+      ts.forEachChild(node, scanTenantFunctions);
+    }
+    scanTenantFunctions(sourceFile);
+
+    changed = tenantBuilderVars.size > prevVars || tenantQueryHelpers.size > prevHelpers;
+  }
+
+  return { tenantBuilderVars, tenantQueryHelpers };
+}
+
+function resolveUnifiedDynamicBuildersAndHelpers(sourceFile, varBindings, fileFunctions) {
+  const unresolvedDynamicBuilders = new Set();
+  const unresolvedDynamicHelpers = new Set();
+
+  let changed = true;
+  while (changed) {
+    const prevBuildersSize = unresolvedDynamicBuilders.size;
+    const prevHelpersSize = unresolvedDynamicHelpers.size;
+
+    function scanDynAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (isUnresolvedDynamicChain(node.initializer, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+          unresolvedDynamicBuilders.add(node.name.text);
+        }
+      }
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left)
+      ) {
+        if (isUnresolvedDynamicChain(node.right, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+          unresolvedDynamicBuilders.add(node.left.text);
+        }
+      }
+      ts.forEachChild(node, scanDynAliases);
+    }
+    scanDynAliases(sourceFile);
+
+    function scanDynamicFunctions(node) {
+      function checkAndAddDynamic(fnName, fnNode) {
+        if (!fnName || !fnNode) return;
+        const returns = getFunctionReturnExpressions(fnNode);
+        for (const ret of returns) {
+          if (isUnresolvedDynamicChain(ret, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
+            unresolvedDynamicHelpers.add(fnName);
+            break;
+          }
+        }
+      }
+
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        checkAndAddDynamic(node.name.text, node);
+      } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+        checkAndAddDynamic(node.name.text, node);
+      } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const init = unwrap(node.initializer);
+        if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+          checkAndAddDynamic(node.name.text, init);
+        }
+      } else if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) &&
+        node.right
+      ) {
+        const rightInit = unwrap(node.right);
+        if (ts.isArrowFunction(rightInit) || ts.isFunctionExpression(rightInit)) {
+          checkAndAddDynamic(node.left.text, rightInit);
+        }
+      }
+      ts.forEachChild(node, scanDynamicFunctions);
+    }
+    scanDynamicFunctions(sourceFile);
+
+    changed = unresolvedDynamicBuilders.size > prevBuildersSize || unresolvedDynamicHelpers.size > prevHelpersSize;
+  }
+
+  return { unresolvedDynamicBuilders, unresolvedDynamicHelpers };
 }
 
 function doesObjectHaveProducts(expr, varBindings, fileFunctions, visitedVars = new Set(), unverifiedHelperErrors = [], parameterIdentifiers = null) {
@@ -594,43 +752,8 @@ if (process.argv.includes('--self-test')) {
   const v4Sf = ts.createSourceFile('v4.ts', v4Code, ts.ScriptTarget.Latest, true);
   const v4Bindings = buildVariableBindingMap(v4Sf);
   const v4Functions = collectFileFunctions(v4Sf);
-  const v4Helpers = new Set();
-  const v4BuilderVars = new Set();
-  function scanV4Functions(node) {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      let returnsTenants = false;
-      function checkReturn(n) {
-        if (ts.isReturnStatement(n) && n.expression) {
-          if (isFromTenantsChain(n.expression, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) returnsTenants = true;
-        }
-        ts.forEachChild(n, checkReturn);
-      }
-      checkReturn(node.body);
-      if (returnsTenants) v4Helpers.add(node.name.text);
-    }
-    ts.forEachChild(node, scanV4Functions);
-  }
-  scanV4Functions(v4Sf);
-
-  let v4Changed = true;
-  while (v4Changed) {
-    const prevSize = v4BuilderVars.size;
-    function scanV4Aliases(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isFromTenantsChain(node.initializer, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) {
-          v4BuilderVars.add(node.name.text);
-        }
-      }
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
-        if (isFromTenantsChain(node.right, v4BuilderVars, v4Helpers, v4Bindings, v4Functions)) {
-          v4BuilderVars.add(node.left.text);
-        }
-      }
-      ts.forEachChild(node, scanV4Aliases);
-    }
-    scanV4Aliases(v4Sf);
-    v4Changed = v4BuilderVars.size > prevSize;
-  }
+  const { tenantBuilderVars: v4BuilderVars, tenantQueryHelpers: v4Helpers } =
+    resolveUnifiedTenantBuildersAndHelpers(v4Sf, v4Bindings, v4Functions);
 
   let v4Detected = false;
   function visitV4(node) {
@@ -924,50 +1047,8 @@ if (process.argv.includes('--self-test')) {
   const v11Sf = ts.createSourceFile('v11.ts', v11Code, ts.ScriptTarget.Latest, true);
   const v11Bindings = buildVariableBindingMap(v11Sf);
   const v11Functions = collectFileFunctions(v11Sf);
-  const v11DynamicHelpers = new Set();
-  const v11DynamicBuilders = new Set();
-
-  function scanV11Functions(node) {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      let returnsDynamic = false;
-      function checkReturn(n) {
-        if (ts.isReturnStatement(n) && n.expression) {
-          if (isUnresolvedDynamicChain(n.expression, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
-            returnsDynamic = true;
-          }
-        }
-        ts.forEachChild(n, checkReturn);
-      }
-      checkReturn(node.body);
-      if (returnsDynamic) v11DynamicHelpers.add(node.name.text);
-    }
-    ts.forEachChild(node, scanV11Functions);
-  }
-  scanV11Functions(v11Sf);
-
-  let v11DynChanged = true;
-  while (v11DynChanged) {
-    const prevSize = v11DynamicBuilders.size;
-    function scanV11DynAliases(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isUnresolvedDynamicChain(node.initializer, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
-          v11DynamicBuilders.add(node.name.text);
-        }
-      }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(node.left)
-      ) {
-        if (isUnresolvedDynamicChain(node.right, v11DynamicBuilders, v11DynamicHelpers, v11Bindings, v11Functions)) {
-          v11DynamicBuilders.add(node.left.text);
-        }
-      }
-      ts.forEachChild(node, scanV11DynAliases);
-    }
-    scanV11DynAliases(v11Sf);
-    v11DynChanged = v11DynamicBuilders.size > prevSize;
-  }
+  const { unresolvedDynamicBuilders: v11DynamicBuilders, unresolvedDynamicHelpers: v11DynamicHelpers } =
+    resolveUnifiedDynamicBuildersAndHelpers(v11Sf, v11Bindings, v11Functions);
 
   let v11UnresolvableMutation = false;
   function visitV11(n) {
@@ -1008,7 +1089,94 @@ if (process.argv.includes('--self-test')) {
     process.exit(1);
   }
 
-  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all 11 negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, browser re-export chain, helper call payload resolution, dynamic table alias, function parameter payload, and dynamic builder variable).');
+  // Test 12: Vector 12 (Unified Fixed-Point Dynamic Helper-Return via Local Variable)
+  const v12Code = `
+    function getBuilder(supabase: any, tableName: string) {
+      const builder = supabase.from(tableName);
+      return builder;
+    }
+    const arrowGetBuilder = (supabase: any, tableName: string) => {
+      const b = supabase.from(tableName);
+      return b;
+    };
+    class BuilderService {
+      getMethodBuilder(supabase: any, tableName: string) {
+        const mb = supabase.from(tableName);
+        return mb;
+      }
+    }
+    const service = new BuilderService();
+
+    const query = getBuilder(supabase, runtimeTableName);
+    await query.update(payload);
+
+    const queryArrow = arrowGetBuilder(supabase, runtimeTableName);
+    await queryArrow.update(payload);
+
+    const queryMethod = service.getMethodBuilder(supabase, runtimeTableName);
+    await queryMethod.update(payload);
+  `;
+  const v12Sf = ts.createSourceFile('v12.ts', v12Code, ts.ScriptTarget.Latest, true);
+  const v12Bindings = buildVariableBindingMap(v12Sf);
+  const v12Functions = collectFileFunctions(v12Sf);
+  const { unresolvedDynamicBuilders: v12Builders, unresolvedDynamicHelpers: v12Helpers } =
+    resolveUnifiedDynamicBuildersAndHelpers(v12Sf, v12Bindings, v12Functions);
+
+  let v12DetectedCount = 0;
+  function visitV12(n) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
+      const methodName = n.expression.name.text;
+      if (['insert', 'update', 'upsert', 'delete'].includes(methodName)) {
+        let curr = n.expression.expression;
+        while (curr) {
+          if (ts.isIdentifier(curr) && v12Builders.has(curr.text)) {
+            v12DetectedCount++;
+            break;
+          }
+          if (ts.isCallExpression(curr)) {
+            if (ts.isIdentifier(curr.expression) && v12Helpers.has(curr.expression.text)) {
+              v12DetectedCount++;
+              break;
+            }
+            if (ts.isPropertyAccessExpression(curr.expression) && v12Helpers.has(curr.expression.name.text)) {
+              v12DetectedCount++;
+              break;
+            }
+            if (ts.isPropertyAccessExpression(curr.expression)) {
+              curr = curr.expression.expression;
+              continue;
+            }
+          }
+          if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
+            curr = curr.expression.expression;
+          } else if (ts.isAwaitExpression?.(curr) || ts.isParenthesizedExpression(curr)) {
+            curr = curr.expression;
+          } else break;
+        }
+      }
+    }
+    ts.forEachChild(n, visitV12);
+  }
+  visitV12(v12Sf);
+
+  if (
+    v12DetectedCount !== 3 ||
+    !v12Helpers.has('getBuilder') ||
+    !v12Helpers.has('arrowGetBuilder') ||
+    !v12Helpers.has('getMethodBuilder') ||
+    !v12Builders.has('query') ||
+    !v12Builders.has('queryArrow') ||
+    !v12Builders.has('queryMethod')
+  ) {
+    console.error('[SELF-TEST FAILED] Vector 12: Unified fixed-point dynamic helper-return detection failed:', {
+      v12DetectedCount,
+      helpers: Array.from(v12Helpers),
+      builders: Array.from(v12Builders),
+    });
+    process.exit(1);
+  }
+
+  console.log('[SELF-TEST PASSED] AST scanner correctly verifies all 12 negative vectors (array payload, object spread alias, computed property name, builder reassignment, aliased projection import, browser re-export chain, helper call payload resolution, dynamic table alias, function parameter payload, dynamic builder variable, and unified fixed-point helper-return builder).');
   process.exit(0);
 }
 
@@ -1249,145 +1417,11 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
   const fileFunctions = collectFileFunctions(sourceFile);
   const parameterIdentifiers = collectParameterIdentifiers(sourceFile);
 
-  // Helper functions returning tenants query builder
-  const tenantQueryHelpers = new Set();
-  function scanFunctions(node) {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      let returnsTenants = false;
-      function checkReturn(n) {
-        if (ts.isReturnStatement(n) && n.expression) {
-          if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
-            returnsTenants = true;
-          }
-        }
-        ts.forEachChild(n, checkReturn);
-      }
-      checkReturn(node.body);
-      if (returnsTenants) tenantQueryHelpers.add(node.name.text);
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const init = unwrap(node.initializer);
-      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
-        const body = init.body;
-        let returnsTenants = false;
-        if (ts.isBlock(body)) {
-          function checkReturn(n) {
-            if (ts.isReturnStatement(n) && n.expression) {
-              if (isFromTenantsChain(n.expression, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
-                returnsTenants = true;
-              }
-            }
-            ts.forEachChild(n, checkReturn);
-          }
-          checkReturn(body);
-        } else {
-          if (isFromTenantsChain(body, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
-            returnsTenants = true;
-          }
-        }
-        if (returnsTenants) tenantQueryHelpers.add(node.name.text);
-      }
-    }
-    ts.forEachChild(node, scanFunctions);
-  }
+  // Multi-hop builder variable alias & helper-return propagation (unified fixed-point loop)
+  const { tenantBuilderVars, tenantQueryHelpers } = resolveUnifiedTenantBuildersAndHelpers(sourceFile, varBindings, fileFunctions);
 
-  // Multi-hop builder variable alias & reassignment propagation (fixed-point loop)
-  const tenantBuilderVars = new Set();
-  scanFunctions(sourceFile);
-
-  let changed = true;
-  while (changed) {
-    const prevSize = tenantBuilderVars.size;
-    function scanAliases(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isFromTenantsChain(node.initializer, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
-          tenantBuilderVars.add(node.name.text);
-        }
-      }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(node.left)
-      ) {
-        if (isFromTenantsChain(node.right, tenantBuilderVars, tenantQueryHelpers, varBindings, fileFunctions)) {
-          tenantBuilderVars.add(node.left.text);
-        }
-      }
-      ts.forEachChild(node, scanAliases);
-    }
-    scanAliases(sourceFile);
-    changed = tenantBuilderVars.size > prevSize;
-  }
-
-  // Helper functions returning unresolved dynamic table query builder
-  const unresolvedDynamicHelpers = new Set();
-  function scanDynamicFunctions(node) {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      let returnsDynamic = false;
-      function checkReturn(n) {
-        if (ts.isReturnStatement(n) && n.expression) {
-          if (isUnresolvedDynamicChain(n.expression, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
-            returnsDynamic = true;
-          }
-        }
-        ts.forEachChild(n, checkReturn);
-      }
-      checkReturn(node.body);
-      if (returnsDynamic) unresolvedDynamicHelpers.add(node.name.text);
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const init = unwrap(node.initializer);
-      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
-        const body = init.body;
-        let returnsDynamic = false;
-        if (ts.isBlock(body)) {
-          function checkReturn(n) {
-            if (ts.isReturnStatement(n) && n.expression) {
-              if (isUnresolvedDynamicChain(n.expression, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
-                returnsDynamic = true;
-              }
-            }
-            ts.forEachChild(n, checkReturn);
-          }
-          checkReturn(body);
-        } else {
-          if (isUnresolvedDynamicChain(body, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
-            returnsDynamic = true;
-          }
-        }
-        if (returnsDynamic) unresolvedDynamicHelpers.add(node.name.text);
-      }
-    }
-    ts.forEachChild(node, scanDynamicFunctions);
-  }
-
-  // Multi-hop unresolved dynamic builder variable alias propagation (fixed-point loop)
-  const unresolvedDynamicBuilders = new Set();
-  scanDynamicFunctions(sourceFile);
-
-  let dynChanged = true;
-  while (dynChanged) {
-    const prevSize = unresolvedDynamicBuilders.size;
-    function scanDynAliases(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (isUnresolvedDynamicChain(node.initializer, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
-          unresolvedDynamicBuilders.add(node.name.text);
-        }
-      }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(node.left)
-      ) {
-        if (isUnresolvedDynamicChain(node.right, unresolvedDynamicBuilders, unresolvedDynamicHelpers, varBindings, fileFunctions)) {
-          unresolvedDynamicBuilders.add(node.left.text);
-        }
-      }
-      ts.forEachChild(node, scanDynAliases);
-    }
-    scanDynAliases(sourceFile);
-    dynChanged = unresolvedDynamicBuilders.size > prevSize;
-  }
+  // Multi-hop unresolved dynamic builder variable & helper-return propagation (unified fixed-point loop)
+  const { unresolvedDynamicBuilders, unresolvedDynamicHelpers } = resolveUnifiedDynamicBuildersAndHelpers(sourceFile, varBindings, fileFunctions);
 
   // Track projection aliases in this file
   const projectionAliases = new Set();
@@ -1435,12 +1469,21 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
             return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.text };
           }
         }
-        if (ts.isCallExpression(curr) && ts.isIdentifier(curr.expression)) {
-          if (tenantQueryHelpers.has(curr.expression.text)) {
-            return { op: methodName.toUpperCase(), fromTenants: true };
-          }
-          if (unresolvedDynamicHelpers.has(curr.expression.text)) {
-            return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.expression.text };
+        if (ts.isCallExpression(curr)) {
+          if (ts.isIdentifier(curr.expression)) {
+            if (tenantQueryHelpers.has(curr.expression.text)) {
+              return { op: methodName.toUpperCase(), fromTenants: true };
+            }
+            if (unresolvedDynamicHelpers.has(curr.expression.text)) {
+              return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.expression.text };
+            }
+          } else if (ts.isPropertyAccessExpression(curr.expression)) {
+            if (tenantQueryHelpers.has(curr.expression.name.text)) {
+              return { op: methodName.toUpperCase(), fromTenants: true };
+            }
+            if (unresolvedDynamicHelpers.has(curr.expression.name.text)) {
+              return { op: methodName.toUpperCase(), unresolvableTable: true, exprText: curr.expression.name.text };
+            }
           }
         }
         if (ts.isCallExpression(curr) && ts.isPropertyAccessExpression(curr.expression)) {
@@ -1449,7 +1492,8 @@ for (const [filePath, { sourceFile, relPath }] of fileAstMap.entries()) {
           ts.isAsExpression(curr) ||
           ts.isNonNullExpression?.(curr) ||
           ts.isParenthesizedExpression(curr) ||
-          (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr))
+          (ts.isSatisfiesExpression && ts.isSatisfiesExpression(curr)) ||
+          (ts.isAwaitExpression && ts.isAwaitExpression(curr))
         ) {
           curr = curr.expression;
         } else {
